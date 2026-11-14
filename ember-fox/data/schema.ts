@@ -124,6 +124,17 @@ export function limitFrom(answers: Answers): number {
   return DEFAULT_WEEKLY_LIMIT;
 }
 
+/**
+ * A lighter limit set for one week only (a Plus feature), saved as "<week start>=<limit>".
+ * Null when none is set for `weekKey`, or when it isn't lighter than the usual limit.
+ */
+export function lighterLimitFor(answers: Answers, weekKey: string): number | null {
+  const [key, raw] = (answers.week_override ?? "").split("=");
+  const value = Number(raw);
+  if (key !== weekKey || raw === undefined || raw === "" || !Number.isFinite(value)) return null;
+  return value >= 0 && value < limitFrom(answers) ? value : null;
+}
+
 /** The first day of the person's week: 0 for Sunday, 1 for Monday (the default). */
 export function weekStartsOn(answers: Answers): 0 | 1 {
   return answers.week_start === "Sunday" ? 0 : 1;
@@ -228,18 +239,6 @@ export function daysAgoKey(days: number, now: Date = new Date()): string {
   return dayKey(addDays(startOfDay(now), -days));
 }
 
-/** An ISO time on the day `days` ago, at hour:minute local time. */
-export function isoDaysAgo(days: number, hour: number, minute = 0, now: Date = new Date()): string {
-  const d = addDays(startOfDay(now), -days);
-  d.setHours(hour, minute, 0, 0);
-  return d.toISOString();
-}
-
-/** An ISO time `minutes` before now. */
-export function isoMinutesAgo(minutes: number, now: Date = new Date()): string {
-  return new Date(now.getTime() - minutes * 60 * 1000).toISOString();
-}
-
 // ---------- formatting ----------
 
 export function formatDrinks(count: number): string {
@@ -320,23 +319,33 @@ export interface BacEstimate {
   hoursToZero: number;
 }
 
+/** How far back the estimate looks for drinks. */
+export const BAC_WINDOW_HOURS = 24;
+
 /**
- * A rough Widmark estimate from the drinks of the last 12 hours, body weight and body type.
- * It isn't a breath test and ignores food, drink strength and each person's metabolism.
+ * A rough Widmark estimate from the drinks of the last 24 hours, body weight and body type.
+ * Drinks are taken in the order they were logged: the body clears alcohol at an average rate
+ * between them and never below zero, so an early drink that has already cleared can't cancel a
+ * later one. It isn't a breath test and ignores food, drink strength and each person's
+ * metabolism, and it counts each drink as absorbed at once.
  */
 export function estimateBac(drinks: Drink[], profile: Profile, now: Date = new Date()): BacEstimate {
   const nowMs = now.getTime();
-  const recent = drinks.filter((drink) => {
-    const t = Date.parse(drink.logged_at);
-    return t <= nowMs && t >= nowMs - 12 * HOUR;
-  });
+  const recent = drinks
+    .map((drink) => ({ at: Date.parse(drink.logged_at), amount: drink.standard_drinks }))
+    .filter((drink) => drink.at <= nowMs && drink.at >= nowMs - BAC_WINDOW_HOURS * HOUR)
+    .sort((a, b) => a.at - b.at);
   if (recent.length === 0) return { percent: 0, hoursToZero: 0 };
-  const grams = recent.reduce((sum, drink) => sum + drink.standard_drinks * GRAMS_PER_STANDARD_DRINK, 0);
-  const first = Math.min(...recent.map((drink) => Date.parse(drink.logged_at)));
-  const hours = (nowMs - first) / HOUR;
-  const weightGrams = profile.weightKg * 1000;
-  const peak = (grams / (BODY_FACTOR[profile.bodyType] * weightGrams)) * 100;
-  const percent = Math.max(0, peak - ELIMINATION_PER_HOUR * hours);
+  const perDrink =
+    (GRAMS_PER_STANDARD_DRINK / (BODY_FACTOR[profile.bodyType] * profile.weightKg * 1000)) * 100;
+  let percent = 0;
+  let last = recent[0]!.at;
+  for (const drink of recent) {
+    percent = Math.max(0, percent - (ELIMINATION_PER_HOUR * (drink.at - last)) / HOUR);
+    percent += drink.amount * perDrink;
+    last = drink.at;
+  }
+  percent = Math.max(0, percent - (ELIMINATION_PER_HOUR * (nowMs - last)) / HOUR);
   return { percent, hoursToZero: percent / ELIMINATION_PER_HOUR };
 }
 
@@ -426,4 +435,131 @@ export function unlockState(
     have: Math.min(have, unlock.needs),
     progress: unlock.needs <= 0 ? 1 : Math.min(1, have / unlock.needs),
   };
+}
+
+// ---------- weeks and trends ----------
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/** Whether anything was logged in a week: a drink or a check-in. */
+export function weekHasEntries(drinks: Drink[], checkins: Checkin[], startKey: string): boolean {
+  const days = new Set(weekDays(startKey));
+  return (
+    drinks.some((drink) => days.has(dayKey(drink.logged_at))) ||
+    checkins.some((checkin) => days.has(checkin.date))
+  );
+}
+
+/** The earliest day anything was logged, as YYYY-MM-DD; null with no records. */
+export function firstEntryDay(drinks: Drink[], checkins: Checkin[]): string | null {
+  const keys = [...drinks.map((drink) => dayKey(drink.logged_at)), ...checkins.map((c) => c.date)];
+  return keys.length > 0 ? keys.reduce((min, key) => (key < min ? key : min)) : null;
+}
+
+/**
+ * The finished weeks that still need a result: every week from the one holding `sinceKey` up to
+ * last week that has entries and no saved result. After the first day of the week is changed in
+ * Settings, a week that is mostly the same days as a saved one counts as that week.
+ */
+export function weeksToClose(
+  drinks: Drink[],
+  checkins: Checkin[],
+  goals: WeeklyGoal[],
+  sinceKey: string,
+  currentWeekKey: string,
+): { week_start: string; total_drinks: number }[] {
+  const current = parseDay(currentWeekKey);
+  const startsOn = current.getDay();
+  const closed = goals.map((goal) => parseDay(goal.week_start).getTime());
+  const result: { week_start: string; total_drinks: number }[] = [];
+  let start = parseDay(weekStart(parseDay(sinceKey), startsOn));
+  // Never look further back than two years: older weeks can't change a level now.
+  const floor = addDays(current, -7 * 104);
+  if (start < floor) start = floor;
+  for (; start < current; start = addDays(start, 7)) {
+    const key = dayKey(start);
+    // The same week under another first day starts within three days of the saved one.
+    const overlaps = closed.some((time) => Math.abs(time - start.getTime()) < 3.5 * 24 * HOUR);
+    if (overlaps || !weekHasEntries(drinks, checkins, key)) continue;
+    result.push({ week_start: key, total_drinks: round1(totalForWeek(drinks, key)) });
+  }
+  return result;
+}
+
+export interface WeekTotal {
+  weekStart: string;
+  total: number;
+  /** False for a week with nothing logged (shown as a gap, not as a zero). */
+  hasEntries: boolean;
+}
+
+/** Weekly totals for the `count` weeks ending with the current one, oldest first. */
+export function weeklyHistory(
+  drinks: Drink[],
+  checkins: Checkin[],
+  currentWeekKey: string,
+  count = 12,
+): WeekTotal[] {
+  const current = parseDay(currentWeekKey);
+  return Array.from({ length: count }, (_, i) => {
+    const key = dayKey(addDays(current, -7 * (count - 1 - i)));
+    return {
+      weekStart: key,
+      total: round1(totalForWeek(drinks, key)),
+      hasEntries: weekHasEntries(drinks, checkins, key),
+    };
+  });
+}
+
+export interface WeekdayPattern {
+  /** 0 = Sunday. */
+  weekday: number;
+  /** Standard drinks logged on that weekday in the period. */
+  total: number;
+  /** All standard drinks logged in the period. */
+  all: number;
+}
+
+/** The weekday that carries the most drinks from `sinceKey` on; null when nothing was logged. */
+export function heaviestWeekday(drinks: Drink[], sinceKey: string): WeekdayPattern | null {
+  const totals = [0, 0, 0, 0, 0, 0, 0];
+  for (const drink of drinks) {
+    const key = dayKey(drink.logged_at);
+    if (key >= sinceKey) totals[parseDay(key).getDay()]! += drink.standard_drinks;
+  }
+  const all = totals.reduce((sum, n) => sum + n, 0);
+  if (all <= 0) return null;
+  const weekday = totals.indexOf(Math.max(...totals));
+  return { weekday, total: round1(totals[weekday]!), all: round1(all) };
+}
+
+export interface GameEveAverages {
+  /** Average standard drinks on the day before a game or training day. */
+  eve: number;
+  /** Average on every other day. */
+  other: number;
+}
+
+/**
+ * How drinking lines up with game days: the average on the day before a game or training day
+ * against the average on other days, from `sinceKey` up to yesterday. Null without game days or
+ * without at least one day of each kind.
+ */
+export function gameEveAverages(
+  drinks: Drink[],
+  weekdays: number[],
+  sinceKey: string,
+  now: Date = new Date(),
+): GameEveAverages | null {
+  if (weekdays.length === 0 || weekdays.length === 7) return null;
+  const sums = { eve: 0, other: 0 };
+  const counts = { eve: 0, other: 0 };
+  const today = startOfDay(now);
+  for (let day = parseDay(sinceKey); day < today; day = addDays(day, 1)) {
+    const kind = weekdays.includes((day.getDay() + 1) % 7) ? "eve" : "other";
+    sums[kind] += totalOn(drinks, dayKey(day));
+    counts[kind] += 1;
+  }
+  if (counts.eve === 0 || counts.other === 0) return null;
+  return { eve: round1(sums.eve / counts.eve), other: round1(sums.other / counts.other) };
 }

@@ -15,6 +15,7 @@ import {
   addDays,
   alcoholFreeDays,
   dayKey,
+  formatCount,
   parseDay,
   unlockState,
   weeksWithinLimit,
@@ -86,6 +87,8 @@ export default function CareerScreen() {
   const freeDays = progress.alcoholFreeDays;
   const streak = streakWeeks(goals, athlete.weekKey, !athlete.over);
   const hasHistory = goals.length + checkins.length + drinks.length > 0;
+  const lastWeekKey = dayKey(addDays(parseDay(athlete.weekKey), -7));
+  const lastWeek = goals.find((goal) => goal.week_start === lastWeekKey) ?? null;
 
   // Athlete levels, lowest first. The current one is the highest earned level the person can
   // use; the next one is the level after it, which may already be earned but part of Plus.
@@ -318,8 +321,23 @@ export default function CareerScreen() {
             ? `${streak} ${streak === 1 ? "week" : "weeks"} in a row within your limit`
             : "No streak yet"}
         </Text>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-          {`${athlete.over ? "Over your limit this week" : "Within your limit this week"} · ${freeDays} alcohol-free ${freeDays === 1 ? "day" : "days"} logged in total`}
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontSize: theme.font.size.caption,
+            lineHeight: 18,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {`This week so far: ${formatCount(athlete.weekTotal)} of ${formatCount(athlete.limit)}, ${
+            athlete.over ? "over your limit" : "within your limit"
+          }.`}
+          {lastWeek
+            ? `\nLast week: ${formatCount(lastWeek.total_drinks)} of ${formatCount(lastWeek.limit)}, ${
+                lastWeek.goal_met ? "within your limit" : "over your limit"
+              }.`
+            : ""}
+          {`\n${freeDays} alcohol-free ${freeDays === 1 ? "day" : "days"} logged in total.`}
         </Text>
       </View>
     </View>

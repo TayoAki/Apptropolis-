@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrimaryButton } from "../../components/button";
 import { EmptyState } from "../../components/empty-state";
 import { Lottie } from "../../components/lottie";
+import { goPro } from "../../components/paywall/open";
 import {
   Appear,
   Skeleton,
@@ -106,7 +107,8 @@ export default function OpponentReportScreen() {
   const { items, loading, update, remove } = useCollection<ScoutRecord>("opponent_scouts");
   const reduced = useReducedMotion();
   const { answers } = useAppState();
-  const { isPremium, openPaywall } = usePurchases();
+  const { isPremium } = usePurchases();
+  const openPaywall = () => goPro("report");
   const scout = items.find((item) => item.id === id);
 
   const [editing, setEditing] = useState(false);

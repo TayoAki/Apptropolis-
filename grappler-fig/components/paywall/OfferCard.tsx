@@ -1,14 +1,23 @@
-// One plan on the paywall, as a radio row: the name and what it costs on the left of the price,
-// a badge when the plan has one. The chosen plan has a filled radio, a heavier edge and a tint.
+// One plan on the paywall, as a radio row: the name, how it runs (trial, renewal) and the price
+// it renews at, with a badge when the plan has one. The chosen plan has a filled radio, a heavier edge and a tint.
 import { Text, View } from "react-native";
 import type { Offer } from "../../data/purchases";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PressScale } from "../motion";
 import { RadioMark, tint } from "../ui";
 
-/** "/ year", or "pay once" for a lifetime offer. */
+/** "per year", or "once" for a lifetime offer. */
 export function periodLabel(offer: Pick<Offer, "period">): string {
-  return offer.period === "lifetime" ? "pay once" : `/ ${offer.period}`;
+  return offer.period === "lifetime" ? "once" : `per ${offer.period}`;
+}
+
+/** How the plan runs, in a few words: its trial and whether it renews. */
+export function planNote(offer: Pick<Offer, "period" | "trialDays">): string {
+  if (offer.period === "lifetime") return "One payment, no renewal";
+  const renews = `renews every ${offer.period}`;
+  return offer.trialDays > 0
+    ? `${offer.trialDays}-day free trial, then ${renews}`
+    : renews.charAt(0).toUpperCase() + renews.slice(1);
 }
 
 export function OfferCard({
@@ -21,7 +30,6 @@ export function OfferCard({
   onSelect: () => void;
 }) {
   const theme = useTheme();
-  const trial = offer.trialDays > 0;
   // A lifetime plan's "Pay once" already shows beside its price.
   const badge = offer.period !== "lifetime" ? offer.badge : "";
   return (
@@ -30,9 +38,9 @@ export function OfferCard({
       haptic="selection"
       scaleTo={0.98}
       accessibilityRole="radio"
-      accessibilityLabel={`${offer.label}, ${offer.price} ${periodLabel(offer)}${
-        trial ? `, ${offer.trialDays}-day free trial` : ""
-      }${badge ? `, ${badge}` : ""}`}
+      accessibilityLabel={`${offer.label}, ${offer.price} ${periodLabel(offer)}. ${planNote(offer)}${
+        badge ? `. ${badge}` : ""
+      }`}
       accessibilityState={{ checked: selected, selected }}
       style={{
         minHeight: 76,
@@ -81,17 +89,15 @@ export function OfferCard({
             </View>
           ) : null}
         </View>
-        {trial ? (
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption + 2,
-              lineHeight: 20,
-            }}
-          >
-            {`${offer.trialDays}-day free trial`}
-          </Text>
-        ) : null}
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontSize: theme.font.size.caption + 2,
+            lineHeight: 20,
+          }}
+        >
+          {planNote(offer)}
+        </Text>
       </View>
       <View style={{ alignItems: "flex-end" }}>
         <Text

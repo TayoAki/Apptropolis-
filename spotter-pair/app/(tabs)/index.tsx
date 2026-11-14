@@ -54,7 +54,20 @@ const WEEKDAY_NAMES = [
   "Friday",
   "Saturday",
 ];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 function clamp(value: number, low: number, high: number): number {
@@ -88,6 +101,8 @@ export default function TodayScreen() {
   const tone = useRef(new Animated.Value(0)).current;
   // True while a completion is being saved, so a second tap can't post it twice.
   const completing = useRef(false);
+  // When the last set was logged: a second tap within half a second is a double tap, not a set.
+  const lastLogAt = useRef(0);
 
   const now = new Date();
   const today = dayKey(now);
@@ -119,9 +134,7 @@ export default function TodayScreen() {
     [exercisesStore.items],
   );
   const session: Exercise[] = workout
-    ? workout.exercises
-        .map((id) => exerciseById.get(id))
-        .filter((e): e is Exercise => Boolean(e))
+    ? workout.exercises.map((id) => exerciseById.get(id)).filter((e): e is Exercise => Boolean(e))
     : [];
 
   const todaysSets = workout ? sets.filter((s) => s.workoutId === workout.id) : [];
@@ -187,9 +200,13 @@ export default function TodayScreen() {
     if (!workout || completed) return;
     const draft = draftFor(exercise.id);
     const setNumber = loggedFor(exercise.id).length + 1;
+    if (setNumber > TARGET_SETS || Date.now() - lastLogAt.current < 500) return;
+    lastLogAt.current = Date.now();
     haptic("selection");
     try {
       await setsStore.add({
+        // One record per set of a lift in a session, so a double tap can't log the set twice.
+        id: `${workout.id}:${exercise.id}:${setNumber}`,
         workoutId: workout.id,
         exercise: exercise.id,
         setNumber,
@@ -236,6 +253,8 @@ export default function TodayScreen() {
     try {
       await workoutsStore.update(workout.id, { completed: true, completedAt: finishedAt });
       await updatesStore.add({
+        // One "done" note per session.
+        id: `done-${workout.id}`,
         type: "completion",
         from: "you",
         message: `${workout.title} done.`,
@@ -309,9 +328,7 @@ export default function TodayScreen() {
   const partnerLine = partnerDone
     ? `Finished today's workout at ${formatTime(partnerDone.createdAt)}.`
     : "Not finished today yet. You'll see it here the moment they do.";
-  const byDay = new Map(
-    workouts.filter((w) => !w.deleted).map((w) => [w.date, w] as const),
-  );
+  const byDay = new Map(workouts.filter((w) => !w.deleted).map((w) => [w.date, w] as const));
   const perimeter = 2 * (buttonSize.w + buttonSize.h);
   const dashOffset = trace.interpolate({ inputRange: [0, 1], outputRange: [perimeter, 0] });
   const traceOpacity = trace.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 0] });
@@ -381,17 +398,16 @@ export default function TodayScreen() {
               </Text>
             ) : null}
           </View>
-          <Rocco
-            pose={completed ? "rocco-fist-bump-spotter" : "rocco-neutral-ready"}
-            size={96}
-          />
+          <Rocco pose={completed ? "rocco-fist-bump-spotter" : "rocco-neutral-ready"} size={96} />
         </View>
       </Appear>
 
       <Appear delay={120}>
         {paired ? (
           <Card
-            label={partnerDone ? "Your partner finished today" : "Your partner hasn't finished today"}
+            label={
+              partnerDone ? "Your partner finished today" : "Your partner hasn't finished today"
+            }
             style={{ gap: theme.spacing.md }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
@@ -459,7 +475,13 @@ export default function TodayScreen() {
                   <View style={{ width: 40, height: 40, overflow: "hidden" }}>
                     <Lottie name="heart" size={40} />
                   </View>
-                  <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, flex: 1 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontSize: theme.font.size.caption,
+                      flex: 1,
+                    }}
+                  >
                     Cheer sent. They'll see it on their side.
                   </Text>
                 </View>
@@ -497,126 +519,135 @@ export default function TodayScreen() {
         )}
       </Appear>
 
-      <Appear delay={180}>
-        <View style={{ gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text
-              accessibilityRole="header"
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.title,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              Accountability
-            </Text>
-            {/* A score only once a session has been due this week: 0% of nothing isn't a result. */}
+      {/* The week only means something once there is a plan to hold it against. */}
+      {template ? (
+        <Appear delay={180}>
+          <View style={{ gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: theme.spacing.xs,
-                display: week.due ? "flex" : "none",
+                justifyContent: "space-between",
               }}
             >
-              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-                {paired ? "Team:" : "You:"}
-              </Text>
-              <CountUp
-                value={scorePercent}
-                format={(n) => `${Math.round(n)}%`}
+              <Text
+                accessibilityRole="header"
                 style={{
-                  color: scorePercent >= 70 ? theme.colors.success : theme.colors.warning,
-                  fontSize: theme.font.size.body,
+                  color: theme.colors.text,
+                  fontSize: theme.font.size.title,
                   fontWeight: theme.font.weight.bold,
                 }}
-              />
+              >
+                Accountability
+              </Text>
+              {/* A score only once a session has been due this week: 0% of nothing isn't a result. */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.xs,
+                  display: week.due ? "flex" : "none",
+                }}
+              >
+                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+                  {paired ? "Team:" : "You:"}
+                </Text>
+                <CountUp
+                  value={scorePercent}
+                  format={(n) => `${Math.round(n)}%`}
+                  style={{
+                    color: scorePercent >= 70 ? theme.colors.success : theme.colors.warning,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                />
+              </View>
             </View>
-          </View>
 
-          <View style={{ flexDirection: "row", marginTop: theme.spacing.xs }}>
-            {weekDays(now).map((key) => {
-              const item = byDay.get(key);
-              const isToday = key === today;
-              const past = key < today;
-              let status = "rest day";
-              let icon: ReactNode = (
-                <Ionicons name="remove" size={14} color={theme.colors.textMuted} />
-              );
-              if (item?.completed) {
-                status = "done";
-                icon = <Ionicons name="checkmark-circle" size={22} color={theme.colors.success} />;
-              } else if (item && past) {
-                status = "missed";
-                icon = (
-                  <Ionicons name="close-circle-outline" size={22} color={theme.colors.textMuted} />
+            <View style={{ flexDirection: "row", marginTop: theme.spacing.xs }}>
+              {weekDays(now).map((key) => {
+                const item = byDay.get(key);
+                const isToday = key === today;
+                const past = key < today;
+                let status = "rest day";
+                let icon: ReactNode = (
+                  <Ionicons name="remove" size={14} color={theme.colors.textMuted} />
                 );
-              } else if (item && isToday) {
-                status = "today";
-                icon = <Ionicons name="ellipse-outline" size={20} color={theme.colors.primary} />;
-              } else if (item) {
-                status = "scheduled";
-                icon = <Ionicons name="ellipse" size={8} color={theme.colors.textMuted} />;
-              }
-              return (
-                <View
-                  key={key}
-                  accessible
-                  accessibilityLabel={`${weekdayShort(key)}, ${status}`}
-                  style={{ flex: 1, alignItems: "center", gap: theme.spacing.xs }}
-                >
-                  <Text
-                    style={{
-                      color: isToday ? theme.colors.primary : theme.colors.textMuted,
-                      fontSize: theme.font.size.caption,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    {weekdayShort(key).charAt(0)}
-                  </Text>
+                if (item?.completed) {
+                  status = "done";
+                  icon = (
+                    <Ionicons name="checkmark-circle" size={22} color={theme.colors.success} />
+                  );
+                } else if (item && past) {
+                  status = "missed";
+                  icon = (
+                    <Ionicons
+                      name="close-circle-outline"
+                      size={22}
+                      color={theme.colors.textMuted}
+                    />
+                  );
+                } else if (item && isToday) {
+                  status = "today";
+                  icon = <Ionicons name="ellipse-outline" size={20} color={theme.colors.primary} />;
+                } else if (item) {
+                  status = "scheduled";
+                  icon = <Ionicons name="ellipse" size={8} color={theme.colors.textMuted} />;
+                }
+                return (
                   <View
-                    style={{
-                      width: 34,
-                      height: 34,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
+                    key={key}
+                    accessible
+                    accessibilityLabel={`${weekdayShort(key)}, ${status}`}
+                    style={{ flex: 1, alignItems: "center", gap: theme.spacing.xs }}
                   >
-                    {isToday ? (
-                      <Svg width={34} height={34} style={{ position: "absolute" }}>
-                        <Circle
-                          cx={17}
-                          cy={17}
-                          r={15}
-                          fill={theme.colors.surfaceAlt}
-                          stroke={theme.colors.primary}
-                          strokeWidth={2}
-                        />
-                      </Svg>
-                    ) : null}
-                    {icon}
+                    <Text
+                      style={{
+                        color: isToday ? theme.colors.primary : theme.colors.textMuted,
+                        fontSize: theme.font.size.caption,
+                        fontWeight: theme.font.weight.bold,
+                      }}
+                    >
+                      {weekdayShort(key).charAt(0)}
+                    </Text>
+                    <View
+                      style={{
+                        width: 34,
+                        height: 34,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {isToday ? (
+                        <Svg width={34} height={34} style={{ position: "absolute" }}>
+                          <Circle
+                            cx={17}
+                            cy={17}
+                            r={15}
+                            fill={theme.colors.surfaceAlt}
+                            stroke={theme.colors.primary}
+                            strokeWidth={2}
+                          />
+                        </Svg>
+                      ) : null}
+                      {icon}
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
 
-          <GrowBar progress={week.percent / 100} color={theme.colors.success} height={6} />
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-            {sessionsTarget
-              ? `${week.completed} of ${count(sessionsTarget, "session")} done this week`
-              : nextSession
-                ? `Your first session is ${dayLabel(nextSession, now)}`
-                : "No sessions planned this week"}
-          </Text>
-        </View>
-      </Appear>
+            <GrowBar progress={week.percent / 100} color={theme.colors.success} height={6} />
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+              {sessionsTarget
+                ? `${week.completed} of ${count(sessionsTarget, "session")} done this week`
+                : nextSession
+                  ? `Your first session is ${dayLabel(nextSession, now)}`
+                  : "No sessions planned this week"}
+            </Text>
+          </View>
+        </Appear>
+      ) : null}
 
       {/* On a rest day there is no list to title: the empty state below speaks for itself. */}
       {workout ? (
@@ -691,7 +722,7 @@ export default function TodayScreen() {
               }}
             >
               {completed
-                ? "Shared: completed. Your sets are locked and stay private."
+                ? "Completed. Your sets are locked and stay on this phone."
                 : "Set details stay on your device. Your partner only sees completion."}
             </Animated.Text>
             {completed ? (

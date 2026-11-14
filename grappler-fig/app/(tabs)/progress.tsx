@@ -7,6 +7,7 @@ import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { Lottie, Celebrate } from "../../components/lottie";
 import { FightNightCard } from "../../components/progress/fight-night";
+import { goPro } from "../../components/paywall/open";
 import { WeeklyTraining } from "../../components/progress/week";
 import { CountUp, GrowBar, Skeleton, Stagger, haptic } from "../../components/motion";
 import { ScreenHeader, SecondaryButton, StreakBadge, displayFace } from "../../components/ui";
@@ -59,7 +60,8 @@ export default function ProgressScreen() {
   const theme = useTheme();
   const sessions = useCollection<WorkoutSession>("workout_sessions");
   const meals = useCollection<Meal>("meals");
-  const { isPremium, openPaywall } = usePurchases();
+  const { isPremium } = usePurchases();
+  const openPaywall = () => goPro("progress");
   const ai = useAI();
   const [mealError, setMealError] = useState<string | null>(null);
   const [logged, setLogged] = useState(false);

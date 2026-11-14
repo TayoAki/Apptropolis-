@@ -15,6 +15,7 @@ import { PrimaryButton } from "../../components/button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { Lottie } from "../../components/lottie";
+import { goPro } from "../../components/paywall/open";
 import {
   Appear,
   CountUp,
@@ -138,7 +139,8 @@ function RadarSweep({ height }: { height: number }) {
 export default function ScoutScreen() {
   const theme = useTheme();
   const { items, loading, add } = useCollection<ScoutRecord>("opponent_scouts");
-  const { isPremium, openPaywall } = usePurchases();
+  const { isPremium } = usePurchases();
+  const openPaywall = () => goPro("scout");
   const { answers } = useAppState();
   const { ask, loading: scanning, error: scanError } = useAI();
 

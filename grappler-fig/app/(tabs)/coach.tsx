@@ -22,18 +22,20 @@ import {
   type Drill,
 } from "../../components/coach/CoachParts";
 import { EmptyState } from "../../components/empty-state";
+import { goPro } from "../../components/paywall/open";
 import { Appear, PressScale, Skeleton, haptic } from "../../components/motion";
 import { FrameMarks, ScreenHeader, TextButton, type IconName } from "../../components/ui";
 import { track } from "../../data/analytics";
 import { useAI } from "../../data/ai";
 import { useAppState } from "../../data/app-state";
 import { pickPhoto, type Photo } from "../../data/photos";
-import { openPaywall, usePurchases } from "../../data/purchases";
+import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import { dayKey, type CoachMessage, type WorkoutSession } from "../../data/schema";
+import { FREE_COACH_QUESTIONS_PER_DAY } from "../../data/training";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const FREE_QUESTIONS_PER_DAY = 3;
+const openPaywall = () => goPro("coach");
 const SAMPLE_QUESTION = "How is my hip rotation here?";
 const SUGGESTIONS = [
   "My jab drops after the cross. Why?",
@@ -217,7 +219,7 @@ export default function CoachScreen() {
   const askedToday = ordered.filter(
     (m) => m.role === "user" && dayKey(m.createdAt) === dayKey(new Date()),
   ).length;
-  const left = Math.max(0, FREE_QUESTIONS_PER_DAY - askedToday);
+  const left = Math.max(0, FREE_COACH_QUESTIONS_PER_DAY - askedToday);
   const canAsk = isPremium || left > 0;
   const busy = pending !== null;
   const canSend = Boolean((draft.trim() || frame) && !busy);
@@ -580,11 +582,14 @@ export default function CoachScreen() {
             borderRadius: 22,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: theme.colors.primary,
-            opacity: canSend ? 1 : 0.5,
+            backgroundColor: canSend ? theme.colors.primary : theme.colors.surfaceAlt,
           }}
         >
-          <Ionicons name="arrow-up" size={22} color={theme.colors.onPrimary} />
+          <Ionicons
+            name="arrow-up"
+            size={22}
+            color={canSend ? theme.colors.onPrimary : theme.colors.textMuted}
+          />
         </PressScale>
       </View>
     </View>

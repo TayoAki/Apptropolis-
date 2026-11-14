@@ -212,8 +212,9 @@ export function Segmented<T extends string>({
   accessibilityLabel,
   style,
 }: {
-  options: { value: T; label: string }[];
-  value: T;
+  options: readonly { value: T; label: string }[];
+  /** The chosen option. A value that matches none shows nothing selected. */
+  value: T | "";
   onChange: (next: T) => void;
   accessibilityLabel: string;
   style?: StyleProp<ViewStyle>;
@@ -221,7 +222,8 @@ export function Segmented<T extends string>({
   const theme = useTheme();
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
-  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  const found = options.findIndex((option) => option.value === value);
+  const index = Math.max(0, found);
   const slide = useRef(new Animated.Value(index)).current;
 
   useEffect(() => {
@@ -261,7 +263,7 @@ export function Segmented<T extends string>({
         style,
       ]}
     >
-      {segment > 0 ? (
+      {segment > 0 && found >= 0 ? (
         <Animated.View
           pointerEvents="none"
           style={{

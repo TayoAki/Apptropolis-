@@ -5,7 +5,13 @@
 // an answer, so leaving the app mid-way comes back to the same step with the same answers.
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { useState, type ComponentProps, type ReactNode } from "react";
+import {
+  useRef,
+  useState,
+  type ComponentProps,
+  type ComponentRef,
+  type ReactNode,
+} from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AlcoholFreeButton } from "../components/index/AlcoholFreeButton";
@@ -149,6 +155,20 @@ export default function OnboardingScreen() {
     .filter((d) => dayKey(d.logged_at) === athlete.today)
     .sort((a, b) => b.logged_at.localeCompare(a.logged_at));
   const hasEntry = todays.length > 0 || athlete.markedAlcoholFree;
+
+  // The first entry puts the result under the log: bring it into view once, so the person sees
+  // what their entry did without hunting for it.
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const contentHeight = useRef(0);
+  const revealed = useRef(hasEntry);
+  function revealResult(resultHeight: number) {
+    if (revealed.current) return;
+    revealed.current = true;
+    setTimeout(() => {
+      const y = contentHeight.current - resultHeight - theme.spacing.xl - theme.spacing.md;
+      scroll.current?.scrollTo({ y: Math.max(0, y), animated: true });
+    }, 120);
+  }
   const reminderOn = reminderState === "on" || (reminder.ready && reminder.enabled);
   const declined = reminderState === "declined";
 
@@ -208,9 +228,9 @@ export default function OnboardingScreen() {
     return [
       <StepHead
         key="head"
-        title="Keep to a weekly limit. See your form for game day."
-        body="Four short steps: your sport, your limit, today's log and an optional reminder."
-        aside={<Mascot pose="dash-match-ready" size={96} />}
+        title="See your form for game day"
+        body="Log your drinks against a weekly limit and see what they do to your next game. Four short steps: your sport, your limit, today's log and an optional reminder."
+        aside={<Mascot pose="dash-match-ready" size={88} />}
       />,
       <Question
         key="question"
@@ -305,7 +325,11 @@ export default function OnboardingScreen() {
         </View>
       ) : null,
       hasEntry ? (
-        <View key="result" style={{ gap: theme.spacing.md, marginTop: theme.spacing.sm }}>
+        <View
+          key="result"
+          onLayout={(event) => revealResult(event.nativeEvent.layout.height)}
+          style={{ gap: theme.spacing.md, marginTop: theme.spacing.sm }}
+        >
           <Text
             accessibilityRole="header"
             style={{
@@ -353,7 +377,6 @@ export default function OnboardingScreen() {
         key="head"
         title="One quiet pre-game nudge"
         body="Optional. One notification a day from this phone, at the time you pick, asking you to log the day or mark it alcohol-free. You can turn it off in Settings."
-        aside={<Mascot pose="dash-game-day-sharp" size={96} />}
       />,
       !reminder.ready ? (
         <Skeleton key="loading" height={96} radius={theme.radius.md} />
@@ -553,6 +576,10 @@ export default function OnboardingScreen() {
       </View>
 
       <ScrollView
+        ref={scroll}
+        onContentSizeChange={(_, height) => {
+          contentHeight.current = height;
+        }}
         style={{ flex: 1 }}
         contentContainerStyle={{
           flexGrow: 1,

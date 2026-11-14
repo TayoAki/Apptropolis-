@@ -1,4 +1,4 @@
-// What premium unlocks: one card of plain lines, each with a check.
+// A titled list of plain lines, each with a check: what Pro adds.
 import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";

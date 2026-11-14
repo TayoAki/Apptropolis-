@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
 import {
+  BAC_WINDOW_HOURS,
   formatBac,
   formatTime,
   profileBasis,
@@ -25,7 +26,7 @@ export function BacPanel({
   const theme = useTheme();
   const active = bac.percent > 0;
   const zeroAt = formatTime(new Date(now.getTime() + bac.hoursToZero * 3600000).toISOString());
-  const basis = `Worked out from the drinks you logged in the last 12 hours, ${profileBasis(profile)}${
+  const basis = `Worked out from the drinks you logged in the last ${BAC_WINDOW_HOURS} hours, ${profileBasis(profile)}${
     profile.weightSet && profile.bodyTypeSet ? "" : " (set yours in Settings)"
   }. It leaves out food, drink strength and your own metabolism, so your real level can be higher.`;
 
@@ -36,7 +37,7 @@ export function BacPanel({
         accessibilityLabel={
           active
             ? `Estimated blood alcohol ${formatBac(bac.percent)}. The estimate reaches zero around ${zeroAt}.`
-            : "Estimated blood alcohol: no drinks logged in the last 12 hours."
+            : `Estimated blood alcohol: no drinks logged in the last ${BAC_WINDOW_HOURS} hours.`
         }
         style={{
           flexDirection: "row",
@@ -68,7 +69,7 @@ export function BacPanel({
       <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>
         {active
           ? `The estimate reaches zero around ${zeroAt}, at an average clearing rate.`
-          : "No drinks logged in the last 12 hours."}
+          : `No drinks logged in the last ${BAC_WINDOW_HOURS} hours.`}
       </Text>
       <Text
         style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, lineHeight: 18 }}

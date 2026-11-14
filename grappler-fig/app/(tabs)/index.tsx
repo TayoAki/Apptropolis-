@@ -23,6 +23,7 @@ import { EmptyState } from "../../components/empty-state";
 import { RoundClock, clockSizeFor } from "../../components/index/Clock";
 import { ComboPanel } from "../../components/index/Combo";
 import { Lottie, Celebrate } from "../../components/lottie";
+import { goPro } from "../../components/paywall/open";
 import { CountUp, PressScale, Skeleton, Stagger, haptic } from "../../components/motion";
 import {
   AppSwitch,
@@ -224,7 +225,8 @@ function SetupChip({
 export default function TrainScreen() {
   const theme = useTheme();
   const { width } = useWindowDimensions();
-  const { isPremium, openPaywall } = usePurchases();
+  const { isPremium } = usePurchases();
+  const openPaywall = () => goPro("train");
   const { answers } = useAppState();
   const sessions = useCollection<WorkoutSession>("workout_sessions");
   const scouts = useCollection<OpponentScout>("opponent_scouts");

@@ -6,7 +6,7 @@ export const monetization: Monetization = {
     "AI opponent scouting and technique analysis from photo frames, with a game plan and drills",
     "Unlimited AI coach questions",
     "AI meal photo logging with fighter macros",
-    "Advanced programs and custom callout combos"
+    "More timer combos, and custom callout combos for your game plans"
   ],
   "offers": [
     {

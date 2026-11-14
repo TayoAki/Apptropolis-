@@ -143,14 +143,14 @@ export function WeeklyProgressCard({
                       fontVariant: ["tabular-nums"],
                     }}
                   >
-                    {formatCount(day.value)}
+                    {day.value > 0 ? formatCount(day.value) : ""}
                   </Text>
                   <View
                     style={{
                       width: BAR_WIDTH,
                       height,
-                      borderTopLeftRadius: 6,
-                      borderTopRightRadius: 6,
+                      borderTopLeftRadius: 4,
+                      borderTopRightRadius: 4,
                       backgroundColor: theme.colors.primary,
                     }}
                   />

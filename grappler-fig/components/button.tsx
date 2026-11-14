@@ -31,6 +31,9 @@ export function PrimaryButton({
 }) {
   const theme = useTheme();
   const blocked = disabled || busy;
+  // A disabled button goes neutral instead of fading, so its label stays readable.
+  const off = disabled && !busy;
+  const ink = off ? theme.colors.textMuted : theme.colors.onPrimary;
   return (
     <PressScale
       onPress={onPress}
@@ -49,21 +52,24 @@ export function PrimaryButton({
         paddingHorizontal: theme.spacing.lg,
         paddingVertical: theme.spacing.sm,
         borderRadius: theme.radius.pill,
-        backgroundColor: tone === "danger" ? theme.colors.danger : theme.colors.primary,
-        opacity: disabled && !busy ? 0.5 : 1,
+        backgroundColor: off
+          ? theme.colors.surfaceAlt
+          : tone === "danger"
+            ? theme.colors.danger
+            : theme.colors.primary,
         alignSelf: fullWidth ? "stretch" : "center",
       }}
     >
       {busy ? (
-        <ActivityIndicator color={theme.colors.onPrimary} />
+        <ActivityIndicator color={ink} />
       ) : icon ? (
-        <Ionicons name={icon} size={20} color={theme.colors.onPrimary} />
+        <Ionicons name={icon} size={20} color={ink} />
       ) : null}
       <Text
         style={{
           flexShrink: 1,
           textAlign: "center",
-          color: theme.colors.onPrimary,
+          color: ink,
           fontSize: theme.font.size.body,
           fontWeight: theme.font.weight.bold,
         }}

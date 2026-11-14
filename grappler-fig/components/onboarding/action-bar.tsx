@@ -2,7 +2,7 @@
 import { Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PrimaryButton } from "../button";
-import { TextButton, type IconName } from "../ui";
+import { SecondaryButton, TextButton, type IconName } from "../ui";
 
 export function ActionBar({
   label,
@@ -11,6 +11,7 @@ export function ActionBar({
   caption,
   busy = false,
   disabled = false,
+  quiet = false,
   secondary,
   bottomInset = 0,
 }: {
@@ -21,6 +22,8 @@ export function ActionBar({
   /** Work is in progress: the button shows it and can't be pressed again. */
   busy?: boolean;
   disabled?: boolean;
+  /** Draw the action as a second-rank button (stopping a round is not the way forward). */
+  quiet?: boolean;
   /** A visible way past an optional step, e.g. "Not now". */
   secondary?: { label: string; onPress: () => void };
   /** The phone's bottom safe-area inset. */
@@ -39,7 +42,11 @@ export function ActionBar({
         backgroundColor: theme.colors.background,
       }}
     >
-      <PrimaryButton label={label} icon={icon} onPress={onPress} busy={busy} disabled={disabled} />
+      {quiet ? (
+        <SecondaryButton label={label} icon={icon} onPress={onPress} disabled={disabled} />
+      ) : (
+        <PrimaryButton label={label} icon={icon} onPress={onPress} busy={busy} disabled={disabled} />
+      )}
       {secondary ? (
         <TextButton label={secondary.label} tone="plain" onPress={secondary.onPress} />
       ) : null}

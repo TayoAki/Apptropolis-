@@ -3,6 +3,7 @@
 // which also lays out each new week from the template the first time the app is opened in it.
 import { useEffect, useMemo, useRef } from "react";
 import { useAppState } from "./app-state";
+import { clearOldSample } from "./cleanup";
 import { useToday } from "./clock";
 import {
   MAX_TRAINING_DAYS,
@@ -16,6 +17,9 @@ import {
 } from "./plan";
 import { useCollection } from "./repo";
 import { dayKey, weekDays, type Exercise, type SetLog, type Workout } from "./schema";
+
+// Before anything reads the collections: drop sample records an earlier build may have left.
+void clearOldSample();
 
 /** The training days the answers describe: the picked weekdays, or the usual ones for a count. */
 export function trainingDaysFrom(answers: Record<string, string>): number[] {

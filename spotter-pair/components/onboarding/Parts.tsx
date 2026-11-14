@@ -231,8 +231,11 @@ export function DayToggles({
               opacity: pressed ? 0.7 : 1,
             })}
           >
+            {/* Seven across leaves each day about 44pt: the label scales with the phone's text
+                size up to the width it has. */}
             <Text
               numberOfLines={1}
+              maxFontSizeMultiplier={1.3}
               style={{
                 fontSize: theme.font.size.caption,
                 fontWeight: on ? theme.font.weight.bold : theme.font.weight.medium,

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentRef, RefObject } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Outlook } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Mascot, PressScale } from "../motion";
@@ -28,6 +28,10 @@ interface Props {
   cardRef: RefObject<ComponentRef<typeof View> | null>;
   onShare: () => void;
   sharing: boolean;
+  /** What went wrong with the last share, when it did. */
+  note?: string | null;
+  /** Opens Settings, where game and training days are set. */
+  onSetGameDays: () => void;
 }
 
 /** The form card people can share: the tier, the score and the week's alcohol-free days. */
@@ -39,6 +43,8 @@ export function GameFormCard({
   cardRef,
   onShare,
   sharing,
+  note,
+  onSetGameDays,
 }: Props) {
   const theme = useTheme();
   const line = { color: theme.colors.textMuted, fontSize: theme.font.size.body };
@@ -93,6 +99,34 @@ export function GameFormCard({
         </View>
         <Mascot pose={POSES[outlook.tier]} size={112} />
       </View>
+      {nextGame ? null : (
+        <Pressable
+          onPress={onSetGameDays}
+          accessibilityRole="button"
+          accessibilityLabel="Set your game and training days in Settings"
+          style={({ pressed }) => ({
+            minHeight: 44,
+            justifyContent: "center",
+            paddingHorizontal: theme.spacing.lg,
+            paddingBottom: theme.spacing.sm,
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+            {"No game days set. "}
+            <Text
+              style={{
+                color: theme.colors.primary,
+                fontWeight: theme.font.weight.bold,
+                textDecorationLine: "underline",
+              }}
+            >
+              Set them in Settings
+            </Text>
+            {" to see your next game here and on the chart."}
+          </Text>
+        </Pressable>
+      )}
 
       <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }} />
       <PressScale
@@ -122,6 +156,20 @@ export function GameFormCard({
           {sharing ? "Opening share sheet…" : "Share game form card"}
         </Text>
       </PressScale>
+      {note ? (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{
+            color: theme.colors.textMuted,
+            fontSize: theme.font.size.caption,
+            textAlign: "center",
+            paddingHorizontal: theme.spacing.lg,
+            paddingBottom: theme.spacing.md,
+          }}
+        >
+          {note}
+        </Text>
+      ) : null}
     </View>
   );
 }

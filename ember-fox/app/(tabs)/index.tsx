@@ -1,4 +1,5 @@
-import { FlatList, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AlcoholFreeButton } from "../../components/index/AlcoholFreeButton";
 import { BacPanel } from "../../components/index/BacPanel";
@@ -9,7 +10,7 @@ import { WeekProgress } from "../../components/index/WeekProgress";
 import { Appear, Skeleton, SkeletonList, Stagger } from "../../components/motion";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { useAthlete } from "../../components/useAthlete";
-import { WEEKDAYS, dayKey } from "../../data/schema";
+import { WEEKDAYS, dayKey, drinkName, formatDrinks } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
 function LoadingBlocks() {
@@ -98,6 +99,18 @@ export default function TonightScreen() {
             onChange={(next) => void athlete.setAlcoholFree(next)}
           />
 
+          {athlete.error ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.sm }}>
+              <Ionicons name="alert-circle-outline" size={18} color={theme.colors.danger} />
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{ flex: 1, color: theme.colors.danger, fontSize: theme.font.size.caption }}
+              >
+                {athlete.error}
+              </Text>
+            </View>
+          ) : null}
+
           <BacPanel bac={athlete.bac} profile={athlete.profile} now={now} />
 
           <Text
@@ -110,6 +123,49 @@ export default function TonightScreen() {
           >
             Logged today
           </Text>
+
+          {athlete.removed ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.spacing.sm,
+                minHeight: 48,
+                paddingLeft: theme.spacing.md,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{ flex: 1, color: theme.colors.textMuted, fontSize: theme.font.size.body }}
+              >
+                {`Removed ${drinkName(athlete.removed.label).toLowerCase()}, ${formatDrinks(athlete.removed.standard_drinks)}.`}
+              </Text>
+              <Pressable
+                onPress={() => void athlete.undoRemove()}
+                accessibilityRole="button"
+                accessibilityLabel="Undo removing the drink"
+                style={({ pressed }) => ({
+                  minHeight: 48,
+                  paddingHorizontal: theme.spacing.md,
+                  justifyContent: "center",
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                >
+                  Undo
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </Stagger>
       )}
     </View>

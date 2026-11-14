@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stagger, haptic } from "../components/motion";
 import { showPaywall } from "../components/paywallSource";
+import { inOrder } from "../components/useAthlete";
 import { Chips, SettingsRow, SettingsSection, Stepper } from "../components/settings/rows";
 import { SupportButton, useSupport } from "../components/support";
 import { appInfo } from "../data/app-info";
@@ -24,6 +25,7 @@ import {
   SPORTS,
   dayKey,
   drinkName,
+  lighterLimitFor,
   limitFrom,
   profileFrom,
   sportFrom,
@@ -45,6 +47,7 @@ const TRAINING_OPTIONS = [
   ),
 ];
 const LIMIT_CHOICES = [3, 4, 5, 6, 7, 8, 10, 12, 14];
+const LIGHTER_CHOICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12];
 const WEEK_OPTIONS = [
   { id: "Monday", label: "Monday" },
   { id: "Sunday", label: "Sunday" },
@@ -132,11 +135,17 @@ export default function SettingsScreen() {
     ? TIME_OPTIONS
     : [{ id: timeId, label: clock(reminder.hour, reminder.minute) }, ...TIME_OPTIONS];
 
-  async function setLimit(next: number) {
-    void setAnswer("weekly_limit", String(next));
-    const current = weekStart(new Date(), startsOn);
-    const goal = goals.items.find((g) => g.week_start === current);
-    if (goal) await goals.update(goal.id, { limit: next, goal_met: goal.total_drinks <= next });
+  // A lighter limit for this week only (Plus): saved with the week it belongs to, so it lapses
+  // by itself when the week ends.
+  const weekKey = weekStart(new Date(), startsOn);
+  const lighter = lighterLimitFor(answers, weekKey);
+  const lighterOptions = [
+    { id: -1, label: `Usual (${limit})` },
+    ...LIGHTER_CHOICES.filter((n) => n < limit).map((n) => ({ id: n, label: String(n) })),
+  ];
+
+  function setLighter(next: number) {
+    void setAnswer("week_override", next < 0 ? "" : `${weekKey}=${next}`);
   }
 
   async function toggleNudge(on: boolean) {
@@ -180,24 +189,36 @@ export default function SettingsScreen() {
   }
 
   async function resetProgress() {
-    await Promise.all([
-      removeAll(checkins.items, checkins.remove),
-      removeAll(goals.items, goals.remove),
-    ]);
-    haptic("success");
+    try {
+      // Career counts from today on: earlier weeks are not turned back into results.
+      await setAnswer("career_since", dayKey());
+      await inOrder(async () => {
+        await removeAll(checkins.items, checkins.remove);
+        await removeAll(goals.items, goals.remove);
+      });
+      haptic("success");
+      setStatusText("Career progress was reset. Your logged drinks are still here.");
+    } catch {
+      setStatusText("The reset didn't finish. Try again.");
+    }
     setConfirm(null);
-    setStatusText("Career progress was reset. Your logged drinks are still here.");
   }
 
   async function eraseAll() {
-    await Promise.all([
-      removeAll(drinks.items, drinks.remove),
-      removeAll(checkins.items, checkins.remove),
-      removeAll(goals.items, goals.remove),
-    ]);
-    haptic("success");
+    try {
+      await setAnswer("career_since", dayKey());
+      await setAnswer("week_override", "");
+      await inOrder(async () => {
+        await removeAll(drinks.items, drinks.remove);
+        await removeAll(checkins.items, checkins.remove);
+        await removeAll(goals.items, goals.remove);
+      });
+      haptic("success");
+      setStatusText("All logged data was erased from this phone.");
+    } catch {
+      setStatusText("The erase didn't finish. Try again.");
+    }
     setConfirm(null);
-    setStatusText("All logged data was erased from this phone.");
   }
 
   return (
@@ -285,7 +306,32 @@ export default function SettingsScreen() {
                   label="Weekly limit, in standard drinks"
                   options={limitOptions}
                   value={limit}
-                  onChange={(n) => void setLimit(n)}
+                  onChange={(n) => void setAnswer("weekly_limit", String(n))}
+                />
+              ) : null}
+            </SettingsRow>
+            <SettingsRow
+              icon={isPremium ? "trending-down-outline" : "lock-closed-outline"}
+              tint="primary"
+              label="Lighter limit this week"
+              subtitle={
+                isPremium
+                  ? "For a match or race week. Goes back to your usual limit next week."
+                  : "Part of Plus. For a match or race week."
+              }
+              value={isPremium ? (lighter === null ? "Off" : `${lighter} drinks`) : "Plus"}
+              open={isPremium ? open === "lighter" : undefined}
+              onPress={() => (isPremium ? toggle("lighter") : showPaywall("settings"))}
+              accessibilityLabel={
+                isPremium ? "Lighter limit this week" : "Lighter limit this week. Part of Plus. See plans"
+              }
+            >
+              {isPremium && open === "lighter" ? (
+                <Chips
+                  label="Limit for this week only, in standard drinks"
+                  options={lighterOptions}
+                  value={lighter ?? -1}
+                  onChange={(n) => setLighter(n)}
                 />
               ) : null}
             </SettingsRow>

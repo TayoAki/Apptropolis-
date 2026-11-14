@@ -344,7 +344,12 @@ function ActivityRow({ update, partnerName }: { update: PartnerUpdate; partnerNa
       </View>
       <Text
         numberOfLines={3}
-        style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}
+        style={{
+          flex: 1,
+          color: theme.colors.text,
+          fontSize: theme.font.size.body,
+          lineHeight: 22,
+        }}
       >
         {text}
       </Text>
@@ -419,6 +424,7 @@ export default function PartnerScreen() {
   const [draft, setDraft] = useState("");
   const [cheerNote, setCheerNote] = useState<string | null>(null);
   const [stakeNote, setStakeNote] = useState<string | null>(null);
+  const [shareNote, setShareNote] = useState<string | null>(null);
   const [bursts, setBursts] = useState<
     Array<{ id: number; icon: IconName; left: string; drift: number }>
   >([]);
@@ -492,7 +498,16 @@ export default function PartnerScreen() {
     ? `Spotter Pair: my training week starts now.${stakeLine}`
     : paired
       ? `Spotter Pair week ${weekNumber(now)}: ${percent}% shared on track. ${yours} of ${due} for me, ${partnerDone} of ${due} for my partner.${stakeLine}`
-      : `Spotter Pair week ${weekNumber(now)}: ${yours} of ${count(due, "workout")} done (${percent}%).${stakeLine}`;
+      : `Spotter Pair week ${weekNumber(now)}: ${yours} done of the ${count(due, "session")} due so far (${percent}%).${stakeLine}`;
+
+  async function shareCard() {
+    setShareNote(null);
+    const ok = await share({
+      message: shareMessage,
+      title: paired ? "Our Spotter Pair week" : "My Spotter Pair week",
+    });
+    if (!ok) setShareNote("The share sheet didn't open. Try again.");
+  }
 
   /** Tells a partner about the app through the share sheet. Nothing is linked by it. */
   async function invite() {
@@ -618,7 +633,9 @@ export default function PartnerScreen() {
               gap: theme.spacing.md,
             }}
           >
-            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+            <View
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}
+            >
               <View style={{ width: 56, height: 56 }}>
                 <Avatar prompt={paired ? PARTNER_PHOTO : undefined} name={partnerName} size={56} />
                 <View
@@ -684,7 +701,9 @@ export default function PartnerScreen() {
                 backgroundColor: theme.colors.surfaceAlt,
               }}
             >
-              <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}>
+              <Text
+                style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}
+              >
                 Two phones can't be linked in this version, so nothing here is sent for you. Your
                 partner sees your week when you share your scorecard, at the bottom of this screen.
               </Text>
@@ -747,7 +766,9 @@ export default function PartnerScreen() {
                     >
                       {headline(today)}
                     </Text>
-                    <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                    <Text
+                      style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
+                    >
                       {owedLine(today)}
                     </Text>
                   </>
@@ -759,16 +780,17 @@ export default function PartnerScreen() {
             ) : (
               <View style={{ flexDirection: "row", gap: theme.spacing.lg }}>
                 {[
-                  { who: "You", value: `${yours}/${due} workouts` },
+                  // "Due" is the sessions whose day has come, today's included.
+                  { who: "You", value: `${yours} done of ${due} due` },
                   {
                     who: firstName,
-                    value: paired ? `${partnerDone}/${due} workouts` : "Not linked",
+                    value: paired ? `${partnerDone} done of ${due} due` : "Not linked",
                   },
                 ].map((side) => (
                   <View
                     key={side.who}
                     accessible
-                    accessibilityLabel={`${side.who}: ${side.value.replace("/", " of ")}`}
+                    accessibilityLabel={`${side.who}: ${side.value}`}
                     style={{ flex: 1, gap: 2 }}
                   >
                     <Text
@@ -1009,8 +1031,12 @@ export default function PartnerScreen() {
             ) : activity.length === 0 ? (
               <EmptyState
                 icon="people-outline"
-                title="Nothing shared yet"
-                body="Finish a workout and it shows up here for your partner. Your sets stay private."
+                title="Nothing here yet"
+                body={
+                  paired
+                    ? "Finish a workout and it shows up here for your partner. Your sets stay private."
+                    : "Finish a workout and it is listed here, with any stake you set. Your sets stay private."
+                }
                 actionLabel="Go to today's workout"
                 onAction={() => router.navigate("/")}
               />
@@ -1063,7 +1089,7 @@ export default function PartnerScreen() {
                     ? "No sessions due yet"
                     : paired
                       ? `${shared} of ${due * 2} sessions shared`
-                      : `${yours} of ${count(due, "session")} done`
+                      : `${yours} done of ${count(due, "session")} due so far`
                 }
                 percent={percent}
               />
@@ -1104,7 +1130,9 @@ export default function PartnerScreen() {
                   >
                     Past weeks
                   </Text>
-                  <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                  <Text
+                    style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
+                  >
                     Pro keeps every earlier week's score here, not only this week's.
                   </Text>
                 </View>
@@ -1115,12 +1143,7 @@ export default function PartnerScreen() {
 
           {/* The primary action: a full-width orange scorecard share, last on the screen. */}
           <PressScale
-            onPress={() =>
-              void share({
-                message: shareMessage,
-                title: paired ? "Our Spotter Pair week" : "My Spotter Pair week",
-              })
-            }
+            onPress={() => void shareCard()}
             haptic="light"
             disabled={shareOff}
             accessibilityRole="button"
@@ -1157,6 +1180,18 @@ export default function PartnerScreen() {
               </Text>
             </View>
           </PressScale>
+          {shareNote ? (
+            <Text
+              accessibilityLiveRegion="polite"
+              style={{
+                color: theme.colors.danger,
+                fontSize: theme.font.size.caption,
+                textAlign: "center",
+              }}
+            >
+              {shareNote}
+            </Text>
+          ) : null}
         </Stagger>
       </ScrollView>
       <Celebrate trigger={celebrate} />

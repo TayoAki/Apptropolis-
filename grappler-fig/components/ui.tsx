@@ -251,15 +251,21 @@ export function SecondaryButton({
         paddingHorizontal: theme.spacing.lg,
         borderRadius: theme.radius.pill,
         borderWidth: 1,
-        borderColor: theme.colors.textMuted,
-        opacity: disabled ? 0.5 : 1,
+        // Disabled: a hairline edge and muted label, which stays readable (never a fade).
+        borderColor: disabled ? theme.colors.border : theme.colors.textMuted,
         alignSelf: fullWidth ? "stretch" : "center",
       }}
     >
-      {icon ? <Ionicons name={icon} size={20} color={theme.colors.text} /> : null}
+      {icon ? (
+        <Ionicons
+          name={icon}
+          size={20}
+          color={disabled ? theme.colors.textMuted : theme.colors.text}
+        />
+      ) : null}
       <Text
         style={{
-          color: theme.colors.text,
+          color: disabled ? theme.colors.textMuted : theme.colors.text,
           fontSize: theme.font.size.body,
           fontWeight: theme.font.weight.bold,
         }}

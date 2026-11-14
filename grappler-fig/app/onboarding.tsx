@@ -1,48 +1,33 @@
+// First launch, in three steps: pick a level, run a first 30-second round that is saved like any
+// other, and (optionally) set a daily reminder. The step and the answers are saved as they are
+// given, so leaving and coming back picks up where the person was.
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, ScrollView, Text, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import { ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { RoundClock, clockSizeFor } from "../components/index/Clock";
 import { ActionBar } from "../components/onboarding/action-bar";
 import { ChoiceCard } from "../components/onboarding/choice-card";
-import { Lottie } from "../components/lottie";
-import {
-  Appear,
-  PressScale,
-  Stagger,
-  StepTransition,
-  haptic,
-  useReducedMotion,
-} from "../components/motion";
-import { IconButton, SecondaryButton, displayFace, type IconName } from "../components/ui";
+import { PressScale, Stagger, StepTransition, haptic } from "../components/motion";
+import { expectPaywall } from "../components/paywall/open";
+import { IconButton, displayFace, type IconName } from "../components/ui";
+import { track } from "../data/analytics";
+import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
 import { useReminder } from "../data/reminders";
+import { useCollection } from "../data/repo";
+import { currentStreak, xpForSession, type WorkoutSession } from "../data/schema";
+import {
+  CALLOUT_MS,
+  FIRST_ROUND_SECONDS,
+  REMINDER_COPY,
+  SKILL_OPTIONS,
+  firstRoundSteps,
+} from "../data/training";
 import { useTheme } from "../theme/ThemeProvider";
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-const STEP_COUNT = 4;
-const ROUND_SECONDS = 30;
-const CALLOUT_EVERY = 2;
-const CALLOUTS = ["Jab", "Cross", "Hook", "Jab", "Cross", "Slip", "Uppercut", "Cross"];
-const RING_SIZE = 180;
-const RING_STROKE = 12;
-const RING_R = (RING_SIZE - RING_STROKE) / 2;
-const RING_C = 2 * Math.PI * RING_R;
-
-const SKILL_OPTIONS = [
-  { value: "First jab", body: "Never wrapped hands" },
-  { value: "Some training", body: "Know basic 1-2 combos and stance" },
-  { value: "Amateur sparring", body: "Active gym sparring, need round pace" },
-  { value: "Competitive", body: "Fighter camp ready" },
-];
-
-const SETUP_OPTIONS = [
-  { value: "Shadowboxing only", body: "Mirror or open floor, no equipment" },
-  { value: "Heavy bag", body: "Hanging or freestanding bag" },
-  { value: "Pads with a partner", body: "Mitts or a training partner" },
-];
+const STEPS = ["level", "first_round", "reminder"] as const;
 
 const REMINDER_TIMES = [
   { label: "7:00 AM", hour: 7, minute: 0 },
@@ -51,14 +36,10 @@ const REMINDER_TIMES = [
   { label: "9:00 PM", hour: 21, minute: 0 },
 ];
 
-const REMINDER_COPY = {
-  title: "Time to train",
-  body: "Three rounds keep your streak alive. Your timer is ready.",
-};
-
-const CAPTION = "Core timer & callouts are forever free";
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six"];
 
 type ReminderResult = "idle" | "on" | "off";
+type RoundState = { startedAt: number; endsAt: number } | null;
 
 function StepHeader({ title, body }: { title: string; body?: string }) {
   const theme = useTheme();
@@ -91,7 +72,7 @@ function StepProgress({ step, count }: { step: number; count: number }) {
     <View
       accessible
       accessibilityRole="progressbar"
-      accessibilityLabel={`Step ${step + 1} of ${count}`}
+      accessibilityLabel={`First round setup, step ${step + 1} of ${count}`}
       accessibilityValue={{ min: 1, max: count, now: step + 1 }}
       style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}
     >
@@ -115,190 +96,153 @@ function StepProgress({ step, count }: { step: number; count: number }) {
           fontVariant: ["tabular-nums"],
         }}
       >
-        {`Step ${step + 1} of ${count}`}
+        {`Setup step ${step + 1} of ${count}`}
       </Text>
     </View>
   );
 }
 
-function QuestionStep({
-  title,
-  options,
-  value,
-  onChoose,
-}: {
-  title: string;
-  options: { value: string; body: string }[];
-  value: string;
-  onChoose: (value: string) => void;
-}) {
+function LevelStep({ value, onChoose }: { value: string; onChoose: (value: string) => void }) {
   const theme = useTheme();
   return (
-    <View accessibilityRole="radiogroup" style={{ gap: theme.spacing.xl }}>
-      <StepHeader title={title} />
-      <Stagger step={50} style={{ gap: theme.spacing.md }}>
-        {options.map((option) => (
-          <ChoiceCard
-            key={option.value}
-            title={option.value}
-            body={option.body}
-            selected={value === option.value}
-            onPress={() => onChoose(option.value)}
-          />
-        ))}
-      </Stagger>
+    <View style={{ gap: theme.spacing.xl }}>
+      <StepHeader
+        title="What's your level?"
+        body={`${appInfo.name} times your rounds and calls the punches. Your level sets the punches in your first round and your daily challenge. You can change it in Settings.`}
+      />
+      <View accessibilityRole="radiogroup">
+        <Stagger step={50} style={{ gap: theme.spacing.md }}>
+          {SKILL_OPTIONS.map((option) => (
+            <ChoiceCard
+              key={option.value}
+              title={option.value}
+              body={option.body}
+              selected={value === option.value}
+              onPress={() => onChoose(option.value)}
+            />
+          ))}
+        </Stagger>
+      </View>
     </View>
   );
 }
 
-function DemoStep() {
+/** The first round: the real clock and callouts, thirty seconds long. */
+function RoundStep({
+  skill,
+  steps,
+  run,
+  now,
+  done,
+  streak,
+  xp,
+  saveFailed,
+}: {
+  skill: string;
+  steps: string[];
+  run: RoundState;
+  now: number;
+  done: boolean;
+  streak: number;
+  xp: number;
+  saveFailed: boolean;
+}) {
   const theme = useTheme();
-  const reduced = useReducedMotion();
-  const [left, setLeft] = useState(ROUND_SECONDS);
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(false);
-  const ring = useRef(new Animated.Value(1)).current;
-  const calloutIndex = Math.floor((ROUND_SECONDS - left) / CALLOUT_EVERY) % CALLOUTS.length;
-
-  // Count down one second at a time, with a click on every second.
-  useEffect(() => {
-    if (!running) return;
-    if (left === 0) {
-      setRunning(false);
-      setDone(true);
-      haptic("success");
-      return;
-    }
-    const id = setTimeout(() => {
-      haptic("selection");
-      setLeft((n) => n - 1);
-    }, 1000);
-    return () => clearTimeout(id);
-  }, [running, left]);
-
-  // The ring drains smoothly toward the seconds left.
-  useEffect(() => {
-    const target = left / ROUND_SECONDS;
-    if (reduced) {
-      ring.setValue(target);
-      return;
-    }
-    const anim = Animated.timing(ring, {
-      toValue: target,
-      duration: 950,
-      easing: Easing.linear,
-      useNativeDriver: false,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [left, reduced, ring]);
-
-  const offset = ring.interpolate({ inputRange: [0, 1], outputRange: [RING_C, 0] });
-
-  function start() {
-    setDone(false);
-    setLeft(ROUND_SECONDS);
-    setRunning(true);
-  }
-
-  const label = running ? "Round in progress" : done ? "Go again" : "Start 30-second round";
+  const { width } = useWindowDimensions();
+  const left = run ? Math.max(0, Math.ceil((run.endsAt - now) / 1000)) : FIRST_ROUND_SECONDS;
+  const live = run ? Math.floor((now - run.startedAt) / CALLOUT_MS) % steps.length : -1;
+  const clockSize = clockSizeFor(width - theme.spacing.lg * 2, 104);
 
   return (
     <View style={{ gap: theme.spacing.xl }}>
       <StepHeader
-        title="Try a 30-second round"
-        body={`Punch names come up as you go, like "jab, cross, hook". Throw along and feel the rhythm.`}
+        title="Your first round"
+        body={`Thirty seconds. A punch is called every 3 seconds: throw it, then bring your hands back up. You chose "${skill}", so this round calls ${NUMBER_WORDS[steps.length] ?? steps.length} punches.`}
       />
-      <View style={{ alignItems: "center", gap: theme.spacing.lg }}>
-        <View
-          accessibilityLabel={`${left} seconds left`}
-          style={{
-            width: RING_SIZE,
-            height: RING_SIZE,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}>
-            <Circle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={RING_R}
-              stroke={theme.colors.surfaceAlt}
-              strokeWidth={RING_STROKE}
-              fill="none"
-            />
-            <AnimatedCircle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={RING_R}
-              stroke={theme.colors.primary}
-              strokeWidth={RING_STROKE}
-              fill="none"
-              strokeDasharray={`${RING_C} ${RING_C}`}
-              strokeDashoffset={offset}
-              transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-            />
-          </Svg>
-          <Text
-            style={[
-              displayFace,
-              {
-                position: "absolute",
-                fontSize: theme.font.size.display,
-                color: theme.colors.text,
-                fontVariant: ["tabular-nums"],
-              },
-            ]}
-          >
-            {left}
-          </Text>
-        </View>
 
-        <Appear key={calloutIndex} distance={10} duration={260}>
-          <Text
+      <View style={{ alignItems: "center", gap: theme.spacing.md }}>
+        <RoundClock seconds={done && !run ? 0 : left} size={clockSize} dim={done && !run} />
+
+        {run ? (
+          <View
+            accessible
             accessibilityLiveRegion="polite"
-            style={[
-              displayFace,
-              {
-                color: running ? theme.colors.primary : theme.colors.textMuted,
-                fontSize: theme.font.size.display,
-                lineHeight: 70,
-                textTransform: "uppercase",
-              },
-            ]}
+            accessibilityLabel={`Throw: ${steps[live]}`}
+            style={{ alignItems: "center", gap: theme.spacing.xs, minHeight: 104 }}
           >
-            {CALLOUTS[calloutIndex]}
-          </Text>
-        </Appear>
-
-        {done ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-            <Lottie name="success" size={56} />
-            <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
-              That's the pace every round asks for. Your rounds will follow it.
+            <Text
+              style={[
+                displayFace,
+                {
+                  color: theme.colors.primary,
+                  fontSize: theme.font.size.display,
+                  lineHeight: 70,
+                  textTransform: "uppercase",
+                },
+              ]}
+            >
+              {steps[live]}
+            </Text>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+              {steps.join(" · ")}
             </Text>
           </View>
-        ) : (
-          <Text
+        ) : done ? (
+          <View
+            accessibilityLiveRegion="polite"
             style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.body,
-              lineHeight: 24,
-              textAlign: "center",
+              alignSelf: "stretch",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: theme.spacing.md,
+              minHeight: 104,
             }}
           >
-            Throw each punch as it's called. Keep your hands up between them.
-          </Text>
+            <Ionicons name="checkmark-circle" size={40} color={theme.colors.success} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text
+                accessibilityRole="header"
+                style={{
+                  color: theme.colors.text,
+                  fontSize: theme.font.size.title,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
+                Round done
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontSize: theme.font.size.body,
+                  lineHeight: 24,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {saveFailed
+                  ? "It couldn't be saved just now, so it won't show in Progress. Your next round will."
+                  : `Saved to Progress: +${xp} XP${
+                      streak > 0 ? `, day ${streak} of your streak` : ""
+                    }.`}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={{ alignItems: "center", gap: theme.spacing.xs, minHeight: 104 }}>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
+              This round calls
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontSize: theme.font.size.title,
+                fontWeight: theme.font.weight.bold,
+                textAlign: "center",
+              }}
+            >
+              {steps.join(" · ")}
+            </Text>
+          </View>
         )}
-
-        <SecondaryButton
-          label={label}
-          icon={running ? undefined : "play"}
-          onPress={start}
-          disabled={running}
-          fullWidth={false}
-        />
       </View>
     </View>
   );
@@ -308,10 +252,12 @@ function ReminderStep({
   timeIndex,
   onPickTime,
   result,
+  trained,
 }: {
   timeIndex: number;
   onPickTime: (index: number) => void;
   result: ReminderResult;
+  trained: boolean;
 }) {
   const theme = useTheme();
   const time = REMINDER_TIMES[timeIndex]!;
@@ -319,8 +265,10 @@ function ReminderStep({
   return (
     <View style={{ gap: theme.spacing.xl }}>
       <StepHeader
-        title="Daily training reminder"
-        body="Pick a time and we'll nudge you to keep your streak alive. You can change it any time."
+        title="Want a daily reminder?"
+        body={`One notification a day at the time you pick, so ${
+          trained ? "the streak you just started" : "your streak"
+        } doesn't lapse. It's optional, and you can change it or turn it off in Settings.`}
       />
 
       <View style={{ gap: theme.spacing.sm }}>
@@ -382,6 +330,8 @@ function ReminderStep({
       </View>
 
       <View
+        accessible
+        accessibilityLabel={`The reminder will read: ${REMINDER_COPY.title}. ${REMINDER_COPY.body} Every day at ${time.label}.`}
         style={{
           flexDirection: "row",
           gap: theme.spacing.md,
@@ -430,17 +380,25 @@ function ReminderStep({
       </View>
 
       {result === "on" ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-          <Lottie name="success" size={56} />
+        <View
+          accessibilityLiveRegion="polite"
+          style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}
+        >
+          <Ionicons name="checkmark-circle" size={28} color={theme.colors.success} />
           <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
-            Reminder set for {time.label} every day. Your first round starts today.
+            Reminder set for {time.label} every day.
           </Text>
         </View>
       ) : result === "off" ? (
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 24 }}>
-          Notifications are off for this app. Allow them in your phone's Settings to get reminders.
-          You can still train without them.
-        </Text>
+        <View
+          accessibilityLiveRegion="polite"
+          style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}
+        >
+          <Ionicons name="notifications-off-outline" size={24} color={theme.colors.textMuted} />
+          <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
+            {`Notifications are off for ${appInfo.name}, so no reminder was set. You can allow them in your phone's settings and turn the reminder on in Settings later. Training works without it.`}
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -451,6 +409,8 @@ type Action = {
   onPress: () => void;
   icon?: IconName;
   busy?: boolean;
+  disabled?: boolean;
+  quiet?: boolean;
 };
 
 export default function OnboardingScreen() {
@@ -458,95 +418,169 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { answers, setAnswer, completeOnboarding } = useAppState();
   const reminder = useReminder();
+  const sessions = useCollection<WorkoutSession>("workout_sessions");
 
-  const [step, setStep] = useState(0);
+  // Resume where the person left off: the step is saved as it changes, answers as they are given.
+  const saved = Number(answers.onboardingstep);
+  const [step, setStep] = useState(
+    answers.skilllevel && Number.isInteger(saved) && saved > 0 && saved < STEPS.length ? saved : 0,
+  );
   const [direction, setDirection] = useState<1 | -1>(1);
-  // Each question always has a choice selected, so Continue is always ready.
-  const [skill, setSkill] = useState(answers.skilllevel ?? SKILL_OPTIONS[1]!.value);
-  const [setup, setSetup] = useState(answers.trainingsetup ?? SETUP_OPTIONS[1]!.value);
+  const skill = answers.skilllevel ?? "";
+  const steps = firstRoundSteps(skill);
+
+  const [run, setRun] = useState<RoundState>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [saveFailed, setSaveFailed] = useState(false);
+  const calloutRef = useRef(0);
+  const finishing = useRef(false);
+  const roundDone = answers.firstround === "done";
+
   const [timeIndex, setTimeIndex] = useState(2);
   const [result, setResult] = useState<ReminderResult>("idle");
   const [asking, setAsking] = useState(false);
+  const [finishingUp, setFinishingUp] = useState(false);
+
+  const xp = xpForSession({ rounds: 1, roundSeconds: FIRST_ROUND_SECONDS });
+  const streak = currentStreak(sessions.items);
 
   function go(next: number) {
     setDirection(next > step ? 1 : -1);
     setStep(next);
+    void setAnswer("onboardingstep", String(next));
+  }
+
+  function completeStep(skipped = false) {
+    track("onboarding_step_completed", { step: STEPS[step]!, skipped });
+  }
+
+  async function finishRound(endedAt: number) {
+    if (finishing.current) return;
+    finishing.current = true;
+    setRun(null);
+    haptic("success");
+    try {
+      await sessions.add({
+        date: new Date(endedAt).toISOString(),
+        rounds: 1,
+        roundSeconds: FIRST_ROUND_SECONDS,
+        mode: "callout",
+        xpEarned: xp,
+        topFix: "",
+      });
+      setSaveFailed(false);
+    } catch {
+      setSaveFailed(true);
+    }
+    await setAnswer("firstround", "done");
+    track("first_round_completed", { level: skill });
+    finishing.current = false;
+  }
+
+  // The round runs off the wall clock, like the timer on the Train tab.
+  useEffect(() => {
+    if (!run) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= run.endsAt) {
+        void finishRound(t);
+        return;
+      }
+      const callout = Math.floor((t - run.startedAt) / CALLOUT_MS);
+      if (callout !== calloutRef.current) {
+        calloutRef.current = callout;
+        haptic("light");
+      }
+    }, 250);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run]);
+
+  function startRound() {
+    const t = Date.now();
+    calloutRef.current = 0;
+    setNow(t);
+    setRun({ startedAt: t, endsAt: t + FIRST_ROUND_SECONDS * 1000 });
+    haptic("medium");
   }
 
   // A declined permission never blocks onboarding: the result is shown and the app opens.
   async function turnOnReminders() {
     setAsking(true);
     const time = REMINDER_TIMES[timeIndex]!;
-    const ok = await reminder.enable({
-      ...REMINDER_COPY,
-      hour: time.hour,
-      minute: time.minute,
-    });
+    let ok = false;
+    try {
+      ok = await reminder.enable({ ...REMINDER_COPY, hour: time.hour, minute: time.minute });
+    } catch {
+      ok = false;
+    }
     if (ok) haptic("success");
     setResult(ok ? "on" : "off");
     setAsking(false);
   }
 
-  function renderStep() {
-    if (step === 0) {
-      return (
-        <QuestionStep
-          title="What's your level?"
-          options={SKILL_OPTIONS}
-          value={skill}
-          onChoose={setSkill}
-        />
-      );
-    }
-    if (step === 1) {
-      return (
-        <QuestionStep
-          title="Where do you train?"
-          options={SETUP_OPTIONS}
-          value={setup}
-          onChoose={setSetup}
-        />
-      );
-    }
-    if (step === 2) return <DemoStep />;
-    return (
-      <ReminderStep
-        timeIndex={timeIndex}
-        onPickTime={setTimeIndex}
-        result={result}
-      />
-    );
+  async function finish(skipped: boolean) {
+    if (finishingUp) return;
+    setFinishingUp(true);
+    completeStep(skipped);
+    // A later replay from Settings starts at the first step again.
+    await setAnswer("onboardingstep", "0");
+    expectPaywall("onboarding");
+    await completeOnboarding();
   }
 
+  const offerNote =
+    "Next you'll see what Pro adds, once. Closing it keeps everything you just used free.";
   let action: Action;
-  if (step === 0)
+  let secondary: { label: string; onPress: () => void } | undefined;
+  let caption: string | undefined;
+
+  if (step === 0) {
     action = {
       label: "Continue",
+      disabled: !skill,
       onPress: () => {
-        void setAnswer("skilllevel", skill);
+        completeStep();
         go(1);
       },
     };
-  else if (step === 1)
-    action = {
-      label: "Continue",
-      onPress: () => {
-        void setAnswer("trainingsetup", setup);
-        go(2);
-      },
-    };
-  else if (step === 2) action = { label: "Continue", onPress: () => go(3) };
-  else if (result === "idle")
+    caption = skill ? "The timer and its callouts are free." : "Pick a level to continue.";
+  } else if (step === 1) {
+    if (run) {
+      action = { label: "Stop", icon: "stop", quiet: true, onPress: () => setRun(null) };
+    } else if (roundDone) {
+      action = {
+        label: "Continue",
+        onPress: () => {
+          completeStep();
+          go(2);
+        },
+      };
+      secondary = { label: "Go again", onPress: startRound };
+    } else {
+      action = { label: "Start 30-second round", icon: "play", onPress: startRound };
+      secondary = {
+        label: "Skip for now",
+        onPress: () => {
+          completeStep(true);
+          go(2);
+        },
+      };
+    }
+  } else if (result === "idle") {
     action = {
       label: "Turn on reminders",
       icon: "notifications-outline",
       busy: asking,
       onPress: () => void turnOnReminders(),
     };
-  else action = { label: "Start training", onPress: () => void completeOnboarding() };
-
-  const caption =
-    step === 3 ? "You can change the time any time in Settings" : CAPTION;
+    secondary = { label: "Not now", onPress: () => void finish(true) };
+    caption = offerNote;
+  } else {
+    action = { label: "Start training", busy: finishingUp, onPress: () => void finish(false) };
+    caption = offerNote;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -564,9 +598,15 @@ export default function OnboardingScreen() {
         }}
       >
         {step > 0 ? (
-          <IconButton icon="chevron-back" label="Back" size={26} onPress={() => go(step - 1)} />
+          <IconButton
+            icon="chevron-back"
+            label="Back"
+            size={26}
+            disabled={run !== null}
+            onPress={() => go(step - 1)}
+          />
         ) : null}
-        <StepProgress step={step} count={STEP_COUNT} />
+        <StepProgress step={step} count={STEPS.length} />
       </View>
 
       <ScrollView
@@ -580,7 +620,27 @@ export default function OnboardingScreen() {
         showsVerticalScrollIndicator={false}
       >
         <StepTransition step={step} direction={direction}>
-          {renderStep()}
+          {step === 0 ? (
+            <LevelStep value={skill} onChoose={(value) => void setAnswer("skilllevel", value)} />
+          ) : step === 1 ? (
+            <RoundStep
+              skill={skill}
+              steps={steps}
+              run={run}
+              now={now}
+              done={roundDone}
+              streak={streak}
+              xp={xp}
+              saveFailed={saveFailed}
+            />
+          ) : (
+            <ReminderStep
+              timeIndex={timeIndex}
+              onPickTime={setTimeIndex}
+              result={result}
+              trained={roundDone}
+            />
+          )}
         </StepTransition>
       </ScrollView>
 
@@ -589,6 +649,9 @@ export default function OnboardingScreen() {
         onPress={action.onPress}
         icon={action.icon}
         busy={action.busy}
+        disabled={action.disabled}
+        quiet={action.quiet}
+        secondary={secondary}
         caption={caption}
         bottomInset={insets.bottom}
       />

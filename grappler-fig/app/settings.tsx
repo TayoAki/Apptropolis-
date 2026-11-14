@@ -1,11 +1,11 @@
-// Settings: the fight profile, timer and callout defaults, the daily camp reminder, membership,
+// Settings: the fight profile, timer and callout defaults, the daily reminder, membership,
 // appearance, support and legal. Preferences are saved as onboarding answers, so the rest of the
 // app reads them the same way it reads what onboarding collected.
 import { Stack } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Linking, Platform, ScrollView, Text, View } from "react-native";
 import { Lottie } from "../components/lottie";
-import { Appear, haptic, Skeleton, Stagger } from "../components/motion";
+import { Appear, haptic, PressScale, Skeleton, Stagger } from "../components/motion";
 import {
   Segmented,
   SettingsGroup,
@@ -14,16 +14,18 @@ import {
   Wheel,
 } from "../components/settings/controls";
 import { SupportButton, useSupport } from "../components/support";
-import { AppSwitch, TextButton } from "../components/ui";
+import { goPro } from "../components/paywall/open";
+import { AppSwitch, RadioMark, TextButton } from "../components/ui";
 import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
-import { usePurchases, type Offer } from "../data/purchases";
+import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
 import { formatClock, type Stance } from "../data/schema";
+import { REMINDER_COPY, SETUP_OPTIONS, SKILL_OPTIONS } from "../data/training";
 import { useAppearance, useTheme, type Appearance } from "../theme/ThemeProvider";
 
 type Callouts = "names" | "numbers";
-type Panel = "round" | "rest" | "reminder";
+type Panel = "skill" | "round" | "rest" | "reminder";
 
 /** Round lengths from 1:00 to 5:00, in 15-second steps. */
 const ROUND_SECONDS = Array.from({ length: 17 }, (_, i) => 60 + i * 15);
@@ -32,8 +34,8 @@ const REST_SECONDS = Array.from({ length: 12 }, (_, i) => 15 + i * 15);
 /** Reminder times every half hour, as minutes after midnight. */
 const REMINDER_MINUTES = Array.from({ length: 48 }, (_, i) => i * 30);
 
-/** What the rows show before anything is chosen (the same starting points Train uses). */
-const DEFAULTS = { skill: "Amateur sparring", round: 180, rest: 60 };
+/** What the timer rows show before anything is chosen (the same starting points Train uses). */
+const DEFAULTS = { round: 180, rest: 60 };
 
 const STANCES: { value: Stance; label: string }[] = [
   { value: "orthodox", label: "Orthodox" },
@@ -68,16 +70,6 @@ function clockOfDay(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const hour12 = hours % 12 || 12;
   return `${hour12}:${String(minutes % 60).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
-}
-
-/** When a paid period renews, counted from the purchase. Lifetime never renews. */
-function renewsOn(since: string, period: Offer["period"]): string | null {
-  if (period === "lifetime") return null;
-  const date = new Date(since);
-  if (period === "week") date.setDate(date.getDate() + 7);
-  else if (period === "month") date.setMonth(date.getMonth() + 1);
-  else date.setFullYear(date.getFullYear() + 1);
-  return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
 /** The inline panel that opens under a row to hold its picker. */
@@ -152,14 +144,13 @@ export default function SettingsScreen() {
   const reminderMinute = reminder.hour * 60 + reminder.minute;
   const reminderSlot = nearest(REMINDER_MINUTES, reminderMinute);
 
-  const { isPremium, activeOffer, entitlement, status } = purchases;
-  const renews =
-    activeOffer && entitlement ? renewsOn(entitlement.since, activeOffer.period) : null;
+  const { isPremium, activeOffer, status } = purchases;
+  // The store owns renewal dates and cancellation, so the row names the plan and nothing more.
   const membership = !isPremium
     ? "Free plan"
-    : renews
-      ? `Active · renews ${renews}`
-      : "Active · lifetime";
+    : activeOffer
+      ? `Active · ${activeOffer.label}`
+      : "Active";
 
   async function setReminderOn(on: boolean) {
     haptic("selection");
@@ -167,11 +158,15 @@ export default function SettingsScreen() {
       await reminder.disable();
       return;
     }
-    const ok = await reminder.enable({
-      title: "Daily camp",
-      body: "Your round is ready: three minutes of named callouts.",
-    });
+    const ok = await reminder.enable(REMINDER_COPY);
     if (ok) haptic("success");
+  }
+
+  /** Onboarding starts from its first step, with the first round ready to run again. */
+  async function replayOnboarding() {
+    await app.setAnswer("onboardingstep", "0");
+    await app.setAnswer("firstround", "");
+    await app.resetOnboarding();
   }
 
   async function restore() {
@@ -197,9 +192,82 @@ export default function SettingsScreen() {
               <SettingsGroup title="Fight profile">
                 <SettingsRow
                   label="Skill level"
-                  value={answers.skilllevel || DEFAULTS.skill}
-                  onPress={() => void app.resetOnboarding()}
-                  accessibilityLabel={`Skill level ${answers.skilllevel || DEFAULTS.skill}, change`}
+                  value={answers.skilllevel || "Not set"}
+                  onPress={() => toggle("skill")}
+                  accessibilityLabel={`Skill level, ${answers.skilllevel || "not set"}. Change`}
+                >
+                  {open === "skill" ? (
+                    <PickerPanel>
+                      <View accessibilityRole="radiogroup">
+                        {SKILL_OPTIONS.map((option) => {
+                          const selected = answers.skilllevel === option.value;
+                          return (
+                            <PressScale
+                              key={option.value}
+                              onPress={() => {
+                                haptic("selection");
+                                void app.setAnswer("skilllevel", option.value);
+                              }}
+                              scaleTo={0.98}
+                              accessibilityRole="radio"
+                              accessibilityLabel={`${option.value}. ${option.body}`}
+                              accessibilityState={{ checked: selected, selected }}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: theme.spacing.md,
+                                minHeight: 52,
+                                paddingVertical: theme.spacing.sm,
+                              }}
+                            >
+                              <RadioMark selected={selected} size={22} />
+                              <View style={{ flex: 1 }}>
+                                <Text
+                                  style={{
+                                    color: theme.colors.text,
+                                    fontSize: theme.font.size.body,
+                                    fontWeight: selected
+                                      ? theme.font.weight.bold
+                                      : theme.font.weight.regular,
+                                  }}
+                                >
+                                  {option.value}
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: theme.colors.textMuted,
+                                    fontSize: theme.font.size.caption + 2,
+                                    lineHeight: 20,
+                                  }}
+                                >
+                                  {option.body}
+                                </Text>
+                              </View>
+                            </PressScale>
+                          );
+                        })}
+                      </View>
+                      <SettingsNote>
+                        Sets your daily challenge and how your coach explains things.
+                      </SettingsNote>
+                    </PickerPanel>
+                  ) : null}
+                </SettingsRow>
+                <SettingsRow
+                  label="Training setup"
+                  detail="Your coach fits its drills to it."
+                  stacked
+                  right={
+                    <Segmented
+                      accessibilityLabel="Training setup"
+                      options={SETUP_OPTIONS}
+                      value={
+                        SETUP_OPTIONS.find((o) => o.value === answers.trainingsetup)?.value ?? ""
+                      }
+                      onChange={(next) => void app.setAnswer("trainingsetup", next)}
+                      style={{ width: "100%" }}
+                    />
+                  }
                 />
                 <SettingsRow
                   label="Stance"
@@ -282,13 +350,13 @@ export default function SettingsScreen() {
 
               <SettingsGroup title="Notifications">
                 <SettingsRow
-                  label="Daily camp reminder"
+                  label="Daily training reminder"
                   value={reminder.enabled ? clockOfDay(reminderMinute) : "Off"}
                   onPress={() => toggle("reminder")}
                   accessibilityLabel={
                     reminder.enabled
-                      ? `Daily camp reminder at ${clockOfDay(reminderMinute)}`
-                      : "Daily camp reminder, off"
+                      ? `Daily training reminder at ${clockOfDay(reminderMinute)}`
+                      : "Daily training reminder, off"
                   }
                 >
                   {open === "reminder" ? (
@@ -350,9 +418,20 @@ export default function SettingsScreen() {
                   label="Pro Cornerman"
                   value={membership}
                   active={isPremium}
-                  onPress={() => purchases.openPaywall()}
-                  accessibilityLabel={`Pro Cornerman, ${membership}`}
+                  onPress={() => goPro("settings")}
+                  accessibilityLabel={
+                    isPremium
+                      ? `Pro Cornerman, ${membership}. See your plan`
+                      : "Pro Cornerman, free plan. See what Pro adds"
+                  }
                 />
+                {isPremium && activeOffer?.period !== "lifetime" && MANAGE_URL ? (
+                  <SettingsRow
+                    label="Manage or cancel subscription"
+                    detail={`Opens your ${Platform.OS === "ios" ? "App Store" : "Google Play"} subscriptions.`}
+                    onPress={() => void Linking.openURL(MANAGE_URL)}
+                  />
+                ) : null}
                 <SettingsRow
                   label={status === "restoring" ? "Restoring purchases…" : "Restore purchases"}
                   detail={
@@ -415,19 +494,13 @@ export default function SettingsScreen() {
                     onPress={() => void Linking.openURL(appInfo.termsUrl)}
                   />
                 ) : null}
-                {isPremium && MANAGE_URL ? (
-                  <SettingsRow
-                    label="Manage subscription"
-                    onPress={() => void Linking.openURL(MANAGE_URL)}
-                  />
-                ) : null}
               </SettingsGroup>
 
               <SettingsGroup title="About">
                 <SettingsRow
                   label="Replay onboarding"
-                  detail="Pick your level and setup again"
-                  onPress={() => void app.resetOnboarding()}
+                  detail="Pick your level and run the first round again."
+                  onPress={() => void replayOnboarding()}
                 />
               </SettingsGroup>
             </Stagger>
