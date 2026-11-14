@@ -8,8 +8,8 @@ type IconName = ComponentProps<typeof Ionicons>["name"];
 
 /**
  * A large tappable choice for an onboarding question: a leading icon or badge, a title and a hint,
- * and a check that marks the selected row. The row springs a little when it becomes selected and
- * takes the primary border, so the choice is clear without a second card around it.
+ * and a radio mark that fills with a check on the selected row. The row springs a little when it
+ * becomes selected and takes the primary border and a light tint.
  */
 export function OptionRow({
   selected,
@@ -62,12 +62,7 @@ export function OptionRow({
         borderRadius: theme.radius.md,
         borderWidth: 2,
         borderColor: selected ? theme.colors.primary : theme.colors.border,
-        backgroundColor: theme.colors.surface,
-        shadowColor: theme.colors.primary,
-        shadowOpacity: selected ? 0.35 : 0,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 0 },
-        elevation: selected ? 3 : 0,
+        backgroundColor: selected ? theme.colors.primary + "14" : theme.colors.surface,
       }}
     >
       <Animated.View
@@ -84,7 +79,7 @@ export function OptionRow({
               minWidth: 44,
               height: 44,
               paddingHorizontal: theme.spacing.xs,
-              borderRadius: theme.radius.md,
+              borderRadius: theme.radius.sm,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: theme.colors.surfaceAlt,
@@ -106,7 +101,7 @@ export function OptionRow({
             style={{
               width: 44,
               height: 44,
-              borderRadius: theme.radius.md,
+              borderRadius: theme.radius.sm,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: theme.colors.surfaceAlt,
@@ -134,7 +129,7 @@ export function OptionRow({
         <Ionicons
           name={selected ? "checkmark-circle" : "ellipse-outline"}
           size={24}
-          color={selected ? theme.colors.primary : theme.colors.border}
+          color={selected ? theme.colors.primary : theme.colors.textMuted}
         />
       </Animated.View>
     </PressScale>

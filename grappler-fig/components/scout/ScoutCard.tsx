@@ -1,17 +1,18 @@
-// Scouting cards for the Scout tab: an opponent's photo under a reticle, their stance, the weakness
-// the AI read and how sure it is, plus saved game plans you can run as a callout round.
+// Scouting cards for the Scout tab: an opponent's frame (or their initial when there is no
+// photo), their stance, the opening the read found and how sure it is, plus saved game plans
+// with their callouts.
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useRef } from "react";
-import { Animated, Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Svg, { Circle, Line } from "react-native-svg";
 import type { OpponentScout, Stance } from "../../data/schema";
 import { formatDay } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../AiImage";
+import { AiImage, aiImageUrl } from "../AiImage";
 import { PrimaryButton } from "../button";
 import { Card } from "../card";
-import { GrowBar, haptic, useReducedMotion } from "../motion";
+import { GrowBar } from "../motion";
+import { FrameMarks, Monogram, TextButton } from "../ui";
 
 /** A scouting report, with the read's confidence, weakness and free-sample flag stored alongside. */
 export type ScoutRecord = OpponentScout & {
@@ -32,9 +33,9 @@ export function weaknessOf(item: ScoutRecord): string {
 }
 
 export function stanceLabel(stance: Stance): string {
-  if (stance === "orthodox") return "ORTHODOX";
-  if (stance === "southpaw") return "SOUTHPAW";
-  return "STANCE UNCLEAR";
+  if (stance === "orthodox") return "Orthodox";
+  if (stance === "southpaw") return "Southpaw";
+  return "Stance unclear";
 }
 
 /** The game plan without its callout list. */
@@ -79,184 +80,119 @@ export function Reticle({
   );
 }
 
-/** Viewfinder corner brackets. A negative inset draws them just outside the box. */
-export function Corners({
-  color,
-  size = 12,
-  inset = 0,
+/**
+ * The picture for a report: the frame that was read, under viewfinder marks. With no photo it is
+ * the opponent's initial (or a drawn stance picture when the app has an image service).
+ */
+export function ScoutAvatar({
+  item,
+  width,
+  height,
 }: {
-  color: string;
-  size?: number;
-  inset?: number;
+  item: Pick<OpponentScout, "name" | "photoUri" | "stance">;
+  width: number;
+  height: number;
 }) {
-  const edge = { position: "absolute" as const, width: size, height: size, borderColor: color };
-  return (
-    <>
-      <View
-        pointerEvents="none"
-        style={[edge, { top: inset, left: inset, borderTopWidth: 2, borderLeftWidth: 2 }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[edge, { top: inset, right: inset, borderTopWidth: 2, borderRightWidth: 2 }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[edge, { bottom: inset, left: inset, borderBottomWidth: 2, borderLeftWidth: 2 }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[edge, { bottom: inset, right: inset, borderBottomWidth: 2, borderRightWidth: 2 }]}
-      />
-    </>
-  );
+  const theme = useTheme();
+  const box = {
+    width,
+    height,
+    borderRadius: theme.radius.sm,
+    overflow: "hidden" as const,
+    backgroundColor: theme.colors.surfaceAlt,
+  };
+  if (item.photoUri) {
+    return (
+      <View style={box}>
+        <Image
+          source={{ uri: item.photoUri }}
+          accessibilityLabel={`Frame of ${item.name}`}
+          contentFit="cover"
+          style={{ width, height }}
+        />
+        <Reticle width={width} height={height} color={theme.colors.primary} />
+        <FrameMarks size={10} inset={6} />
+      </View>
+    );
+  }
+  const stanceWord = item.stance === "unclear" ? "balanced" : item.stance;
+  const prompt = `black and white photo of a boxer in a ${stanceWord} fighting stance, gritty studio texture, whole body in frame`;
+  if (aiImageUrl(prompt)) {
+    return (
+      <View style={box}>
+        <AiImage prompt={prompt} style={{ width, height }} />
+      </View>
+    );
+  }
+  return <Monogram name={item.name} size={Math.min(width, height)} />;
 }
 
-/** One opponent: photo under a reticle, stance, weakness and how sure the read is. Lifts on press. */
+/** One opponent: picture, stance, the opening to attack and how sure the read is. */
 export function ScoutCard({ item, onPress }: { item: ScoutRecord; onPress: () => void }) {
   const theme = useTheme();
-  const reduced = useReducedMotion();
-  const lift = useRef(new Animated.Value(0)).current;
-  const press = useRef(new Animated.Value(1)).current;
-
   const weakness = weaknessOf(item);
-  const label = stanceLabel(item.stance);
-  const stanceWord = item.stance === "unclear" ? "balanced" : item.stance;
+  const stance = stanceLabel(item.stance);
   const confidence = item.confidence;
-  const southpaw = item.stance === "southpaw";
-
-  function spring(up: number, scale: number) {
-    if (reduced) return;
-    Animated.parallel([
-      Animated.spring(lift, { toValue: up, useNativeDriver: true, speed: 36, bounciness: 10 }),
-      Animated.spring(press, { toValue: scale, useNativeDriver: true, speed: 36, bounciness: 6 }),
-    ]).start();
-  }
 
   return (
-    <Pressable
-      onPress={() => {
-        haptic("selection");
-        onPress();
-      }}
-      onPressIn={() => spring(-6, 0.97)}
-      onPressOut={() => spring(0, 1)}
-      accessibilityRole="button"
-      accessibilityLabel={`${item.name}, ${label.toLowerCase()}. Weakness: ${weakness}`}
+    <Card
+      onPress={onPress}
+      accessibilityLabel={`${item.name}, ${stance.toLowerCase()}. Opening: ${weakness}${
+        confidence !== undefined ? ` ${Math.round(confidence)} percent confidence.` : ""
+      } Open report`}
     >
-      <Animated.View
-        style={{
-          transform: [{ translateY: lift }, { scale: press }],
-          padding: theme.spacing.md,
-          borderRadius: theme.radius.lg,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          backgroundColor: theme.colors.surface,
-          shadowColor: theme.colors.background,
-          shadowOpacity: 0.6,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 4,
-        }}
-      >
-        <Corners color={theme.colors.textMuted} size={10} inset={6} />
-        <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
-          <View
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+        <ScoutAvatar item={item} width={56} height={item.photoUri ? 72 : 56} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text
+            numberOfLines={2}
             style={{
-              width: 96,
-              height: 112,
-              borderRadius: theme.radius.md,
-              overflow: "hidden",
-              backgroundColor: theme.colors.surfaceAlt,
+              color: theme.colors.text,
+              fontSize: theme.font.size.body + 2,
+              fontWeight: theme.font.weight.bold,
+              lineHeight: 24,
             }}
           >
-            {item.photoUri ? (
-              <Image
-                source={{ uri: item.photoUri }}
-                contentFit="cover"
-                style={{ width: "100%", height: "100%" }}
-              />
-            ) : (
-              <AiImage
-                prompt={`black and white photo of a boxer in a ${stanceWord} fighting stance, gritty studio texture, whole body in frame`}
-                style={{ width: 96, height: 112, borderRadius: theme.radius.md }}
-              />
-            )}
-            <Reticle width={96} height={112} color={theme.colors.primary} />
-          </View>
-
-          <View style={{ flex: 1, gap: theme.spacing.sm, justifyContent: "center" }}>
-            <Text
-              numberOfLines={2}
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.title,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              {item.name}
-            </Text>
-            <View
-              style={{
-                alignSelf: "flex-start",
-                paddingHorizontal: theme.spacing.sm,
-                paddingVertical: 2,
-                borderRadius: theme.radius.pill,
-                borderWidth: 1,
-                borderColor: southpaw ? theme.colors.primary : theme.colors.textMuted,
-              }}
-            >
-              <Text
-                style={{
-                  color: southpaw ? theme.colors.primary : theme.colors.textMuted,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.medium,
-                  letterSpacing: 1,
-                }}
-              >
-                {label}
-              </Text>
-            </View>
-            <View
-              style={{
-                padding: theme.spacing.sm,
-                gap: theme.spacing.sm,
-                borderRadius: theme.radius.md,
-                backgroundColor: theme.colors.surfaceAlt,
-              }}
-            >
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.body,
-                  lineHeight: 22,
-                }}
-              >
-                <Text style={{ color: theme.colors.textMuted }}>Weakness: </Text>
-                {weakness}
-                {confidence !== undefined ? (
-                  <Text
-                    style={{
-                      color: theme.colors.primary,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    {`  (${Math.round(confidence)}% confidence)`}
-                  </Text>
-                ) : null}
-              </Text>
-              {confidence !== undefined ? (
-                <GrowBar progress={confidence / 100} height={4} />
-              ) : null}
-            </View>
-          </View>
+            {item.name}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption + 2,
+              lineHeight: 20,
+            }}
+          >
+            {`${stance} · ${formatDay(item.createdAt)}`}
+          </Text>
         </View>
-      </Animated.View>
-    </Pressable>
+        <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+      </View>
+      <Text
+        numberOfLines={3}
+        style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}
+      >
+        <Text style={{ color: theme.colors.textMuted }}>Opening: </Text>
+        {weakness}
+      </Text>
+      {confidence !== undefined ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+          <GrowBar progress={confidence / 100} height={6} style={{ flex: 1 }} />
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption + 2,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {`${Math.round(confidence)}% confidence`}
+          </Text>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
-/** A saved game plan with its callouts. Locked plans offer Go Pro instead. */
+/** A saved game plan with its callouts. Locked plans offer Pro instead. */
 export function PlanRow({
   item,
   readable,
@@ -276,23 +212,24 @@ export function PlanRow({
       <View
         style={{
           flexDirection: "row",
-          alignItems: "center",
+          alignItems: "baseline",
           justifyContent: "space-between",
           gap: theme.spacing.sm,
         }}
       >
         <Text
-          numberOfLines={1}
+          numberOfLines={2}
           style={{
             flex: 1,
             color: theme.colors.text,
-            fontSize: theme.font.size.body,
+            fontSize: theme.font.size.body + 2,
             fontWeight: theme.font.weight.bold,
+            lineHeight: 24,
           }}
         >
           {item.name}
         </Text>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
           {formatDay(item.createdAt)}
         </Text>
       </View>
@@ -300,71 +237,40 @@ export function PlanRow({
       {readable ? (
         <>
           <Text
-            numberOfLines={3}
-            style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}
+            numberOfLines={4}
+            style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}
           >
             {planText(item.gamePlan)}
           </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
-            {callouts.map((call, index) => (
-              <View
-                key={`${index}-${call}`}
-                style={{
-                  paddingHorizontal: theme.spacing.sm,
-                  paddingVertical: 4,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surfaceAlt,
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontSize: theme.font.size.caption,
-                    fontWeight: theme.font.weight.medium,
-                  }}
-                >
-                  {call}
-                </Text>
-              </View>
-            ))}
-          </View>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption + 2,
+              lineHeight: 20,
+            }}
+          >
+            {callouts.map((call) => call.charAt(0).toUpperCase() + call.slice(1)).join(" · ")}
+          </Text>
           <PrimaryButton
             label="Run this round"
-            icon="play-circle-outline"
+            icon="play"
             onPress={onRun}
             accessibilityLabel={`Run the game plan for ${item.name} as a round`}
           />
         </>
       ) : (
-        <Pressable
-          onPress={onUnlock}
-          accessibilityRole="button"
-          accessibilityLabel="Unlock game plans with Go Pro"
-          hitSlop={8}
-          style={({ pressed }) => ({
-            minHeight: 44,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: theme.spacing.sm,
-            opacity: pressed ? 0.7 : 1,
-          })}
-        >
-          <Ionicons name="lock-closed" size={18} color={theme.colors.primary} />
-          <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body }}>
-            Game plans and callout rounds are part of Go Pro.
+        <View style={{ gap: theme.spacing.xs }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
+            Game plans and callout rounds are part of Pro.
           </Text>
-          <Text
-            style={{
-              color: theme.colors.primary,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            Unlock
-          </Text>
-        </Pressable>
+          <TextButton
+            label="Unlock game plans"
+            icon="lock-closed"
+            onPress={onUnlock}
+            accessibilityLabel="Unlock game plans with Pro"
+            style={{ alignSelf: "flex-start" }}
+          />
+        </View>
       )}
     </Card>
   );

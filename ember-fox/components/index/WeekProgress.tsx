@@ -1,88 +1,98 @@
-import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useRef } from "react";
-import { Animated, Easing, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Text, View } from "react-native";
+import { formatCount, formatDrinks } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { CountUp, useReducedMotion } from "../motion";
+import { CountUp, GrowBar } from "../motion";
 import { Panel } from "../Panel";
 
-/** A pill-shaped track whose amber gradient fill grows to `progress` (0 to 1). */
-function GradientBar({ progress }: { progress: number }) {
-  const theme = useTheme();
-  const reduced = useReducedMotion();
-  const target = Math.max(0, Math.min(1, progress));
-  const fill = useRef(new Animated.Value(reduced ? target : 0)).current;
-
-  useEffect(() => {
-    if (reduced) {
-      fill.setValue(target);
-      return;
-    }
-    const animation = Animated.timing(fill, {
-      toValue: target,
-      duration: 700,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [target, reduced, fill]);
-
-  const width = fill.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] });
-
-  return (
-    <View
-      style={{
-        height: 10,
-        borderRadius: 5,
-        overflow: "hidden",
-        backgroundColor: theme.colors.surfaceAlt,
-      }}
-    >
-      <Animated.View style={{ width, height: "100%", borderRadius: 5, overflow: "hidden" }}>
-        <LinearGradient
-          colors={[theme.colors.warning, theme.colors.primary]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }}
-        />
-      </Animated.View>
-    </View>
-  );
-}
-
-/** The week's drinks against its limit: the count, a gradient bar and the days left. */
+/**
+ * The week's drinks against its limit: the count, a bar, and one plain line. Under the limit it
+ * says what is left; over it, it says by how much and what the app suggests next.
+ */
 export function WeekProgress({
   total,
   limit,
-  daysLeft,
+  resetDay,
 }: {
   total: number;
   limit: number;
-  daysLeft: number;
+  /** The weekday the week resets on, e.g. "Monday". */
+  resetDay: string;
 }) {
   const theme = useTheme();
+  const over = total > limit + 0.001;
   const remaining = Math.max(0, limit - total);
-  const progress = limit > 0 ? Math.min(1, total / limit) : 0;
+  const progress = limit > 0 ? Math.min(1, total / limit) : 1;
+  const color = over ? theme.colors.warning : theme.colors.primary;
+  const status = over
+    ? `${formatDrinks(total - limit)} over your limit. Alcohol-free days until ${resetDay} bring your form back fastest.`
+    : remaining === 0
+      ? `At your limit. The week resets on ${resetDay}.`
+      : `${formatDrinks(remaining)} left. The week resets on ${resetDay}.`;
+
   return (
-    <Panel>
-      <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>
-        <CountUp
-          value={total}
-          format={(n) => n.toFixed(1)}
-          style={{ color: theme.colors.primary, fontWeight: theme.font.weight.bold }}
-        />
-        {` of ${limit.toFixed(1)} drinks logged • ${remaining.toFixed(1)} remaining`}
-      </Text>
-      <GradientBar progress={progress} />
-      <Text
-        style={{
-          color: theme.colors.textMuted,
-          fontSize: theme.font.size.caption,
-          textAlign: "center",
-        }}
+    <Panel style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
+      <View
+        accessible
+        accessibilityLabel={`This week: ${formatCount(total)} of ${formatDrinks(limit)}. ${status}`}
+        style={{ gap: theme.spacing.md }}
       >
-        {`${daysLeft}-day buffer until the week resets`}
-      </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: theme.spacing.sm,
+          }}
+        >
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontSize: theme.font.size.body,
+              fontWeight: theme.font.weight.bold,
+            }}
+          >
+            This week
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.body,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            <CountUp
+              value={total}
+              format={formatCount}
+              style={{
+                color: theme.colors.text,
+                fontSize: theme.font.size.body,
+                fontWeight: theme.font.weight.bold,
+              }}
+            />
+            {` of ${formatDrinks(limit)}`}
+          </Text>
+        </View>
+        <GrowBar progress={progress} height={10} color={color} trackColor={theme.colors.surfaceAlt} />
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.sm }}>
+          <Ionicons
+            name={over ? "alert-circle-outline" : "checkmark-circle-outline"}
+            size={18}
+            color={over ? theme.colors.warning : theme.colors.success}
+            style={{ marginTop: 1 }}
+          />
+          <Text
+            style={{
+              flex: 1,
+              color: over ? theme.colors.text : theme.colors.textMuted,
+              fontSize: theme.font.size.caption,
+              lineHeight: 18,
+            }}
+          >
+            {status}
+          </Text>
+        </View>
+      </View>
     </Panel>
   );
 }

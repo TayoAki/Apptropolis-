@@ -1,55 +1,33 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  Animated,
-  Easing,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { Animated, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
+import { PrimaryButton } from "../../components/button";
 import { EmptyState } from "../../components/empty-state";
 import { Lottie } from "../../components/lottie";
-import { Brackets } from "../../components/opponent-detail/Brackets";
-import { FrameCard } from "../../components/opponent-detail/FrameCard";
 import {
   Appear,
-  PressScale,
-  Pulse,
   Skeleton,
   Stagger,
   StepTransition,
   haptic,
+  useReducedMotion,
 } from "../../components/motion";
+import { Reticle, stanceLabel, weaknessOf, type ScoutRecord } from "../../components/scout/ScoutCard";
+import { Segmented } from "../../components/settings/controls";
+import { FrameMarks, Monogram, SecondaryButton, TextButton } from "../../components/ui";
 import { useAppState } from "../../data/app-state";
 import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
-import { formatDay, type OpponentScout, type Stance } from "../../data/schema";
+import { formatDay, type Stance } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const STANCES: Stance[] = ["orthodox", "southpaw", "unclear"];
-const STANCE_LABEL: Record<Stance, string> = {
-  orthodox: "Orthodox",
-  southpaw: "Southpaw",
-  unclear: "Switch stance",
-};
-const OPENING_LABEL: Record<Stance, string> = {
-  orthodox: "Orthodox jab",
-  southpaw: "Southpaw jab",
-  unclear: "Switch-stance jab",
-};
-
-interface Frame {
-  key: string;
-  label: string;
-  uri?: string;
-  prompt?: string;
-}
+const STANCE_OPTIONS: { value: Stance; label: string }[] = [
+  { value: "orthodox", label: "Orthodox" },
+  { value: "southpaw", label: "Southpaw" },
+  { value: "unclear", label: "Unclear" },
+];
 
 /** Splits the stored game plan into its strategy text and its callout list. */
 function parseGamePlan(gamePlan: string): { plan: string; callouts: string[] } {
@@ -84,50 +62,16 @@ function toRounds(callouts: string[], count = 3): string[][] {
   return rounds;
 }
 
-function framesFor(scout: OpponentScout): Frame[] {
-  const stanceWords =
-    scout.stance === "southpaw"
-      ? "a southpaw"
-      : scout.stance === "orthodox"
-        ? "an orthodox"
-        : "a switch-stance";
-  const saved: Frame[] = scout.photoUri
-    ? [{ key: "photo", label: "Main frame", uri: scout.photoUri }]
-    : [];
-  return [
-    ...saved,
-    {
-      key: "jab",
-      label: OPENING_LABEL[scout.stance],
-      prompt: `black and white photo of a boxer throwing a jab from ${stanceWords} stance, dramatic side light, dark arena, no text`,
-    },
-    {
-      key: "guard",
-      label: "Pulled guard",
-      prompt:
-        "black and white photo of a boxer pulling his lead hand back into a high guard after a jab, dark arena, no text",
-    },
-    {
-      key: "chin",
-      label: "Dropped chin",
-      prompt:
-        "black and white photo of a boxer mid-punch with his chin dropped and head forward, motion blur, dark arena, no text",
-    },
-  ];
-}
-
 function Heading({ children }: { children: string }) {
-  const { colors, spacing, font } = useTheme();
+  const { colors, font } = useTheme();
   return (
     <Text
       accessibilityRole="header"
       style={{
-        color: colors.textMuted,
-        fontSize: font.size.caption,
+        color: colors.text,
+        fontSize: font.size.body + 2,
         fontWeight: font.weight.bold,
-        letterSpacing: 1,
-        textTransform: "uppercase",
-        marginBottom: spacing.sm,
+        lineHeight: 24,
       }}
     >
       {children}
@@ -142,10 +86,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <Text
         style={{
           color: colors.textMuted,
-          fontSize: font.size.caption,
-          fontWeight: font.weight.bold,
-          letterSpacing: 1,
-          textTransform: "uppercase",
+          fontSize: font.size.caption + 2,
+          fontWeight: font.weight.medium,
         }}
       >
         {label}
@@ -161,7 +103,8 @@ export default function OpponentReportScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { items, loading, update, remove } = useCollection<OpponentScout>("opponent_scouts");
+  const { items, loading, update, remove } = useCollection<ScoutRecord>("opponent_scouts");
+  const reduced = useReducedMotion();
   const { answers } = useAppState();
   const { isPremium, openPaywall } = usePurchases();
   const scout = items.find((item) => item.id === id);
@@ -178,18 +121,12 @@ export default function OpponentReportScreen() {
     callouts: "",
   });
 
-  const press = useRef(new Animated.Value(1)).current;
-  const ring = useRef(new Animated.Value(0)).current;
   const flash = useRef(new Animated.Value(0)).current;
   const launching = useRef(false);
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => () => timers.current.forEach((timer) => clearTimeout(timer)), []);
-
-  const ringColor = ring.interpolate({
-    inputRange: [0, 1],
-    outputRange: [colors.border, colors.primary],
-  });
 
   function startEdit() {
     if (!scout) return;
@@ -243,40 +180,27 @@ export default function OpponentReportScreen() {
     }
   }
 
-  /** The signature move: a shutter flash, the card presses and flashes red, a double heavy tap, then the round starts. */
+  /** A double heavy tap and a short flash, then the round's plan opens on the Train tab. */
   function startRound() {
     if (!scout || launching.current) return;
     launching.current = true;
     const scoutId = scout.id;
     haptic("heavy");
     timers.current.push(setTimeout(() => haptic("heavy"), 110));
-    Animated.timing(press, {
-      toValue: 0.95,
-      duration: 120,
-      easing: Easing.in(Easing.cubic),
-      useNativeDriver: true,
-    }).start(() => {
-      Animated.spring(press, {
-        toValue: 1,
-        useNativeDriver: true,
-        speed: 22,
-        bounciness: 8,
-      }).start();
-    });
-    Animated.sequence([
-      Animated.timing(ring, { toValue: 1, duration: 90, useNativeDriver: false }),
-      Animated.timing(ring, { toValue: 0, duration: 320, useNativeDriver: false }),
-    ]).start();
-    Animated.sequence([
-      Animated.timing(flash, { toValue: 1, duration: 60, useNativeDriver: true }),
-      Animated.timing(flash, { toValue: 0, duration: 220, useNativeDriver: true }),
-    ]).start();
+    if (!reduced)
+      Animated.sequence([
+        Animated.timing(flash, { toValue: 1, duration: 60, useNativeDriver: true }),
+        Animated.timing(flash, { toValue: 0, duration: 220, useNativeDriver: true }),
+      ]).start();
     // The Train screen reads `scout` to load these callouts as a round.
     timers.current.push(
-      setTimeout(() => {
-        router.navigate({ pathname: "/", params: { scout: scoutId } });
-        launching.current = false;
-      }, 460),
+      setTimeout(
+        () => {
+          router.navigate({ pathname: "/", params: { scout: scoutId } });
+          launching.current = false;
+        },
+        reduced ? 0 : 300,
+      ),
     );
   }
 
@@ -288,52 +212,13 @@ export default function OpponentReportScreen() {
     else router.replace("/scout");
   }
 
-  const headerTitle = () =>
-    scout ? (
-      <Text
-        accessibilityRole="header"
-        numberOfLines={1}
-        style={{
-          color: colors.text,
-          fontSize: font.size.title,
-          fontWeight: font.weight.bold,
-          letterSpacing: -0.3,
-        }}
-      >
-        {scout.name}
-      </Text>
-    ) : null;
-
   const headerRight = () => (
-    <Pressable
+    <TextButton
+      label={editing ? "Cancel" : "Edit"}
       onPress={editing ? cancelEdit : startEdit}
-      accessibilityRole="button"
       accessibilityLabel={editing ? "Cancel editing" : "Edit report"}
-      hitSlop={12}
-      style={({ pressed }) => ({
-        minHeight: 36,
-        minWidth: 64,
-        alignItems: "center",
-        justifyContent: "center",
-        paddingHorizontal: spacing.md,
-        borderWidth: 1.5,
-        borderColor: colors.primary,
-        borderRadius: radius.sm,
-        opacity: pressed ? 0.6 : 1,
-      })}
-    >
-      <Brackets color={colors.primary} size={6} inset={2} thickness={1.5} />
-      <Text
-        style={{
-          color: colors.primary,
-          fontSize: font.size.caption,
-          fontWeight: font.weight.bold,
-          letterSpacing: 1,
-        }}
-      >
-        {editing ? "CANCEL" : "EDIT"}
-      </Text>
-    </Pressable>
+      style={{ paddingHorizontal: spacing.sm }}
+    />
   );
 
   if (loading) {
@@ -346,12 +231,9 @@ export default function OpponentReportScreen() {
           gap: spacing.xl,
         }}
       >
-        <Stack.Screen options={{ title: "Opponent Report" }} />
-        <View style={{ flexDirection: "row", gap: spacing.md }}>
-          <Skeleton width={140} height={106} radius={radius.md} />
-          <Skeleton width={140} height={106} radius={radius.md} />
-        </View>
-        <Skeleton height={150} radius={radius.lg} />
+        <Stack.Screen options={{ title: "Opponent report" }} />
+        <Skeleton width="60%" height={40} radius={radius.sm} />
+        <Skeleton height={96} radius={radius.md} />
         <View style={{ gap: spacing.sm }}>
           <Skeleton width="40%" height={12} />
           <Skeleton height={14} />
@@ -372,7 +254,7 @@ export default function OpponentReportScreen() {
           padding: spacing.lg,
         }}
       >
-        <Stack.Screen options={{ title: "Opponent Report" }} />
+        <Stack.Screen options={{ title: "Opponent report" }} />
         <EmptyState
           icon="eye-off-outline"
           title="This report is gone"
@@ -384,14 +266,14 @@ export default function OpponentReportScreen() {
     );
   }
 
-  const { callouts } = parseGamePlan(scout.gamePlan);
+  const { plan, callouts } = parseGamePlan(scout.gamePlan);
   const rounds = toRounds(callouts);
-  const weaknesses = sentences(scout.tendencies);
-  const verdictSentence = weaknesses[0];
-  const verdict = verdictSentence ? `${capitalize(verdictSentence)}.` : scout.tendencies;
-  const frames = framesFor(scout);
-  const frameWidth = Math.round(screenWidth * 0.38);
-  const frameHeight = Math.round(frameWidth * 0.76);
+  const opening = weaknessOf(scout);
+  const allTendencies = sentences(scout.tendencies);
+  // With no separate weakness on the report, the opening is the first tendency: don't list it twice.
+  const tendencies = scout.weakness?.trim() ? allTendencies : allTendencies.slice(1);
+  const frameWidth = screenWidth - spacing.lg * 2;
+  const frameHeight = Math.round(frameWidth * 0.62);
   const level = answers["skilllevel"] ?? "";
   const tip = /beginner/i.test(level)
     ? "Run each round at half speed first. Get the shape right before you add power."
@@ -404,71 +286,58 @@ export default function OpponentReportScreen() {
     borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.background,
     color: colors.text,
     fontSize: font.size.body,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.textMuted,
   };
 
-  const readCard = (
-    <Animated.View
-      style={{
-        borderWidth: 1,
-        borderColor: ringColor,
-        borderRadius: radius.md,
-        backgroundColor: colors.surface,
-        padding: spacing.md,
-        gap: spacing.sm,
-        transform: [{ scale: press }],
-      }}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-        <View
-          style={{
-            paddingHorizontal: spacing.sm,
-            paddingVertical: 3,
-            borderRadius: radius.sm,
-            backgroundColor: colors.primary,
-          }}
-        >
+  const summary = (
+    <View style={{ gap: spacing.lg }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        {scout.photoUri ? null : <Monogram name={scout.name} size={48} />}
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ color: colors.text, fontSize: font.size.body, fontWeight: font.weight.bold }}>
+            {stanceLabel(scout.stance)}
+          </Text>
           <Text
             style={{
-              color: colors.onPrimary,
-              fontSize: font.size.caption,
-              fontWeight: font.weight.bold,
-              letterSpacing: 1,
+              color: colors.textMuted,
+              fontSize: font.size.caption + 2,
+              lineHeight: 20,
+              fontVariant: ["tabular-nums"],
             }}
           >
-            AI READ
+            {`Scouted ${formatDay(scout.createdAt).toLowerCase()}${
+              scout.confidence !== undefined
+                ? ` · ${Math.round(scout.confidence)}% read confidence`
+                : ""
+            }`}
           </Text>
         </View>
-        <Text
-          numberOfLines={1}
-          style={{ flex: 1, color: colors.textMuted, fontSize: font.size.caption }}
-        >
-          {`${STANCE_LABEL[scout.stance]} · ${formatDay(scout.createdAt)}`}
-        </Text>
         {savedTick > 0 ? <Lottie key={savedTick} name="success" size={36} /> : null}
       </View>
-      <Text
-        numberOfLines={2}
-        style={{
-          color: colors.text,
-          fontSize: font.size.title,
-          fontWeight: font.weight.medium,
-          lineHeight: 28,
-        }}
-      >
-        {verdict}
-      </Text>
-    </Animated.View>
+      <View style={{ gap: spacing.sm }}>
+        <Heading>The opening</Heading>
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: font.size.title,
+            fontWeight: font.weight.medium,
+            lineHeight: 30,
+          }}
+        >
+          {opening}
+        </Text>
+      </View>
+    </View>
   );
 
   const editForm = (
     <View
       style={{
-        borderRadius: radius.lg,
+        borderRadius: radius.md,
         backgroundColor: colors.surface,
         borderWidth: 1,
         borderColor: colors.border,
@@ -488,50 +357,25 @@ export default function OpponentReportScreen() {
           accessibilityLabel="Opponent name"
           maxLength={60}
           returnKeyType="done"
-          style={inputStyle}
+          style={[inputStyle, nameError ? { borderColor: colors.danger } : null]}
         />
         {nameError ? (
-          <Text style={{ color: colors.danger, fontSize: font.size.caption }}>
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ color: colors.danger, fontSize: font.size.caption + 2, lineHeight: 20 }}
+          >
             Give them a name so you can find this report.
           </Text>
         ) : null}
       </Field>
 
       <Field label="Stance">
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-          {STANCES.map((stance) => {
-            const selected = draft.stance === stance;
-            return (
-              <Pressable
-                key={stance}
-                onPress={() => {
-                  haptic("selection");
-                  setDraft((d) => ({ ...d, stance }));
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={STANCE_LABEL[stance]}
-                accessibilityState={{ selected }}
-                style={({ pressed }) => ({
-                  minHeight: 44,
-                  paddingHorizontal: spacing.md,
-                  justifyContent: "center",
-                  borderRadius: radius.pill,
-                  backgroundColor: selected ? colors.primary : colors.surfaceAlt,
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
-                <Text
-                  style={{
-                    color: selected ? colors.onPrimary : colors.text,
-                    fontWeight: font.weight.medium,
-                  }}
-                >
-                  {STANCE_LABEL[stance]}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <Segmented
+          accessibilityLabel="Stance"
+          options={STANCE_OPTIONS}
+          value={draft.stance}
+          onChange={(stance) => setDraft((d) => ({ ...d, stance }))}
+        />
       </Field>
 
       <Field label="Read">
@@ -543,7 +387,7 @@ export default function OpponentReportScreen() {
           accessibilityLabel="Read on this opponent"
           multiline
           textAlignVertical="top"
-          style={{ ...inputStyle, minHeight: 110 }}
+          style={{ ...inputStyle, minHeight: 110, lineHeight: 24 }}
         />
       </Field>
 
@@ -558,128 +402,74 @@ export default function OpponentReportScreen() {
               accessibilityLabel="Callout combo, separated by commas"
               style={inputStyle}
             />
-            <Text style={{ color: colors.textMuted, fontSize: font.size.caption, lineHeight: 18 }}>
+            <Text style={{ color: colors.textMuted, fontSize: font.size.caption + 2, lineHeight: 20 }}>
               Separate callouts with commas. The timer splits them into three rounds.
             </Text>
           </View>
         ) : (
-          <Pressable
-            onPress={() => openPaywall()}
-            accessibilityRole="button"
-            accessibilityLabel="Unlock custom callouts"
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
-              minHeight: 44,
-              padding: spacing.md,
-              borderRadius: radius.sm,
-              backgroundColor: colors.surfaceAlt,
-              opacity: pressed ? 0.7 : 1,
-            })}
-          >
-            <Ionicons name="lock-closed" size={18} color={colors.primary} />
-            <Text style={{ flex: 1, color: colors.text, fontSize: font.size.body }}>
-              Custom callout combos are premium
+          <View style={{ gap: spacing.xs }}>
+            <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 24 }}>
+              Custom callout combos are part of Pro.
             </Text>
-            <Text style={{ color: colors.primary, fontWeight: font.weight.bold }}>Unlock</Text>
-          </Pressable>
+            <TextButton
+              label="Unlock custom callouts"
+              icon="lock-closed"
+              onPress={() => openPaywall()}
+              style={{ alignSelf: "flex-start" }}
+            />
+          </View>
         )}
       </Field>
 
       <View style={{ flexDirection: "row", gap: spacing.md }}>
-        <Pressable
-          onPress={cancelEdit}
-          accessibilityRole="button"
-          accessibilityLabel="Cancel changes"
-          style={({ pressed }) => ({
-            flex: 1,
-            minHeight: 52,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: radius.pill,
-            borderWidth: 1,
-            borderColor: colors.border,
-            opacity: pressed ? 0.7 : 1,
-          })}
-        >
-          <Text style={{ color: colors.text, fontWeight: font.weight.medium }}>Cancel</Text>
-        </Pressable>
-        <PressScale
-          onPress={save}
-          disabled={saving}
-          haptic="light"
-          scaleTo={0.94}
-          accessibilityRole="button"
-          accessibilityLabel="Save report"
-          accessibilityState={{ disabled: saving }}
-          style={{
-            flex: 1,
-            minHeight: 52,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: radius.pill,
-            backgroundColor: colors.primary,
-            opacity: saving ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: colors.onPrimary, fontWeight: font.weight.bold }}>
-            {saving ? "Saving…" : "Save report"}
-          </Text>
-        </PressScale>
+        <View style={{ flex: 1 }}>
+          <SecondaryButton label="Cancel" onPress={cancelEdit} accessibilityLabel="Cancel changes" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <PrimaryButton
+            label={saving ? "Saving…" : "Save report"}
+            busy={saving}
+            onPress={() => void save()}
+            accessibilityLabel="Save report"
+          />
+        </View>
       </View>
     </View>
   );
 
-  const weaknessSection = (
-    <View>
-      <Heading>Weaknesses to attack</Heading>
-      {weaknesses.length === 0 ? (
-        <EmptyState
-          icon="locate-outline"
-          title="No weak spot yet"
-          body="This read didn't name one. Scout again with a clearer frame of their guard."
-          actionLabel="Scout again"
-          onAction={() => router.navigate("/scout")}
-        />
-      ) : (
-        <View style={{ gap: spacing.md }}>
-          {weaknesses.map((text, index) => (
+  const tendencySection =
+    tendencies.length > 0 ? (
+      <View style={{ gap: spacing.sm }}>
+        <Heading>Tendencies</Heading>
+        <View style={{ gap: spacing.sm }}>
+          {tendencies.map((text, index) => (
             <Appear key={text} delay={index * 70} distance={6} duration={240}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "flex-start",
-                  gap: spacing.md,
-                }}
-              >
-                <Ionicons
-                  name="locate-outline"
-                  size={22}
-                  color={colors.primary}
-                  style={{ marginTop: 1 }}
-                />
-                <Text
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
+                <View
                   style={{
-                    flex: 1,
-                    color: colors.text,
-                    fontSize: font.size.body,
-                    lineHeight: 22,
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    marginTop: 9,
+                    backgroundColor: colors.primary,
                   }}
-                >
-                  {capitalize(text)}
+                />
+                <Text style={{ flex: 1, color: colors.text, fontSize: font.size.body, lineHeight: 24 }}>
+                  {`${capitalize(text)}.`}
                 </Text>
               </View>
             </Appear>
           ))}
         </View>
-      )}
-    </View>
-  );
+      </View>
+    ) : null;
 
   const planSection = (
-    <View>
-      <Heading>Generated game plan</Heading>
+    <View style={{ gap: spacing.sm }}>
+      <Heading>Game plan</Heading>
+      {plan ? (
+        <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 24 }}>{plan}</Text>
+      ) : null}
       {rounds.length === 0 ? (
         <EmptyState
           icon="flash-outline"
@@ -689,185 +479,151 @@ export default function OpponentReportScreen() {
           onAction={startEdit}
         />
       ) : (
-        <View style={{ gap: spacing.sm }}>
-          {rounds.map((calls, index) => (
-            <Appear key={index} delay={index * 90} distance={8} duration={260}>
-              <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.md }}>
-                <View
+        <>
+          <View
+            style={{
+              marginTop: spacing.xs,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+            }}
+          >
+            {rounds.map((calls, index) => (
+              <View
+                key={index}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "baseline",
+                  gap: spacing.md,
+                  paddingVertical: spacing.md,
+                  paddingHorizontal: spacing.lg,
+                  borderTopWidth: index > 0 ? 1 : 0,
+                  borderTopColor: colors.border,
+                }}
+              >
+                <Text
                   style={{
                     width: 64,
-                    minHeight: 56,
-                    borderRadius: radius.sm,
-                    backgroundColor: colors.primary,
-                    alignItems: "center",
-                    justifyContent: "center",
+                    color: colors.textMuted,
+                    fontSize: font.size.caption + 2,
+                    fontWeight: font.weight.medium,
+                    fontVariant: ["tabular-nums"],
                   }}
                 >
-                  <Brackets color={colors.onPrimary} size={9} inset={5} thickness={1.5} />
-                  <Text
-                    style={{
-                      color: colors.onPrimary,
-                      fontSize: font.size.title,
-                      fontWeight: font.weight.bold,
-                      letterSpacing: -0.5,
-                    }}
-                  >
-                    {`R${index + 1}`}
-                  </Text>
-                </View>
-                <View
+                  {`Round ${index + 1}`}
+                </Text>
+                <Text
                   style={{
                     flex: 1,
-                    justifyContent: "center",
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.md,
-                    borderRadius: radius.sm,
-                    backgroundColor: colors.surface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
+                    color: colors.text,
+                    fontSize: font.size.body,
+                    fontWeight: font.weight.bold,
+                    lineHeight: 24,
                   }}
                 >
-                  <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 22 }}>
-                    <Text style={{ fontWeight: font.weight.bold }}>{`ROUND ${index + 1}: `}</Text>
-                    {calls.map(capitalize).join(", ")}
-                  </Text>
-                </View>
+                  {calls.map(capitalize).join(" · ")}
+                </Text>
               </View>
-            </Appear>
-          ))}
+            ))}
+          </View>
           {tip ? (
-            <Text style={{ color: colors.textMuted, fontSize: font.size.caption, lineHeight: 18 }}>
+            <Text style={{ color: colors.textMuted, fontSize: font.size.caption + 2, lineHeight: 20 }}>
               {tip}
             </Text>
           ) : null}
-        </View>
+        </>
       )}
     </View>
   );
 
-  const deleteSection = (
-    <View style={{ gap: spacing.md }}>
-      {confirming ? (
-        <Appear distance={6} duration={220}>
-          <View
-            style={{
-              gap: spacing.md,
-              padding: spacing.lg,
-              borderRadius: radius.lg,
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.danger,
-            }}
-          >
-            <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 22 }}>
-              Delete this report? Its frames, read and game plan are removed from this phone.
-            </Text>
-            <View style={{ flexDirection: "row", gap: spacing.md }}>
-              <Pressable
-                onPress={() => setConfirming(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Keep report"
-                style={({ pressed }) => ({
-                  flex: 1,
-                  minHeight: 52,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: radius.pill,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
-                <Text style={{ color: colors.text, fontWeight: font.weight.medium }}>Keep it</Text>
-              </Pressable>
-              <PressScale
-                onPress={confirmDelete}
-                scaleTo={0.94}
-                accessibilityRole="button"
-                accessibilityLabel="Delete my report"
-                style={{
-                  flex: 1,
-                  minHeight: 52,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: radius.pill,
-                  backgroundColor: colors.danger,
-                }}
-              >
-                <Text style={{ color: colors.onPrimary, fontWeight: font.weight.bold }}>
-                  Delete my report
-                </Text>
-              </PressScale>
-            </View>
+  const deleteSection = confirming ? (
+    <Appear distance={6} duration={220}>
+      <View
+        style={{
+          gap: spacing.md,
+          padding: spacing.lg,
+          borderRadius: radius.md,
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.danger,
+        }}
+      >
+        <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 24 }}>
+          Delete this report? Its frame, read and game plan are removed from this phone.
+        </Text>
+        <View style={{ flexDirection: "row", gap: spacing.md }}>
+          <View style={{ flex: 1 }}>
+            <SecondaryButton
+              label="Keep it"
+              onPress={() => setConfirming(false)}
+              accessibilityLabel="Keep report"
+            />
           </View>
-        </Appear>
-      ) : (
-        <Pressable
-          onPress={() => setConfirming(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Delete report"
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: spacing.sm,
-            minHeight: 48,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Ionicons name="trash-outline" size={18} color={colors.danger} />
-          <Text style={{ color: colors.danger, fontWeight: font.weight.medium }}>
-            Delete report
-          </Text>
-        </Pressable>
-      )}
-    </View>
+          <View style={{ flex: 1 }}>
+            <PrimaryButton
+              label="Delete"
+              tone="danger"
+              icon="trash-outline"
+              onPress={() => void confirmDelete()}
+              accessibilityLabel="Delete this report"
+            />
+          </View>
+        </View>
+      </View>
+    </Appear>
+  ) : (
+    <TextButton
+      label="Delete report"
+      icon="trash-outline"
+      tone="danger"
+      onPress={() => setConfirming(true)}
+    />
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Stack.Screen options={{ title: scout.name, headerTitle, headerRight }} />
+      <Stack.Screen options={{ title: scout.name, headerRight }} />
       <ScrollView
+        ref={scroller}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        // The delete confirmation opens at the foot of the page: bring it into view.
+        onContentSizeChange={() => {
+          if (confirming) scroller.current?.scrollToEnd({ animated: !reduced });
+        }}
         contentContainerStyle={{
           padding: spacing.lg,
-          paddingBottom: 200 + insets.bottom,
-          gap: spacing.xl,
+          paddingBottom: (editing ? 0 : 76 + insets.bottom) + spacing.xl,
         }}
       >
         <Stagger step={70} style={{ gap: spacing.xl }}>
-          <View>
-            <Heading>Analyzed frames</Heading>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              decelerationRate="fast"
-              snapToInterval={frameWidth + spacing.md}
-              snapToAlignment="start"
-              style={{ marginHorizontal: -spacing.lg }}
-              contentContainerStyle={{
-                paddingHorizontal: spacing.lg,
-                gap: spacing.md,
+          {scout.photoUri ? (
+            <View
+              style={{
+                width: frameWidth,
+                height: frameHeight,
+                borderRadius: radius.md,
+                overflow: "hidden",
+                backgroundColor: colors.surfaceAlt,
               }}
             >
-              {frames.map((frame, index) => (
-                <FrameCard
-                  key={frame.key}
-                  label={frame.label}
-                  prompt={frame.prompt}
-                  uri={frame.uri}
-                  width={frameWidth}
-                  height={frameHeight}
-                  index={index}
-                />
-              ))}
-            </ScrollView>
-          </View>
+              <Image
+                source={{ uri: scout.photoUri }}
+                accessibilityLabel={`The frame this read of ${scout.name} came from`}
+                contentFit="cover"
+                style={{ width: frameWidth, height: frameHeight }}
+              />
+              <Reticle width={frameWidth} height={frameHeight} color={colors.primary} />
+              <FrameMarks />
+            </View>
+          ) : null}
 
           <StepTransition step={editing ? "edit" : "read"} direction={editing ? 1 : -1}>
-            {editing ? editForm : readCard}
+            {editing ? editForm : summary}
           </StepTransition>
 
-          {weaknessSection}
+          {tendencySection}
 
           {planSection}
 
@@ -890,42 +646,13 @@ export default function OpponentReportScreen() {
             borderTopColor: colors.border,
           }}
         >
-          <Pulse>
-            <PressScale
-              onPress={startRound}
-              scaleTo={0.96}
-              accessibilityRole="button"
-              accessibilityLabel="Drill this game plan, three rounds of three minutes"
-              style={{
-                minHeight: 60,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: spacing.sm,
-                paddingHorizontal: spacing.lg,
-                borderRadius: radius.sm,
-                backgroundColor: colors.primary,
-              }}
-            >
-              <Brackets color={colors.onPrimary} size={12} inset={6} thickness={2} />
-              <AiImage
-                prompt="a dark boxing glove icon, flat, no text, transparent background"
-                fit="contain"
-                style={{ width: 30, height: 30 }}
-              />
-              <Text
-                style={{
-                  color: colors.onPrimary,
-                  fontSize: font.size.body,
-                  fontWeight: font.weight.bold,
-                  letterSpacing: 0.5,
-                  textTransform: "uppercase",
-                }}
-              >
-                Drill this game plan (3x3m)
-              </Text>
-            </PressScale>
-          </Pulse>
+          <PrimaryButton
+            label="Drill this game plan (3 × 3 min)"
+            icon="play"
+            disabled={rounds.length === 0}
+            onPress={startRound}
+            accessibilityLabel="Drill this game plan, three rounds of three minutes"
+          />
         </View>
       ) : null}
 
@@ -938,7 +665,7 @@ export default function OpponentReportScreen() {
           top: 0,
           bottom: 0,
           backgroundColor: colors.text,
-          opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }),
+          opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.3] }),
         }}
       />
     </View>

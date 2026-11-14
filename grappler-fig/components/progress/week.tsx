@@ -1,10 +1,8 @@
-// The week's training: a mark per day (a ring for a day trained, an empty square for a rest
-// day), the rounds total, and a bar per day scaled to the busiest day.
+// The last seven days of training as a bar per day: rounds on top of each bar, the weekday
+// beneath it, today's day in bold. Days without training show the baseline only.
 import { Text, View } from "react-native";
-import Svg, { Circle, Rect } from "react-native-svg";
 import { useTheme } from "../../theme/ThemeProvider";
-import { Appear, CountUp } from "../motion";
-import { displayFont } from "./panel";
+import { displayFace } from "../ui";
 
 export interface WeekDay {
   key: string;
@@ -12,114 +10,103 @@ export interface WeekDay {
   rounds: number;
 }
 
-const BAR_MAX = 64;
-
-function DayMark({ label, trained }: { label: string; trained: boolean }) {
-  const theme = useTheme();
-  return (
-    <View
-      accessibilityRole="image"
-      accessibilityLabel={`${label}: ${trained ? "trained" : "rest day"}`}
-    >
-      <Svg width={20} height={20} viewBox="0 0 20 20">
-        {trained ? (
-          <Circle
-            cx={10}
-            cy={10}
-            r={7}
-            fill={theme.colors.background}
-            stroke={theme.colors.primary}
-            strokeWidth={3}
-          />
-        ) : (
-          <Rect
-            x={2}
-            y={2}
-            width={16}
-            height={16}
-            rx={3}
-            fill="none"
-            stroke={theme.colors.border}
-            strokeWidth={2}
-          />
-        )}
-      </Svg>
-    </View>
-  );
-}
+const BAR_MAX = 72;
+const BAR_WIDTH = 20;
 
 export function WeeklyTraining({ days }: { days: WeekDay[] }) {
   const theme = useTheme();
   const total = days.reduce((sum, day) => sum + day.rounds, 0);
   const peak = Math.max(1, ...days.map((day) => day.rounds));
+  const trained = days.filter((day) => day.rounds > 0).length;
+  const spoken = days.map((day) => `${day.label} ${day.rounds}`).join(", ");
 
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
-      <View style={{ flex: 1, gap: theme.spacing.md }}>
+    <View style={{ gap: theme.spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "baseline", gap: theme.spacing.sm }}>
         <Text
+          accessibilityRole="header"
           style={{
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
+            flex: 1,
+            color: theme.colors.text,
+            fontSize: theme.font.size.title,
             fontWeight: theme.font.weight.bold,
-            letterSpacing: 1,
           }}
         >
-          WEEKLY TRAINING
+          Last 7 days
         </Text>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {days.map((day, index) => (
-            <Appear key={day.key} delay={index * 40}>
-              <DayMark label={day.label} trained={day.rounds > 0} />
-            </Appear>
-          ))}
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
-          <CountUp
-            value={total}
-            style={{
+        <Text
+          style={[
+            displayFace,
+            {
               color: theme.colors.text,
-              fontFamily: displayFont,
               fontSize: theme.font.size.headline,
-            }}
-          />
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: displayFont,
-              fontSize: theme.font.size.body,
-            }}
-          >
-            ROUNDS
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.primary,
-              fontFamily: displayFont,
-              fontSize: theme.font.size.body,
-            }}
-          >
-            COMPLETED
-          </Text>
-        </View>
+              fontVariant: ["tabular-nums"],
+            },
+          ]}
+        >
+          {total}
+        </Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+          {total === 1 ? "round" : "rounds"}
+        </Text>
       </View>
 
       <View
+        accessible
         accessibilityRole="image"
-        accessibilityLabel={`${total} rounds in the last seven days`}
-        style={{ height: BAR_MAX, flexDirection: "row", alignItems: "flex-end", gap: 5 }}
+        accessibilityLabel={`Rounds per day over the last seven days: ${spoken}. ${trained} of 7 days trained.`}
+        style={{ flexDirection: "row" }}
       >
-        {days.map((day, index) => (
-          <Appear key={day.key} delay={index * 50}>
-            <View
-              style={{
-                width: 9,
-                height: Math.max(4, Math.round((day.rounds / peak) * BAR_MAX)),
-                borderRadius: 2,
-                backgroundColor: day.rounds > 0 ? theme.colors.primary : theme.colors.border,
-              }}
-            />
-          </Appear>
-        ))}
+        {days.map((day, index) => {
+          const today = index === days.length - 1;
+          const height = day.rounds > 0 ? Math.max(6, Math.round((day.rounds / peak) * BAR_MAX)) : 0;
+          return (
+            <View key={day.key} style={{ flex: 1, alignItems: "center", gap: theme.spacing.xs }}>
+              <View
+                style={{
+                  alignSelf: "stretch",
+                  height: BAR_MAX + 20,
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  borderBottomWidth: 1,
+                  borderBottomColor: theme.colors.textMuted,
+                }}
+              >
+                {day.rounds > 0 ? (
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontSize: theme.font.size.caption,
+                      fontWeight: theme.font.weight.bold,
+                      fontVariant: ["tabular-nums"],
+                      marginBottom: 2,
+                    }}
+                  >
+                    {day.rounds}
+                  </Text>
+                ) : null}
+                <View
+                  style={{
+                    width: BAR_WIDTH,
+                    height,
+                    borderTopLeftRadius: 4,
+                    borderTopRightRadius: 4,
+                    backgroundColor: theme.colors.primary,
+                  }}
+                />
+              </View>
+              <Text
+                style={{
+                  color: today ? theme.colors.text : theme.colors.textMuted,
+                  fontSize: theme.font.size.caption,
+                  fontWeight: today ? theme.font.weight.bold : theme.font.weight.regular,
+                }}
+              >
+                {day.label}
+              </Text>
+            </View>
+          );
+        })}
       </View>
     </View>
   );

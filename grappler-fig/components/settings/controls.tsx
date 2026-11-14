@@ -1,19 +1,16 @@
-// Pieces of the Settings screen, drawn to match the approved design: a condensed uppercase red
-// section title, rounded cards with hairline dividers, rows with a value and a chevron, compact
-// segmented pills whose labels stay on one line, and a wheel picker. Every color comes from the
-// theme; the condensed faces are the platform's own system fonts, so no font files are needed.
+// Pieces of the Settings screen: a quiet section title above one rounded card of rows with
+// hairline dividers, rows with a value and a chevron, a segmented control whose labels stay on
+// one line, and a wheel picker. Every color comes from the theme.
 import { Ionicons } from "@expo/vector-icons";
-import { Children, useEffect, useRef, useState, type ReactNode } from "react";
+import { Children, useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import {
   Animated,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
   type StyleProp,
-  type TextStyle,
   type ViewStyle,
 } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -23,21 +20,7 @@ const PILL_INSET = 3;
 const WHEEL_ITEM = 44;
 const WHEEL_ROWS = 5;
 
-/** The condensed, heavy face used for titles and section headers. */
-export const displayText: TextStyle = Platform.select<TextStyle>({
-  ios: { fontFamily: "AvenirNextCondensed-Heavy" },
-  android: { fontFamily: "sans-serif-condensed", fontWeight: "700" },
-  default: { fontWeight: "700" },
-}) as TextStyle;
-
-/** A monospaced face for clock times and counts. */
-export const monoFont = Platform.select<string>({
-  ios: "Menlo",
-  android: "monospace",
-  default: undefined,
-} as Record<string, string>);
-
-/** A titled section: a condensed red header above one rounded card of rows. */
+/** A titled section: a small muted header above one rounded card of rows. */
 export function SettingsGroup({ title, children }: { title: string; children?: ReactNode }) {
   const theme = useTheme();
   const rows = Children.toArray(children);
@@ -46,15 +29,14 @@ export function SettingsGroup({ title, children }: { title: string; children?: R
     <View style={{ gap: theme.spacing.sm }}>
       <Text
         accessibilityRole="header"
-        style={[
-          displayText,
-          {
-            color: theme.colors.primary,
-            fontSize: 20,
-            textTransform: "uppercase",
-            paddingHorizontal: theme.spacing.xs,
-          },
-        ]}
+        style={{
+          color: theme.colors.textMuted,
+          fontSize: theme.font.size.caption + 1,
+          fontWeight: theme.font.weight.medium,
+          letterSpacing: 0.5,
+          textTransform: "uppercase",
+          paddingHorizontal: theme.spacing.lg,
+        }}
       >
         {title}
       </Text>
@@ -96,7 +78,7 @@ export function SettingsNote({
       style={{
         color: tone === "danger" ? theme.colors.danger : theme.colors.textMuted,
         fontSize: theme.font.size.caption,
-        lineHeight: 17,
+        lineHeight: 18,
       }}
     >
       {children}
@@ -105,15 +87,14 @@ export function SettingsNote({
 }
 
 /**
- * One row: a label (and optional detail), a value with a dot or monospaced time, an optional
+ * One row: a label (and optional detail), a value, an optional
  * control on the right (or stacked under the label) and a chevron when it opens something.
  */
 export function SettingsRow({
   label,
   detail,
   value,
-  mono = false,
-  dot = false,
+  active = false,
   accent = false,
   chevron,
   onPress,
@@ -125,10 +106,8 @@ export function SettingsRow({
   label: string;
   detail?: string;
   value?: string;
-  /** Show the value in the monospaced face (clock times). */
-  mono?: boolean;
-  /** A green status dot before the value (an active membership). */
-  dot?: boolean;
+  /** A check before the value (an active membership), so the state isn't told by color alone. */
+  active?: boolean;
   /** Label in the accent color, for actions such as Restore purchases. */
   accent?: boolean;
   /** Defaults to true when the row can be pressed. */
@@ -157,27 +136,25 @@ export function SettingsRow({
           {label}
         </Text>
         {detail ? (
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption + 2,
+              lineHeight: 20,
+            }}
+          >
             {detail}
           </Text>
         ) : null}
       </View>
-      {dot ? (
-        <View
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: theme.colors.success,
-          }}
-        />
+      {active ? (
+        <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
       ) : null}
       {value ? (
         <Text
           style={{
             color: theme.colors.textMuted,
             fontSize: theme.font.size.body,
-            fontFamily: mono ? monoFont : undefined,
             fontVariant: ["tabular-nums"],
             textAlign: "right",
             flexShrink: 1,
@@ -225,8 +202,8 @@ export function SettingsRow({
 }
 
 /**
- * Two or three choices in a compact pill. The selected choice sits on a red pill that slides to
- * its place on a spring, with a selection tick on each change. Labels stay on one line.
+ * Two or three choices in a compact pill. The selected choice sits on a filled pill that slides
+ * to its place on a spring, with a selection tick on each change. Labels stay on one line.
  */
 export function Segmented<T extends string>({
   options,
@@ -276,7 +253,7 @@ export function Segmented<T extends string>({
       style={[
         {
           flexDirection: "row",
-          height: 42,
+          height: 44,
           padding: PILL_INSET,
           borderRadius: theme.radius.pill,
           backgroundColor: theme.colors.surfaceAlt,
@@ -306,7 +283,7 @@ export function Segmented<T extends string>({
             key={option.value}
             accessibilityRole="radio"
             accessibilityLabel={option.label}
-            accessibilityState={{ selected }}
+            accessibilityState={{ selected, checked: selected }}
             hitSlop={{ top: 4, bottom: 4 }}
             onPress={() => {
               if (selected) return;
@@ -323,11 +300,9 @@ export function Segmented<T extends string>({
           >
             <Text
               numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
               style={{
                 color: selected ? theme.colors.onPrimary : theme.colors.text,
-                fontSize: theme.font.size.body,
+                fontSize: theme.font.size.caption + 2,
                 fontWeight: selected ? theme.font.weight.bold : theme.font.weight.medium,
                 textAlign: "center",
               }}
@@ -361,10 +336,16 @@ export function Wheel({
 }) {
   const theme = useTheme();
   const reduced = useReducedMotion();
-  const list = useRef<ScrollView>(null);
+  const list = useRef<ComponentRef<typeof ScrollView>>(null);
   const start = Math.max(0, values.indexOf(value));
   const settled = useRef(start);
   const scrollY = useRef(new Animated.Value(start * WHEEL_ITEM)).current;
+
+  // Start on the current value. (contentOffset alone isn't honoured on every platform.)
+  useEffect(() => {
+    list.current?.scrollTo({ y: start * WHEEL_ITEM, animated: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The value changed from outside the wheel: move to it.
   useEffect(() => {
@@ -458,7 +439,6 @@ export function Wheel({
               <Animated.Text
                 style={{
                   color: theme.colors.text,
-                  fontFamily: monoFont,
                   fontSize: theme.font.size.title,
                   fontWeight: theme.font.weight.bold,
                   fontVariant: ["tabular-nums"],

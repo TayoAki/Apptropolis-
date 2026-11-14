@@ -1,10 +1,9 @@
-// One answer in a onboarding question: a metal-edged panel with corner brackets. When selected it
-// takes the primary color as a border, a glow, a left accent bar and a check mark.
-import { Ionicons } from "@expo/vector-icons";
+// One answer to an onboarding question: a radio row. The selected answer has a filled radio with
+// a check, a heavier edge and a light tint, so the choice never rests on color alone.
 import { Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PressScale } from "../motion";
-import { Corners } from "./corners";
+import { RadioMark, tint } from "../ui";
 
 export function ChoiceCard({
   title,
@@ -22,73 +21,45 @@ export function ChoiceCard({
     <PressScale
       onPress={onPress}
       haptic="selection"
-      scaleTo={0.97}
+      scaleTo={0.98}
       accessibilityRole="radio"
       accessibilityLabel={`${title}. ${body}`}
-      accessibilityState={{ checked: selected }}
+      accessibilityState={{ checked: selected, selected }}
       style={{
-        minHeight: 88,
+        minHeight: 76,
         flexDirection: "row",
         alignItems: "center",
         gap: theme.spacing.md,
         paddingVertical: theme.spacing.md,
-        paddingLeft: theme.spacing.xl,
-        paddingRight: theme.spacing.lg,
-        borderRadius: theme.radius.sm,
-        borderWidth: selected ? 2 : 1.5,
+        paddingHorizontal: theme.spacing.lg,
+        borderRadius: theme.radius.md,
+        // The edge is 2pt either way so the row doesn't shift when it is chosen.
+        borderWidth: 2,
         borderColor: selected ? theme.colors.primary : theme.colors.border,
-        backgroundColor: theme.colors.surface,
-        shadowColor: theme.colors.primary,
-        shadowOpacity: selected ? 0.55 : 0,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 0 },
-        elevation: selected ? 6 : 0,
+        backgroundColor: selected ? tint(theme.colors.primary, "14") : theme.colors.surface,
       }}
     >
-      {/* A faint highlight along the top edge gives the panel its bevel. */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 1,
-          left: 12,
-          right: 12,
-          height: 1,
-          backgroundColor: theme.colors.text,
-          opacity: 0.08,
-        }}
-      />
-      <Corners color={theme.colors.textMuted} size={12} inset={8} />
-      {selected ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 14,
-            bottom: 14,
-            width: 4,
-            borderRadius: 2,
-            backgroundColor: theme.colors.primary,
-          }}
-        />
-      ) : null}
+      <RadioMark selected={selected} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text
           style={{
             color: theme.colors.text,
-            fontSize: theme.font.size.title,
+            fontSize: theme.font.size.body + 2,
             fontWeight: theme.font.weight.bold,
+            lineHeight: 24,
           }}
         >
           {title}
         </Text>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>{body}</Text>
-      </View>
-      <View style={{ width: 32, alignItems: "center" }}>
-        {selected ? (
-          <Ionicons name="checkmark-circle-outline" size={30} color={theme.colors.primary} />
-        ) : null}
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontSize: theme.font.size.caption + 2,
+            lineHeight: 20,
+          }}
+        >
+          {body}
+        </Text>
       </View>
     </PressScale>
   );

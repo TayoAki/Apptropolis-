@@ -3,6 +3,8 @@ import { Tabs } from "expo-router";
 import type { ComponentProps } from "react";
 import { Text, type ColorValue } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+// Loaded here so the theme picked in Settings is re-applied when the app starts.
+import "../../components/settings/themeChoice";
 import { useTheme } from "../../theme/ThemeProvider";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];

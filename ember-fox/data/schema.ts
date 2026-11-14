@@ -74,6 +74,107 @@ export const DRINK_TYPES: { id: DrinkLabel; label: string; standardDrinks: numbe
 ];
 
 export const DEFAULT_PROFILE: Profile = { weightKg: 75, bodyType: "other" };
+const KG_PER_LB = 0.45359237;
+export const DEFAULT_WEIGHT_LBS = Math.round(DEFAULT_PROFILE.weightKg / KG_PER_LB);
+
+/** Saved preferences: onboarding answers and the choices made in Settings, by key. */
+export type Answers = Record<string, string | undefined>;
+
+/** The person's sport; soccer / basketball until they pick one. */
+export function sportFrom(answers: Answers): Sport {
+  return SPORTS.find((sport) => sport.id === answers.sport)?.id ?? "team";
+}
+
+export interface ProfileChoice extends Profile {
+  weightLbs: number;
+  /** False while the weight is still the app's default, not the person's own. */
+  weightSet: boolean;
+  /** False while the body profile is still the default (the midpoint of male and female). */
+  bodyTypeSet: boolean;
+}
+
+/** Body weight and body profile for the BAC estimate, from Settings; defaults until they are set. */
+export function profileFrom(answers: Answers): ProfileChoice {
+  const lbs = Number(answers.weight_lbs);
+  const weightSet = Number.isFinite(lbs) && lbs > 0;
+  const weightLbs = weightSet ? lbs : DEFAULT_WEIGHT_LBS;
+  const bodyTypeSet =
+    answers.body_type === "male" || answers.body_type === "female" || answers.body_type === "other";
+  return {
+    weightKg: weightSet ? weightLbs * KG_PER_LB : DEFAULT_PROFILE.weightKg,
+    bodyType: bodyTypeSet ? (answers.body_type as BodyType) : DEFAULT_PROFILE.bodyType,
+    weightLbs,
+    weightSet,
+    bodyTypeSet,
+  };
+}
+
+/** Standard drinks allowed per week when none has been chosen. */
+export const DEFAULT_WEEKLY_LIMIT = 7;
+
+/**
+ * The weekly limit the person chose (in onboarding or in Settings), in standard drinks.
+ * `weekly_goal` is the key older versions of onboarding saved it under.
+ */
+export function limitFrom(answers: Answers): number {
+  for (const raw of [answers.weekly_limit, answers.weekly_goal]) {
+    const value = Number(raw);
+    if (raw !== undefined && raw !== "" && Number.isFinite(value) && value >= 0) return value;
+  }
+  return DEFAULT_WEEKLY_LIMIT;
+}
+
+/** The first day of the person's week: 0 for Sunday, 1 for Monday (the default). */
+export function weekStartsOn(answers: Answers): 0 | 1 {
+  return answers.week_start === "Sunday" ? 0 : 1;
+}
+
+export const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+/** The weekdays (0 = Sunday) the person plays or trains on, from Settings; empty until set. */
+export function gameWeekdays(answers: Answers): number[] {
+  const value = answers.training_days ?? "";
+  if (/every day/i.test(value)) return [0, 1, 2, 3, 4, 5, 6];
+  return WEEKDAYS.map((name, index) => (value.includes(name) ? index : -1)).filter(
+    (index) => index >= 0,
+  );
+}
+
+/** The next game or training day from today on (today counts), as YYYY-MM-DD; null when none is set. */
+export function nextGameDay(weekdays: number[], now: Date = new Date()): string | null {
+  if (weekdays.length === 0) return null;
+  const today = startOfDay(now);
+  for (let i = 0; i < 7; i++) {
+    const day = addDays(today, i);
+    if (weekdays.includes(day.getDay())) return dayKey(day);
+  }
+  return null;
+}
+
+/** "today", "tomorrow" or the weekday name ("Saturday") for a coming YYYY-MM-DD day. */
+export function comingDayName(key: string, now: Date = new Date()): string {
+  if (key === dayKey(now)) return "today";
+  if (key === dayKey(addDays(startOfDay(now), 1))) return "tomorrow";
+  return formatDay(key, "long");
+}
+
+/** What the BAC estimate is based on, as one plain sentence part: "165 lb and the male body profile". */
+export function profileBasis(profile: ProfileChoice): string {
+  const weight = `${profile.weightSet ? "" : "a default "}body weight of ${profile.weightLbs} lb`;
+  const body =
+    profile.bodyType === "other"
+      ? "a body profile midway between male and female"
+      : `the ${profile.bodyType} body profile`;
+  return `${weight} and ${body}`;
+}
 
 const GRAMS_PER_STANDARD_DRINK = 14;
 /** Widmark body-water factor for each body type. */
@@ -160,14 +261,21 @@ export function formatDate(key: string): string {
   return parseDay(key).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+/** A count of standard drinks without the word: "8.5", "7". */
+export function formatCount(count: number): string {
+  return String(Math.round(count * 10) / 10);
+}
+
+/** The estimate to two decimals with a leading "~" ("~0.04%"): it is not exact enough for three. */
 export function formatBac(percent: number): string {
-  return `${percent.toFixed(2)}%`;
+  if (percent > 0 && percent < 0.005) return "under 0.01%";
+  return `~${percent.toFixed(2)}%`;
 }
 
 /** "about 2 h 10 min" for a number of hours. */
 export function formatDuration(hours: number): string {
   const minutes = Math.max(0, Math.round(hours * 60));
-  if (minutes === 0) return "less than 15 minutes";
+  if (minutes < 1) return "under a minute";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (h === 0) return `about ${m} min`;

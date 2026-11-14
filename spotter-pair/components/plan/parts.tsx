@@ -55,6 +55,7 @@ export function RegenerateButton({
       accessibilityRole="button"
       accessibilityLabel={isPremium ? "Regenerate plan" : "Regenerate plan, a Pro feature"}
       accessibilityState={{ disabled: busy, busy }}
+      aria-busy={busy}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -146,6 +147,7 @@ export function DayChips({
             accessibilityRole="button"
             accessibilityLabel={`${day.day}, ${day.focus}`}
             accessibilityState={{ selected: active }}
+            aria-selected={active}
             hitSlop={6}
             style={({ pressed }) => ({
               flex: 1,
@@ -357,8 +359,8 @@ export function HistoryCard({ past }: { past: Workout[] }) {
           marginTop: theme.spacing.xs,
         }}
       >
-        Score updates automatically if past sessions are modified to ensure fair accountability.{" "}
-        <Ionicons name="lock-closed" size={14} color={theme.colors.textMuted} />
+        A session counts once you mark it complete on its day. Past sessions can't be changed
+        afterwards, so each week's score stays fair.
       </Text>
       {past.length ? (
         past.map((w) => (

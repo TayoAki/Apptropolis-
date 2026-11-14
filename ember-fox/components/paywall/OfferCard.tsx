@@ -1,9 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef } from "react";
-import { Animated, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { Offer } from "../../data/purchases";
 import { useTheme } from "../../theme/ThemeProvider";
-import { PressScale, useReducedMotion } from "../motion";
+import { PressScale } from "../motion";
 
 const PERIOD: Record<Offer["period"], string> = {
   week: "/week",
@@ -34,31 +33,14 @@ export function OfferCard({
   offer,
   selected,
   onSelect,
-  shimmer = false,
   disabled = false,
 }: {
   offer: Offer;
   selected: boolean;
   onSelect: () => void;
-  /** Plays one soft amber border shimmer when the card appears (for the best-value plan). */
-  shimmer?: boolean;
   disabled?: boolean;
 }) {
   const theme = useTheme();
-  const reduced = useReducedMotion();
-  const glow = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!shimmer || reduced) return;
-    const run = Animated.sequence([
-      Animated.delay(350),
-      Animated.timing(glow, { toValue: 1, duration: 650, useNativeDriver: true }),
-      Animated.timing(glow, { toValue: 0, duration: 900, useNativeDriver: true }),
-    ]);
-    run.start();
-    return () => run.stop();
-  }, [shimmer, reduced, glow]);
-
   const period = PERIOD[offer.period];
   const equivalent = monthlyEquivalent(offer);
   const trial = offer.trialDays > 0 ? `${offer.trialDays}-day free trial` : null;
@@ -73,7 +55,7 @@ export function OfferCard({
       scaleTo={0.98}
       disabled={disabled}
       accessibilityRole="radio"
-      accessibilityState={{ selected, disabled }}
+      accessibilityState={{ checked: selected, disabled }}
       accessibilityLabel={label}
       style={{
         flexDirection: "row",
@@ -82,25 +64,11 @@ export function OfferCard({
         minHeight: 76,
         padding: theme.spacing.md,
         borderRadius: theme.radius.lg,
-        borderWidth: selected ? 2 : 1,
+        borderWidth: 2,
         borderColor: selected ? theme.colors.primary : theme.colors.border,
         backgroundColor: theme.colors.surface,
       }}
     >
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          borderRadius: theme.radius.lg,
-          borderWidth: 2,
-          borderColor: theme.colors.primary,
-          opacity: glow,
-        }}
-      />
       <View style={{ flex: 1, gap: theme.spacing.xs }}>
         <Text
           style={{

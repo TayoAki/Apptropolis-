@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { useMemo, useRef, useState, type ComponentProps } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -13,24 +13,17 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AiImage } from "../../components/AiImage";
+import { Card } from "../../components/card";
 import {
   DrillTile,
-  Frame,
   TechniqueOverlay,
   WaveDots,
   type Drill,
 } from "../../components/coach/CoachParts";
 import { EmptyState } from "../../components/empty-state";
-import {
-  Appear,
-  CountUp,
-  PressScale,
-  Skeleton,
-  Stagger,
-  haptic,
-} from "../../components/motion";
+import { Appear, PressScale, Skeleton, haptic } from "../../components/motion";
+import { FrameMarks, ScreenHeader, TextButton, type IconName } from "../../components/ui";
 import { track } from "../../data/analytics";
 import { useAI } from "../../data/ai";
 import { useAppState } from "../../data/app-state";
@@ -55,8 +48,6 @@ const COACH_RULES = [
   'Reply with JSON only: {"answer": string, "drill": {"title": string, "rounds": number, "roundSeconds": number, "callouts": string} | null}.',
   "Set drill to null when the question isn't about technique, conditioning or strategy you can drill. Never use emoji.",
 ].join(" ");
-
-type IconName = ComponentProps<typeof Ionicons>["name"];
 
 function clamp(value: unknown, min: number, max: number, fallback: number): number {
   const n = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback;
@@ -90,6 +81,7 @@ function parseReply(raw: string): { answer: string; drill: Drill | null } {
   }
 }
 
+/** One message. The coach's sit on the left as cards; yours sit on the right. */
 function Bubble({
   role,
   text,
@@ -106,38 +98,49 @@ function Bubble({
   const theme = useTheme();
   const coach = role === "coach";
   return (
-    <Frame accent={coach} style={{ gap: theme.spacing.sm }}>
-      <Text
-        style={{
-          color: coach ? theme.colors.primary : theme.colors.textMuted,
-          fontSize: theme.font.size.caption,
-          fontWeight: theme.font.weight.bold,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-        }}
-      >
-        {coach ? "Coach AI" : "You"}
-      </Text>
-      {photoUri ? (
-        <Image
-          source={{ uri: photoUri }}
-          accessibilityLabel="Your frame"
-          contentFit="cover"
-          style={{ height: 180, borderRadius: theme.radius.md }}
-        />
+    <View
+      accessible={!drill}
+      accessibilityLabel={`${coach ? "Coach" : "You"}: ${text}`}
+      style={{
+        alignSelf: coach ? "flex-start" : "flex-end",
+        maxWidth: "88%",
+        gap: theme.spacing.sm,
+        padding: theme.spacing.md,
+        borderRadius: theme.radius.md,
+        borderBottomLeftRadius: coach ? theme.radius.sm / 2 : theme.radius.md,
+        borderBottomRightRadius: coach ? theme.radius.md : theme.radius.sm / 2,
+        borderWidth: coach ? 1 : 0,
+        borderColor: theme.colors.border,
+        backgroundColor: coach ? theme.colors.surface : theme.colors.surfaceAlt,
+      }}
+    >
+      {coach ? (
+        <Text
+          style={{
+            color: theme.colors.primary,
+            fontSize: theme.font.size.caption,
+            fontWeight: theme.font.weight.bold,
+          }}
+        >
+          Coach
+        </Text>
       ) : null}
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontSize: coach ? theme.font.size.title : theme.font.size.body,
-          fontWeight: coach ? theme.font.weight.medium : theme.font.weight.regular,
-          lineHeight: coach ? 30 : 24,
-        }}
-      >
+      {photoUri ? (
+        <View style={{ borderRadius: theme.radius.sm, overflow: "hidden" }}>
+          <Image
+            source={{ uri: photoUri }}
+            accessibilityLabel="Your frame"
+            contentFit="cover"
+            style={{ width: 240, maxWidth: "100%", height: 180 }}
+          />
+          <FrameMarks />
+        </View>
+      ) : null}
+      <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
         {text}
       </Text>
       {drill && onRun ? <DrillTile drill={drill} onRun={() => onRun(drill)} /> : null}
-    </Frame>
+    </View>
   );
 }
 
@@ -191,7 +194,6 @@ function Chip({
 
 export default function CoachScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const { answers } = useAppState();
   const { isPremium } = usePurchases();
   const { items: messages, loading, add } = useCollection<CoachMessage>("coach_messages");
@@ -200,6 +202,7 @@ export default function CoachScreen() {
 
   const listRef = useRef<FlatList<CoachMessage>>(null);
   const stick = useRef(true);
+  const opened = useRef(false);
   const [draft, setDraft] = useState("");
   const [frame, setFrame] = useState<Photo | null>(null);
   const [choosing, setChoosing] = useState(false);
@@ -307,154 +310,58 @@ export default function CoachScreen() {
     }
   }
 
-  const header = (
-    <Stagger step={70} style={{ gap: theme.spacing.md, marginBottom: theme.spacing.md }}>
-      <Frame accent style={{ gap: theme.spacing.sm }}>
-        <View style={{ height: 200, borderRadius: theme.radius.md, overflow: "hidden" }}>
-          <AiImage
-            prompt="black and white side view of a boxer throwing a rear cross in a dim gym, dramatic light"
-            style={{ height: 200, borderRadius: theme.radius.md }}
-          />
-          <TechniqueOverlay label="REAR CROSS TRAIN" />
-        </View>
-        <Pressable
-          onPress={() => setDraft(SAMPLE_QUESTION)}
-          accessibilityRole="button"
-          accessibilityLabel={`Use the question: ${SAMPLE_QUESTION}`}
-          style={({ pressed }) => ({
-            minHeight: 44,
-            justifyContent: "center",
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.medium,
-            }}
-          >
-            {SAMPLE_QUESTION}
-          </Text>
-        </Pressable>
-        <View
+  // What a frame check is, shown while the conversation is empty.
+  const frameCheck = (
+    <Card>
+      <View style={{ height: 180, borderRadius: theme.radius.sm, overflow: "hidden" }}>
+        <AiImage
+          prompt="black and white side view of a boxer throwing a rear cross in a dim gym, dramatic light"
+          style={{ height: 180 }}
+        />
+        <TechniqueOverlay label="Rear cross" />
+        <FrameMarks />
+      </View>
+      <View style={{ gap: theme.spacing.xs }}>
+        <Text
+          accessibilityRole="header"
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: theme.spacing.sm,
+            color: theme.colors.text,
+            fontSize: theme.font.size.body,
+            fontWeight: theme.font.weight.bold,
           }}
         >
-          <Text
-            style={{
-              flexShrink: 1,
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
-            }}
-          >
-            Send a frame of your own training for a technique check
-          </Text>
-          {!isPremium ? (
-            <Pressable
-              onPress={openPaywall}
-              accessibilityRole="button"
-              accessibilityLabel="Unlock frame checks with Go Pro"
-              hitSlop={8}
-              style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <Ionicons name="lock-closed" size={14} color={theme.colors.primary} />
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.bold,
-                }}
-              >
-                Go Pro
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </Frame>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          minHeight: 44,
-        }}
-      >
-        {isPremium ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-            <Ionicons name="infinite" size={22} color={theme.colors.primary} />
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.medium,
-              }}
-            >
-              Unlimited coaching is on
-            </Text>
-          </View>
-        ) : (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "baseline",
-              gap: theme.spacing.xs,
-              flexShrink: 1,
-            }}
-          >
-            <CountUp
-              value={left}
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.title,
-                fontWeight: theme.font.weight.bold,
-              }}
-            />
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-              free questions left today
-            </Text>
-          </View>
-        )}
-        {!isPremium ? (
-          <Pressable
-            onPress={openPaywall}
-            accessibilityRole="button"
-            accessibilityLabel="Go Pro for unlimited coaching and frame checks"
-            hitSlop={12}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: theme.colors.primary,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              Go Pro
-            </Text>
-          </Pressable>
-        ) : null}
+          Technique check from a frame
+        </Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 24 }}>
+          Send a frame of your own training and ask about it, for example "{SAMPLE_QUESTION}"
+        </Text>
       </View>
-    </Stagger>
+      {isPremium ? (
+        <TextButton
+          label="Add a frame"
+          icon="camera-outline"
+          onPress={onCamera}
+          style={{ alignSelf: "flex-start" }}
+        />
+      ) : (
+        <TextButton
+          label="Frame checks are part of Pro"
+          icon="lock-closed"
+          onPress={openPaywall}
+          accessibilityLabel="Unlock frame checks with Pro"
+          style={{ alignSelf: "flex-start" }}
+        />
+      )}
+    </Card>
   );
 
   const empty = loading ? (
-    <Frame>
-      <Skeleton width={70} height={10} />
-      <Skeleton height={12} />
-      <Skeleton width="80%" height={12} />
-      <Skeleton width="55%" height={12} />
-    </Frame>
-  ) : (
     <View style={{ gap: theme.spacing.md }}>
+      <Skeleton width="70%" height={64} radius={theme.radius.md} style={{ alignSelf: "flex-end" }} />
+      <Skeleton width="88%" height={120} radius={theme.radius.md} />
+    </View>
+  ) : pending ? null : (
+    <View style={{ gap: theme.spacing.lg }}>
       <EmptyState
         icon="chatbubbles-outline"
         title="Ask about the round you just threw"
@@ -467,45 +374,92 @@ export default function CoachScreen() {
           </Appear>
         ))}
       </View>
+      {frameCheck}
     </View>
   );
 
   const footer = (
-    <View style={{ gap: theme.spacing.md, marginTop: theme.spacing.md }}>
+    <View style={{ gap: theme.spacing.md, marginTop: pending || error ? theme.spacing.md : 0 }}>
       {pending ? (
         <>
           <Appear distance={18}>
             <Bubble role="user" text={pending.text} photoUri={pending.photoUri} />
           </Appear>
           <Appear distance={18}>
-            <Frame accent style={{ gap: theme.spacing.sm }}>
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.bold,
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
-                }}
-              >
-                Coach AI
-              </Text>
+            <View
+              style={{
+                alignSelf: "flex-start",
+                gap: theme.spacing.sm,
+                padding: theme.spacing.md,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surface,
+              }}
+            >
               <WaveDots />
               <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-                Checking your stance, hands and hips against your last sessions.
+                Coach is writing…
               </Text>
-            </Frame>
+            </View>
           </Appear>
         </>
       ) : null}
       {error && !pending ? (
-        <Frame style={{ borderColor: theme.colors.danger }}>
-          <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>{error}</Text>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-            Your question is back in the box. Send it again when you're ready.
-          </Text>
-        </Frame>
+        <View
+          accessibilityLiveRegion="polite"
+          style={{
+            flexDirection: "row",
+            gap: theme.spacing.md,
+            padding: theme.spacing.md,
+            borderRadius: theme.radius.md,
+            borderWidth: 1,
+            borderColor: theme.colors.danger,
+            backgroundColor: theme.colors.surface,
+          }}
+        >
+          <Ionicons name="alert-circle" size={22} color={theme.colors.danger} />
+          <View style={{ flex: 1, gap: theme.spacing.xs }}>
+            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
+              {error}
+            </Text>
+            <Text
+              style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2, lineHeight: 20 }}
+            >
+              Your question is back in the box. Send it again when you're ready.
+            </Text>
+          </View>
+        </View>
       ) : null}
+    </View>
+  );
+
+  const quota = isPremium ? null : (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: theme.spacing.md,
+      }}
+    >
+      <Text
+        style={{
+          flex: 1,
+          color: theme.colors.textMuted,
+          fontSize: theme.font.size.caption + 2,
+          fontVariant: ["tabular-nums"],
+        }}
+      >
+        {left > 0
+          ? `${left} free ${left === 1 ? "question" : "questions"} left today`
+          : "No free questions left today"}
+      </Text>
+      <TextButton
+        label="Go Pro"
+        onPress={openPaywall}
+        accessibilityLabel="Go Pro for unlimited coaching and frame checks"
+      />
     </View>
   );
 
@@ -513,14 +467,15 @@ export default function CoachScreen() {
     <View
       style={{
         paddingHorizontal: theme.spacing.lg,
-        paddingTop: theme.spacing.sm,
+        paddingTop: theme.spacing.xs,
         paddingBottom: theme.spacing.sm,
-        gap: theme.spacing.sm,
+        gap: theme.spacing.xs,
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
         backgroundColor: theme.colors.background,
       }}
     >
+      {quota}
       {choosing ? (
         <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
           <Chip
@@ -570,73 +525,48 @@ export default function CoachScreen() {
           onPress={onCamera}
           accessibilityRole="button"
           accessibilityLabel={
-            isPremium ? "Add a frame for a technique check" : "Frame checks are in Go Pro"
+            isPremium ? "Add a frame for a technique check" : "Frame checks are part of Pro"
           }
           hitSlop={8}
           style={({ pressed }) => ({
             width: 44,
             height: 44,
-            borderRadius: theme.radius.md,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.surface,
+            borderRadius: 22,
             alignItems: "center",
             justifyContent: "center",
+            backgroundColor: theme.colors.surfaceAlt,
             opacity: pressed ? 0.7 : 1,
           })}
         >
-          <Ionicons name="camera-outline" size={24} color={theme.colors.text} />
-          {!isPremium ? (
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                right: 4,
-                bottom: 4,
-                width: 16,
-                height: 16,
-                borderRadius: 8,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: theme.colors.primary,
-              }}
-            >
-              <Ionicons name="lock-closed" size={9} color={theme.colors.onPrimary} />
-            </View>
-          ) : null}
+          <Ionicons
+            name={isPremium ? "camera-outline" : "lock-closed-outline"}
+            size={22}
+            color={theme.colors.text}
+          />
         </Pressable>
-        <View
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={() => send(draft, frame)}
+          placeholder="Ask your coach"
+          placeholderTextColor={theme.colors.textMuted}
+          accessibilityLabel="Message to the coach"
+          returnKeyType="send"
+          editable={!busy}
           style={{
             flex: 1,
-            flexDirection: "row",
-            alignItems: "center",
+            minWidth: 0,
             minHeight: 44,
-            paddingLeft: theme.spacing.md,
-            paddingRight: theme.spacing.xs,
+            paddingHorizontal: theme.spacing.lg,
+            paddingVertical: theme.spacing.sm,
             borderRadius: theme.radius.pill,
             borderWidth: 1,
-            borderColor: theme.colors.border,
+            borderColor: theme.colors.textMuted,
             backgroundColor: theme.colors.surface,
+            color: theme.colors.text,
+            fontSize: theme.font.size.body,
           }}
-        >
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            onSubmitEditing={() => send(draft, frame)}
-            placeholder="Ask coach anything..."
-            placeholderTextColor={theme.colors.textMuted}
-            accessibilityLabel="Message to the coach"
-            returnKeyType="send"
-            editable={!busy}
-            style={{
-              flex: 1,
-              minHeight: 44,
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              paddingVertical: theme.spacing.sm,
-            }}
-          />
-        </View>
+        />
         <PressScale
           onPress={() => send(draft, frame)}
           disabled={!canSend}
@@ -647,14 +577,14 @@ export default function CoachScreen() {
           style={{
             width: 44,
             height: 44,
-            borderRadius: theme.radius.md,
+            borderRadius: 22,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: theme.colors.primary,
             opacity: canSend ? 1 : 0.5,
           }}
         >
-          <Ionicons name="arrow-forward" size={22} color={theme.colors.onPrimary} />
+          <Ionicons name="arrow-up" size={22} color={theme.colors.onPrimary} />
         </PressScale>
       </View>
     </View>
@@ -665,48 +595,7 @@ export default function CoachScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View
-        style={{
-          paddingTop: insets.top + theme.spacing.sm,
-          paddingBottom: theme.spacing.md,
-          paddingHorizontal: theme.spacing.lg,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          backgroundColor: theme.colors.background,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-        }}
-      >
-        <View style={{ width: 44 }} />
-        <Text
-          accessibilityRole="header"
-          style={{
-            color: theme.colors.text,
-            fontSize: theme.font.size.headline,
-            fontWeight: theme.font.weight.bold,
-            letterSpacing: 1.5,
-            textTransform: "uppercase",
-          }}
-        >
-          Corner Coach
-        </Text>
-        <Pressable
-          onPress={() => router.navigate("/progress")}
-          accessibilityRole="button"
-          accessibilityLabel="Session history"
-          hitSlop={8}
-          style={({ pressed }) => ({
-            width: 44,
-            height: 44,
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Ionicons name="clipboard-outline" size={24} color={theme.colors.text} />
-        </Pressable>
-      </View>
+      <ScreenHeader title="Corner coach" />
 
       <FlatList
         ref={listRef}
@@ -724,8 +613,7 @@ export default function CoachScreen() {
           </Appear>
         )}
         ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
-        ListHeaderComponent={header}
-        ListEmptyComponent={empty}
+        ListEmptyComponent={empty ?? undefined}
         ListFooterComponent={footer}
         contentContainerStyle={{ padding: theme.spacing.lg, flexGrow: 1 }}
         style={{ flex: 1 }}
@@ -737,8 +625,12 @@ export default function CoachScreen() {
           stick.current =
             contentOffset.y + layoutMeasurement.height >= contentSize.height - 80;
         }}
-        onContentSizeChange={() => {
-          if (stick.current) listRef.current?.scrollToEnd({ animated: true });
+        onContentSizeChange={(_width, height) => {
+          if (!stick.current || ordered.length === 0) return;
+          // Open on the latest message without a visible scroll; follow new ones smoothly. The
+          // offset comes from the measured height: scrollToEnd guesses before rows are measured.
+          listRef.current?.scrollToOffset({ offset: height, animated: opened.current });
+          opened.current = true;
         }}
       />
 

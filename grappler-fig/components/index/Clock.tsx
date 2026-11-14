@@ -1,98 +1,99 @@
-// The round clock for the Train screen: a monospaced countdown whose digits drop in as they change.
-import { useLayoutEffect, useRef } from "react";
-import { Animated, Easing, Platform, Text, View } from "react-native";
+// The round clock for the Train screen. Every digit sits in its own fixed-width cell and the
+// colon is drawn as two dots, so nothing overlaps or shifts whatever font the phone has. The
+// digits don't animate: mid-round the clock has to be exact at a glance.
+import { Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
-import { useReducedMotion } from "../motion";
+import { clockFace } from "../ui";
 
-/** A monospaced face, so every digit takes the same width and the countdown never shifts. */
-const CLOCK_FONT = Platform.select({ ios: "Menlo", default: "monospace" });
+/** A digit's cell and the colon's cell, as a share of the font size. */
+const DIGIT_CELL = 0.62;
+const COLON_CELL = 0.3;
 
-/** One digit of the round clock. It drops in from above when its value changes. */
-function FlipDigit({ char, size }: { char: string; size: number }) {
-  const theme = useTheme();
-  const reduced = useReducedMotion();
-  const drop = useRef(new Animated.Value(1)).current;
-  const mounted = useRef(false);
-
-  useLayoutEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    if (reduced) {
-      drop.setValue(1);
-      return;
-    }
-    drop.setValue(0);
-    const animation = Animated.timing(drop, {
-      toValue: 1,
-      duration: 260,
-      easing: Easing.out(Easing.back(1.4)),
-      useNativeDriver: true,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [char, reduced, drop]);
-
-  const lift = size * 0.42;
-  const translateY = drop.interpolate({ inputRange: [0, 1], outputRange: [-lift, 0] });
-  const opacity = drop.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] });
-
-  return (
-    <View
-      style={{
-        width: size * 0.6,
-        height: size * 1.1,
-        overflow: "hidden",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Animated.Text
-        style={{
-          fontFamily: CLOCK_FONT,
-          fontSize: size,
-          lineHeight: size * 1.1,
-          fontWeight: theme.font.weight.bold,
-          color: theme.colors.text,
-          transform: [{ translateY }],
-          opacity,
-        }}
-      >
-        {char}
-      </Animated.Text>
-    </View>
-  );
+/** The widest the clock is drawn at this size: four digits and the colon. */
+export function clockWidth(size: number): number {
+  return size * (DIGIT_CELL * 4 + COLON_CELL);
 }
 
-/** A countdown such as "02:41", each digit flipping down as it changes. */
-export function FlipClock({ value, size = 104 }: { value: string; size?: number }) {
+/** The largest clock size that fits a given width. */
+export function clockSizeFor(width: number, max = 128): number {
+  return Math.max(56, Math.min(max, Math.floor(width / (DIGIT_CELL * 4 + COLON_CELL))));
+}
+
+/** "2 minutes 41 seconds" */
+function spoken(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [
+    minutes ? `${minutes} ${minutes === 1 ? "minute" : "minutes"}` : "",
+    `${seconds} ${seconds === 1 ? "second" : "seconds"}`,
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
+/** A countdown such as "02:41". `dim` is for the rest between rounds. */
+export function RoundClock({
+  seconds,
+  size = 104,
+  dim = false,
+}: {
+  seconds: number;
+  size?: number;
+  dim?: boolean;
+}) {
   const theme = useTheme();
+  const total = Math.max(0, Math.round(seconds));
+  const digits = `${String(Math.floor(total / 60)).padStart(2, "0")}${String(total % 60).padStart(2, "0")}`;
+  const color = dim ? theme.colors.textMuted : theme.colors.text;
+  const height = Math.round(size * 1.08);
+  const dot = Math.round(size * 0.13);
+
+  const digit = (char: string, key: number) => (
+    <View
+      key={key}
+      style={{ width: size * DIGIT_CELL, height, alignItems: "center", justifyContent: "center" }}
+    >
+      <Text
+        allowFontScaling={false}
+        style={[
+          clockFace,
+          {
+            color,
+            fontSize: size,
+            lineHeight: height,
+            fontVariant: ["tabular-nums"],
+            includeFontPadding: false,
+            textAlign: "center",
+          },
+        ]}
+      >
+        {char}
+      </Text>
+    </View>
+  );
+
   return (
     <View
-      accessibilityLabel={`${value} left in this phase`}
-      style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}
+      accessible
+      accessibilityRole="timer"
+      accessibilityLabel={`${spoken(total)} left`}
+      style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", height }}
     >
-      {Array.from(value).map((char, index) =>
-        char === ":" ? (
-          <Text
-            key={index}
-            style={{
-              width: size * 0.3,
-              textAlign: "center",
-              fontFamily: CLOCK_FONT,
-              fontSize: size,
-              lineHeight: size * 1.1,
-              fontWeight: theme.font.weight.bold,
-              color: theme.colors.text,
-            }}
-          >
-            :
-          </Text>
-        ) : (
-          <FlipDigit key={index} char={char} size={size} />
-        ),
-      )}
+      {digit(digits[0]!, 0)}
+      {digit(digits[1]!, 1)}
+      <View
+        style={{
+          width: size * COLON_CELL,
+          height,
+          alignItems: "center",
+          justifyContent: "center",
+          gap: Math.round(size * 0.16),
+        }}
+      >
+        <View style={{ width: dot, height: dot, borderRadius: dot / 4, backgroundColor: color }} />
+        <View style={{ width: dot, height: dot, borderRadius: dot / 4, backgroundColor: color }} />
+      </View>
+      {digit(digits[2]!, 2)}
+      {digit(digits[3]!, 3)}
     </View>
   );
 }

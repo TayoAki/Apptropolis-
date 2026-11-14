@@ -1,8 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, Text, View } from "react-native";
-import { PressScale, Skeleton } from "../motion";
+import { Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
-import { router } from "expo-router";
+import { PressScale, Skeleton } from "../motion";
 
 interface Props {
   premium: boolean;
@@ -15,6 +14,7 @@ interface Props {
   onUnlock: () => void;
 }
 
+/** Trend insights from the coach: a teaser and the way to Plus for free users, the ask for Plus. */
 export function InsightsCard({ premium, teaser, answer, loading, error, onAsk, onUnlock }: Props) {
   const theme = useTheme();
   const label = !premium
@@ -47,45 +47,27 @@ export function InsightsCard({ premium, teaser, answer, loading, error, onAsk, o
         <Text
           accessibilityRole="header"
           style={{
-            flexShrink: 1,
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
+            flex: 1,
+            color: theme.colors.text,
+            fontSize: theme.font.size.title,
             fontWeight: theme.font.weight.bold,
-            letterSpacing: 1,
           }}
         >
-          AI COACH TREND INSIGHTS
+          Coach trend insights
         </Text>
         {!premium ? (
-          <Pressable
-            onPress={() => router.push("/paywall")}
-            accessibilityRole="button"
-            accessibilityLabel="Unlock with Plus"
-            hitSlop={8}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              minHeight: 32,
-              paddingHorizontal: theme.spacing.sm,
-              borderRadius: theme.radius.pill,
-              borderWidth: 1,
-              borderColor: theme.colors.primary,
-              backgroundColor: theme.colors.surfaceAlt,
-              opacity: pressed ? 0.7 : 1,
-            })}
-          >
-            <Ionicons name="lock-closed" size={14} color={theme.colors.primary} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Ionicons name="lock-closed" size={14} color={theme.colors.textMuted} />
             <Text
               style={{
-                color: theme.colors.primary,
+                color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
                 fontWeight: theme.font.weight.bold,
               }}
             >
-              Unlock with Plus
+              Plus
             </Text>
-          </Pressable>
+          </View>
         ) : null}
       </View>
 
@@ -107,9 +89,15 @@ export function InsightsCard({ premium, teaser, answer, loading, error, onAsk, o
       )}
 
       {error ? (
-        <Text style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}>
-          {error}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.sm }}>
+          <Ionicons name="alert-circle-outline" size={18} color={theme.colors.danger} />
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ flex: 1, color: theme.colors.danger, fontSize: theme.font.size.caption }}
+          >
+            {error}
+          </Text>
+        </View>
       ) : null}
 
       <PressScale
@@ -119,6 +107,7 @@ export function InsightsCard({ premium, teaser, answer, loading, error, onAsk, o
         disabled={premium && loading}
         accessibilityRole="button"
         accessibilityLabel={label}
+        accessibilityState={{ busy: premium && loading }}
         style={{
           flexDirection: "row",
           alignItems: "center",

@@ -1,7 +1,4 @@
 import {
-  addDays,
-  dayKey,
-  startOfDay,
   type CollectionName,
   type Collections,
   type Equipment,
@@ -10,20 +7,10 @@ import {
   type MuscleGroup,
 } from "./schema";
 
-// Sample records for a first launch, dated relative to today (so the week always has a story):
-// a week of workouts with one missed session, the sets logged for two of them, and the feed
-// shared with the partner. The exercise catalog (reference content) is seeded alongside them.
-const now = new Date();
-
-/** The local day `offset` days from today, as YYYY-MM-DD. */
-const day = (offset: number) => dayKey(addDays(now, offset));
-
-/** An ISO time on the day `offset` days from today. */
-const at = (offset: number, hour: number, minute = 0) => {
-  const when = addDays(startOfDay(now), offset);
-  when.setHours(hour, minute, 0, 0);
-  return when.toISOString();
-};
+// What a first launch starts with: the exercise catalog (reference content) and nothing else.
+// The person's workouts are laid out from their own answers when they finish setup, their sets
+// are the ones they log, and the partner feed starts empty: a fresh install never shows a
+// history, a score or a partner that isn't theirs.
 
 // The exercise catalog: id, name, muscle group, equipment, level, one form cue.
 const exerciseRows: Array<[string, string, MuscleGroup, Equipment, ExerciseLevel, string]> = [
@@ -79,133 +66,8 @@ const exerciseCatalog: Exercise[] = exerciseRows.map(
 );
 
 export const seed: { [K in CollectionName]: Collections[K][] } = {
-  workouts: [
-    {
-      id: "w1",
-      date: day(-6),
-      title: "Upper Body A",
-      exercises: ["incline-dumbbell-press", "lat-pulldown", "overhead-press", "hammer-curl"],
-      completed: true,
-      completedAt: at(-6, 18, 35),
-      deleted: false,
-    },
-    {
-      id: "w2",
-      date: day(-4),
-      title: "Lower Body A",
-      exercises: ["back-squat", "romanian-deadlift", "leg-curl", "calf-raise", "dead-bug"],
-      completed: true,
-      completedAt: at(-4, 18, 10),
-      deleted: false,
-    },
-    {
-      id: "w3",
-      date: day(-2),
-      title: "Full Body Circuit",
-      exercises: ["goblet-squat", "push-up", "one-arm-row", "kettlebell-swing", "farmers-carry"],
-      completed: false,
-      completedAt: null,
-      deleted: false,
-    },
-    {
-      id: "w4",
-      date: day(-1),
-      title: "Upper Body B",
-      exercises: ["bench-press", "barbell-row", "lateral-raise", "tricep-pushdown"],
-      completed: true,
-      completedAt: at(-1, 19, 20),
-      deleted: false,
-    },
-    {
-      id: "w5",
-      date: day(0),
-      title: "Lower Body B",
-      exercises: ["deadlift", "split-squat", "hip-thrust", "leg-curl", "pallof-press"],
-      completed: false,
-      completedAt: null,
-      deleted: false,
-    },
-    {
-      id: "w6",
-      date: day(2),
-      title: "Upper Body A",
-      exercises: ["incline-dumbbell-press", "lat-pulldown", "overhead-press", "hammer-curl"],
-      completed: false,
-      completedAt: null,
-      deleted: false,
-    },
-    {
-      id: "w7",
-      date: day(4),
-      title: "Lower Body A",
-      exercises: ["back-squat", "romanian-deadlift", "leg-curl", "calf-raise", "dead-bug"],
-      completed: false,
-      completedAt: null,
-      deleted: false,
-    },
-  ],
-
-  set_logs: [
-    { id: "s1", workoutId: "w2", exercise: "back-squat", setNumber: 1, reps: 5, weight: 185 },
-    { id: "s2", workoutId: "w2", exercise: "back-squat", setNumber: 2, reps: 5, weight: 185 },
-    { id: "s3", workoutId: "w2", exercise: "back-squat", setNumber: 3, reps: 5, weight: 195 },
-    { id: "s4", workoutId: "w2", exercise: "romanian-deadlift", setNumber: 1, reps: 8, weight: 155 },
-    { id: "s5", workoutId: "w4", exercise: "bench-press", setNumber: 1, reps: 6, weight: 135 },
-    { id: "s6", workoutId: "w4", exercise: "bench-press", setNumber: 2, reps: 6, weight: 135 },
-    { id: "s7", workoutId: "w4", exercise: "barbell-row", setNumber: 1, reps: 8, weight: 115 },
-    { id: "s8", workoutId: "w4", exercise: "barbell-row", setNumber: 2, reps: 8, weight: 115 },
-  ],
-
-  partner_updates: [
-    {
-      id: "u1",
-      type: "completion",
-      from: "partner",
-      message: "Upper Body A is done. Your turn whenever you're ready.",
-      createdAt: at(-6, 19, 5),
-      weekScore: 50,
-    },
-    {
-      id: "u2",
-      type: "completion",
-      from: "you",
-      message: "Lower Body A done. Squats were heavier than last week.",
-      createdAt: at(-4, 18, 12),
-      weekScore: 50,
-    },
-    {
-      id: "u3",
-      type: "stake",
-      from: "you",
-      message: "If I miss a session this week, I buy the coffee. Deal?",
-      createdAt: at(-3, 8, 30),
-      weekScore: 67,
-    },
-    {
-      id: "u4",
-      type: "stake",
-      from: "partner",
-      message: "Deal. If I miss, I cook dinner this week.",
-      createdAt: at(-3, 9, 2),
-      weekScore: 67,
-    },
-    {
-      id: "u5",
-      type: "completion",
-      from: "partner",
-      message: "Upper Body B done. New top set on the bench for me.",
-      createdAt: at(-1, 18, 40),
-      weekScore: 75,
-    },
-    {
-      id: "u6",
-      type: "cheer",
-      from: "partner",
-      message: "Missed the circuit? Today counts. Let's go.",
-      createdAt: at(0, 7, 45),
-      weekScore: 60,
-    },
-  ],
-
+  workouts: [],
+  set_logs: [],
+  partner_updates: [],
   exercises: exerciseCatalog,
 };

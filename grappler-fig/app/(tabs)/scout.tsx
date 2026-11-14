@@ -1,17 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Animated,
-  Easing,
-  FlatList,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Animated, Easing, FlatList, Text, TextInput, View } from "react-native";
 import { useAI } from "../../data/ai";
 import { useAppState } from "../../data/app-state";
 import { track } from "../../data/analytics";
@@ -21,6 +12,7 @@ import { usePurchases } from "../../data/purchases";
 import type { Stance } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PrimaryButton } from "../../components/button";
+import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { Lottie } from "../../components/lottie";
 import {
@@ -32,7 +24,6 @@ import {
   useReducedMotion,
 } from "../../components/motion";
 import {
-  Corners,
   firstSentence,
   parseCallouts,
   PlanRow,
@@ -41,6 +32,10 @@ import {
   weaknessOf,
   type ScoutRecord,
 } from "../../components/scout/ScoutCard";
+import { Segmented } from "../../components/settings/controls";
+import { FrameMarks, ScreenHeader, TextButton, displayFace } from "../../components/ui";
+
+const TILE = { width: 96, height: 112 };
 
 interface Scan {
   stance: Stance;
@@ -80,7 +75,7 @@ function parseScan(text: string): Scan | null {
   }
 }
 
-/** A thin line that sweeps up and down the photo with a soft glow behind it. */
+/** A thin line that sweeps up and down the photo while it is being read. */
 function RadarSweep({ height }: { height: number }) {
   const theme = useTheme();
   const reduced = useReducedMotion();
@@ -133,10 +128,6 @@ function RadarSweep({ height }: { height: number }) {
           top: 0,
           height: 2,
           backgroundColor: theme.colors.primary,
-          shadowColor: theme.colors.primary,
-          shadowOpacity: 1,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 0 },
           transform: [{ translateY: line }],
         }}
       />
@@ -146,7 +137,6 @@ function RadarSweep({ height }: { height: number }) {
 
 export default function ScoutScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const { items, loading, add } = useCollection<ScoutRecord>("opponent_scouts");
   const { isPremium, openPaywall } = usePurchases();
   const { answers } = useAppState();
@@ -241,51 +231,37 @@ export default function ScoutScreen() {
   const message = notice ?? scanError;
   const copy =
     stage === "idle"
-      ? "One frame with the whole body in shot, guard up. The read covers stance, habits and the punch that opens them."
+      ? "Add one frame of an opponent or sparring partner: whole body in shot, guard up. The read covers stance, habits and the punch that opens them."
       : stage === "picked"
         ? "Name them, then analyze. One clear frame is enough."
         : stage === "scanning"
           ? "Hold on, the read takes a few seconds."
-          : "Saved to All Reports. Open it for the full game plan.";
+          : "Saved to your reports. Open it for the full game plan.";
 
   const analysisPanel = (
-    <View
-      style={{
-        padding: theme.spacing.md,
-        gap: theme.spacing.md,
-        borderRadius: theme.radius.lg,
-        borderWidth: 1,
-        borderStyle: "dashed",
-        borderColor: theme.colors.primary,
-        backgroundColor: theme.colors.surface,
-      }}
-    >
+    <Card>
       <View style={{ flexDirection: "row", gap: theme.spacing.md, alignItems: "center" }}>
-        <View
-          style={{
-            width: 96,
-            height: 112,
-            borderRadius: theme.radius.md,
-            overflow: "hidden",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: theme.colors.surfaceAlt,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-          }}
-        >
-          {tile ? (
-            <>
-              <Image source={{ uri: tile }} contentFit="cover" style={{ width: "100%", height: "100%" }} />
-              <Reticle width={96} height={112} color={theme.colors.primary} />
-            </>
-          ) : (
-            <Ionicons name="camera-outline" size={36} color={theme.colors.textMuted} />
-          )}
-          {scanning ? <RadarSweep height={112} /> : null}
-        </View>
-
-        <View style={{ flex: 1, gap: theme.spacing.sm }}>
+        {tile ? (
+          <View
+            style={{
+              ...TILE,
+              borderRadius: theme.radius.sm,
+              overflow: "hidden",
+              backgroundColor: theme.colors.surfaceAlt,
+            }}
+          >
+            <Image
+              source={{ uri: tile }}
+              accessibilityLabel="The frame you chose"
+              contentFit="cover"
+              style={{ width: "100%", height: "100%" }}
+            />
+            <Reticle {...TILE} color={theme.colors.primary} />
+            <FrameMarks size={10} inset={6} />
+            {scanning ? <RadarSweep height={TILE.height} /> : null}
+          </View>
+        ) : null}
+        <View style={{ flex: 1, gap: theme.spacing.xs }}>
           <Text
             accessibilityRole="header"
             style={{
@@ -294,54 +270,34 @@ export default function ScoutScreen() {
               fontWeight: theme.font.weight.bold,
             }}
           >
-            New Opponent Analysis
+            New opponent analysis
           </Text>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 22 }}>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 24 }}>
             {copy}
           </Text>
         </View>
       </View>
 
       {stage === "idle" ? (
-        <View style={{ gap: theme.spacing.sm }}>
-          <View>
-            <PrimaryButton
-              label={freeUsed ? "Unlock another scout" : "Add Footage Frame"}
-              icon={freeUsed ? "lock-closed" : "add"}
-              onPress={freeUsed ? openPaywall : () => choose("library")}
-            />
-            <Corners color={theme.colors.primary} size={14} inset={-6} />
-          </View>
-          <Pressable
+        <View style={{ gap: theme.spacing.xs }}>
+          <PrimaryButton
+            label={freeUsed ? "Unlock another scout" : "Add footage frame"}
+            icon={freeUsed ? "lock-closed" : "add"}
+            onPress={freeUsed ? openPaywall : () => choose("library")}
+          />
+          <TextButton
+            label="Take a photo"
+            icon="camera-outline"
+            tone="plain"
             onPress={() => choose("camera")}
-            accessibilityRole="button"
             accessibilityLabel="Take a photo of an opponent"
-            hitSlop={12}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: theme.spacing.sm,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Ionicons name="camera-outline" size={20} color={theme.colors.text} />
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.medium,
-              }}
-            >
-              Take a photo
-            </Text>
-          </Pressable>
+          />
           {!isPremium ? (
             <Text
               style={{
                 color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
+                fontSize: theme.font.size.caption + 2,
+                lineHeight: 20,
                 textAlign: "center",
               }}
             >
@@ -366,37 +322,16 @@ export default function ScoutScreen() {
             style={{
               minHeight: 48,
               paddingHorizontal: theme.spacing.md,
-              borderRadius: theme.radius.md,
+              borderRadius: theme.radius.sm,
               borderWidth: 1,
-              borderColor: theme.colors.border,
-              backgroundColor: theme.colors.surfaceAlt,
+              borderColor: theme.colors.textMuted,
+              backgroundColor: theme.colors.background,
               color: theme.colors.text,
               fontSize: theme.font.size.body,
             }}
           />
           <PrimaryButton label="Analyze this frame" icon="scan-outline" onPress={analyze} />
-          <Pressable
-            onPress={() => choose("library")}
-            accessibilityRole="button"
-            accessibilityLabel="Choose another frame"
-            hitSlop={12}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: theme.colors.primary,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.medium,
-              }}
-            >
-              Choose another frame
-            </Text>
-          </Pressable>
+          <TextButton label="Choose another frame" onPress={() => choose("library")} />
         </View>
       ) : null}
 
@@ -411,176 +346,72 @@ export default function ScoutScreen() {
 
       {stage === "done" && done ? (
         <View style={{ gap: theme.spacing.md }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-            <Lottie name="success" size={56} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                Read confidence
-              </Text>
+          <View style={{ gap: theme.spacing.sm }}>
+            <View style={{ flexDirection: "row", alignItems: "baseline", gap: theme.spacing.sm }}>
               <CountUp
                 value={done.confidence ?? 0}
                 format={(n) => `${Math.round(n)}%`}
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.headline,
-                  fontWeight: theme.font.weight.bold,
-                }}
+                style={[
+                  displayFace,
+                  { color: theme.colors.text, fontSize: theme.font.size.headline },
+                ]}
               />
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+                read confidence
+              </Text>
             </View>
+            <GrowBar progress={(done.confidence ?? 0) / 100} height={6} />
           </View>
-          <GrowBar progress={(done.confidence ?? 0) / 100} height={8} />
-          <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}>
-            <Text style={{ color: theme.colors.textMuted }}>Weakness: </Text>
+          <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
+            <Text style={{ color: theme.colors.textMuted }}>Opening: </Text>
             {weaknessOf(done)}
           </Text>
-          <PrimaryButton
-            label="Open report"
-            icon="document-text-outline"
-            onPress={() => router.push(`/opponent/${done.id}`)}
-          />
-          <Pressable
-            onPress={() => {
-              setDone(null);
-              setDraft(null);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Scout another opponent"
-            hitSlop={12}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: theme.colors.primary,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.medium,
+          <View style={{ gap: theme.spacing.xs }}>
+            <PrimaryButton
+              label="Open report"
+              icon="document-text-outline"
+              onPress={() => router.push(`/opponent/${done.id}`)}
+            />
+            <TextButton
+              label="Scout another"
+              onPress={() => {
+                setDone(null);
+                setDraft(null);
               }}
-            >
-              Scout another
-            </Text>
-          </Pressable>
+              accessibilityLabel="Scout another opponent"
+            />
+          </View>
         </View>
       ) : null}
 
       {message ? (
-        <Text
+        <View
           accessibilityLiveRegion="polite"
-          style={{ color: theme.colors.danger, fontSize: theme.font.size.body }}
+          style={{ flexDirection: "row", gap: theme.spacing.sm }}
         >
-          {message}
-        </Text>
+          <Ionicons name="alert-circle" size={20} color={theme.colors.danger} />
+          <Text style={{ flex: 1, color: theme.colors.danger, fontSize: theme.font.size.body, lineHeight: 22 }}>
+            {message}
+          </Text>
+        </View>
       ) : null}
-    </View>
-  );
-
-  const tabs: Array<{ key: "all" | "plans"; label: string; count: number }> = [
-    { key: "all", label: "All Reports", count: items.length },
-    { key: "plans", label: "Saved Game Plans", count: plans.length },
-  ];
-
-  const segment = (
-    <View
-      style={{
-        flexDirection: "row",
-        gap: 4,
-        padding: 4,
-        borderRadius: theme.radius.md,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surface,
-      }}
-    >
-      {tabs.map((option) => {
-        const active = tab === option.key;
-        return (
-          <Pressable
-            key={option.key}
-            onPress={() => {
-              if (active) return;
-              haptic("selection");
-              setTab(option.key);
-            }}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={`${option.label}, ${option.count}`}
-            style={{
-              flex: 1,
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              paddingHorizontal: theme.spacing.xs,
-              borderRadius: theme.radius.sm,
-              backgroundColor: active ? theme.colors.surfaceAlt : theme.colors.surface,
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              style={{
-                color: active ? theme.colors.text : theme.colors.textMuted,
-                fontSize: theme.font.size.body,
-                fontWeight: active ? theme.font.weight.bold : theme.font.weight.medium,
-                fontVariant: ["tabular-nums"],
-              }}
-            >
-              {`${option.label} (${option.count})`}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    </Card>
   );
 
   const header = (
-    <View style={{ gap: theme.spacing.lg }}>
-      <Appear>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: theme.spacing.md,
-          }}
-        >
-          <View style={{ flex: 1, gap: theme.spacing.sm }}>
-            <Text
-              accessibilityRole="header"
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.headline,
-                fontWeight: theme.font.weight.bold,
-                letterSpacing: 1,
-              }}
-            >
-              OPPONENT SCOUT
-            </Text>
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 22 }}>
-              Upload video stills or photos. AI maps stance, habits and punch counters.
-            </Text>
-          </View>
-          <Link href="/settings" asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              hitSlop={12}
-              style={({ pressed }) => ({
-                minWidth: 44,
-                minHeight: 44,
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <Ionicons name="settings-outline" size={24} color={theme.colors.textMuted} />
-            </Pressable>
-          </Link>
-        </View>
+    <View style={{ gap: theme.spacing.lg, marginBottom: theme.spacing.xs }}>
+      <Appear>{analysisPanel}</Appear>
+      <Appear delay={80}>
+        <Segmented
+          accessibilityLabel="Reports or game plans"
+          options={[
+            { value: "all", label: `Reports (${items.length})` },
+            { value: "plans", label: `Game plans (${plans.length})` },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
       </Appear>
-      <Appear delay={80}>{analysisPanel}</Appear>
-      <Appear delay={140}>{segment}</Appear>
     </View>
   );
 
@@ -591,50 +422,46 @@ export default function ScoutScreen() {
       icon="eye-outline"
       title="No opponents scouted yet"
       body="Add one frame of a sparring partner or a video still. The AI reads their stance and the punch that opens them."
-      actionLabel="Add footage frame"
-      onAction={() => choose("library")}
     />
   ) : (
     <EmptyState
       icon="document-text-outline"
       title="No game plans yet"
       body="Each scouted opponent gets a plan with callouts you can run as a round."
-      actionLabel="Scout an opponent"
-      onAction={() => choose("library")}
     />
   );
 
   return (
-    <FlatList
-      data={shown}
-      keyExtractor={(item) => item.id}
-      keyboardShouldPersistTaps="handled"
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      contentContainerStyle={{
-        paddingTop: insets.top + theme.spacing.lg,
-        paddingHorizontal: theme.spacing.lg,
-        paddingBottom: theme.spacing.xl,
-        gap: theme.spacing.md,
-      }}
-      ListHeaderComponent={header}
-      ListEmptyComponent={empty}
-      renderItem={({ item, index }) => (
-        <Appear delay={Math.min(index, 8) * 50}>
-          {tab === "all" ? (
-            <ScoutCard
-              item={item}
-              onPress={() => router.push(`/opponent/${item.id}`)}
-            />
-          ) : (
-            <PlanRow
-              item={item}
-              readable={readable(item)}
-              onRun={() => router.push(`/opponent/${item.id}`)}
-              onUnlock={openPaywall}
-            />
-          )}
-        </Appear>
-      )}
-    />
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <ScreenHeader title="Opponent scout" />
+      <FlatList
+        data={shown}
+        keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          padding: theme.spacing.lg,
+          paddingBottom: theme.spacing.xl,
+          gap: theme.spacing.md,
+        }}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        renderItem={({ item, index }) => (
+          <Appear delay={Math.min(index, 8) * 50}>
+            {tab === "all" ? (
+              <ScoutCard item={item} onPress={() => router.push(`/opponent/${item.id}`)} />
+            ) : (
+              <PlanRow
+                item={item}
+                readable={readable(item)}
+                onRun={() => router.push(`/opponent/${item.id}`)}
+                onUnlock={openPaywall}
+              />
+            )}
+          </Appear>
+        )}
+      />
+    </View>
   );
 }

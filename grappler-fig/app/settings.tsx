@@ -3,12 +3,10 @@
 // app reads them the same way it reads what onboarding collected.
 import { Stack } from "expo-router";
 import { useState, type ReactNode } from "react";
-import { Linking, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Linking, Platform, ScrollView, Text, View } from "react-native";
 import { Lottie } from "../components/lottie";
 import { Appear, haptic, Skeleton, Stagger } from "../components/motion";
 import {
-  displayText,
-  monoFont,
   Segmented,
   SettingsGroup,
   SettingsNote,
@@ -16,6 +14,7 @@ import {
   Wheel,
 } from "../components/settings/controls";
 import { SupportButton, useSupport } from "../components/support";
+import { AppSwitch, TextButton } from "../components/ui";
 import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
 import { usePurchases, type Offer } from "../data/purchases";
@@ -41,8 +40,8 @@ const STANCES: { value: Stance; label: string }[] = [
   { value: "southpaw", label: "Southpaw" },
 ];
 const CALLOUTS: { value: Callouts; label: string }[] = [
-  { value: "names", label: "Punch Names" },
-  { value: "numbers", label: "Punch Numbers 1-6" },
+  { value: "names", label: "Punch names" },
+  { value: "numbers", label: "Numbers 1–6" },
 ];
 const APPEARANCES: { value: Appearance; label: string }[] = [
   { value: "system", label: "System" },
@@ -110,7 +109,7 @@ function SettingsSkeleton() {
     >
       {[2, 3, 1].map((rows, group) => (
         <View key={group} style={{ gap: theme.spacing.sm }}>
-          <Skeleton width={140} height={18} />
+          <Skeleton width={140} height={14} />
           <View
             style={{
               gap: theme.spacing.md,
@@ -159,8 +158,8 @@ export default function SettingsScreen() {
   const membership = !isPremium
     ? "Free plan"
     : renews
-      ? `Pro Member — Renews ${renews}`
-      : "Pro Member — Lifetime";
+      ? `Active · renews ${renews}`
+      : "Active · lifetime";
 
   async function setReminderOn(on: boolean) {
     haptic("selection");
@@ -184,21 +183,7 @@ export default function SettingsScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: "Settings",
-          headerTitle: () => (
-            <Text
-              accessibilityRole="header"
-              style={[displayText, { color: theme.colors.text, fontSize: 28 }]}
-            >
-              SETTINGS
-            </Text>
-          ),
-          headerStyle: { backgroundColor: theme.colors.background },
-          headerShadowVisible: true,
-        }}
-      />
+      <Stack.Screen options={{ title: "Settings" }} />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.colors.background }}
         contentInsetAdjustmentBehavior="automatic"
@@ -209,7 +194,7 @@ export default function SettingsScreen() {
         ) : (
           <>
             <Stagger step={70} style={{ gap: theme.spacing.xl }}>
-              <SettingsGroup title="FIGHT PROFILE">
+              <SettingsGroup title="Fight profile">
                 <SettingsRow
                   label="Skill level"
                   value={answers.skilllevel || DEFAULTS.skill}
@@ -224,17 +209,16 @@ export default function SettingsScreen() {
                       options={STANCES}
                       value={stance}
                       onChange={(next) => void app.setAnswer("stance", next)}
-                      style={{ width: 200 }}
+                      style={{ width: 208 }}
                     />
                   }
                 />
               </SettingsGroup>
 
-              <SettingsGroup title="TIMER & CALLOUTS">
+              <SettingsGroup title="Timer & callouts">
                 <SettingsRow
                   label="Round duration"
                   value={formatClock(roundSeconds)}
-                  mono
                   onPress={() => toggle("round")}
                   accessibilityLabel={`Round duration ${formatClock(roundSeconds)}`}
                 >
@@ -253,7 +237,6 @@ export default function SettingsScreen() {
                 <SettingsRow
                   label="Rest period"
                   value={formatClock(restSeconds)}
-                  mono
                   onPress={() => toggle("rest")}
                   accessibilityLabel={`Rest period ${formatClock(restSeconds)}`}
                 >
@@ -285,26 +268,22 @@ export default function SettingsScreen() {
                 <SettingsRow
                   label="Music ducking"
                   right={
-                    <Switch
-                      accessibilityLabel="Music ducking"
+                    <AppSwitch
+                      label="Music ducking"
                       value={ducking}
                       onValueChange={(on) => {
                         haptic("selection");
                         void app.setAnswer("musicducking", on ? "on" : "off");
                       }}
-                      trackColor={{ false: theme.colors.surfaceAlt, true: theme.colors.primary }}
-                      thumbColor={theme.colors.onPrimary}
-                      ios_backgroundColor={theme.colors.surfaceAlt}
                     />
                   }
                 />
               </SettingsGroup>
 
-              <SettingsGroup title="NOTIFICATIONS">
+              <SettingsGroup title="Notifications">
                 <SettingsRow
                   label="Daily camp reminder"
                   value={reminder.enabled ? clockOfDay(reminderMinute) : "Off"}
-                  mono
                   onPress={() => toggle("reminder")}
                   accessibilityLabel={
                     reminder.enabled
@@ -332,13 +311,10 @@ export default function SettingsScreen() {
                         >
                           Send a reminder
                         </Text>
-                        <Switch
-                          accessibilityLabel="Send a daily reminder"
+                        <AppSwitch
+                          label="Send a daily reminder"
                           value={reminder.enabled}
                           onValueChange={(on) => void setReminderOn(on)}
-                          trackColor={{ false: theme.colors.surfaceAlt, true: theme.colors.primary }}
-                          thumbColor={theme.colors.onPrimary}
-                          ios_backgroundColor={theme.colors.surfaceAlt}
                         />
                       </View>
                       {reminder.enabled ? (
@@ -357,25 +333,11 @@ export default function SettingsScreen() {
                           <SettingsNote>
                             {`Notifications are off for ${appInfo.name}, so the reminder can't ring. Allow them in your phone's settings.`}
                           </SettingsNote>
-                          <Pressable
+                          <TextButton
+                            label="Open notification settings"
                             onPress={() => void Linking.openSettings()}
-                            accessibilityRole="button"
-                            style={({ pressed }) => ({
-                              minHeight: 44,
-                              justifyContent: "center",
-                              opacity: pressed ? 0.6 : 1,
-                            })}
-                          >
-                            <Text
-                              style={{
-                                color: theme.colors.primary,
-                                fontSize: theme.font.size.body,
-                                fontWeight: theme.font.weight.bold,
-                              }}
-                            >
-                              Open notification settings
-                            </Text>
-                          </Pressable>
+                            style={{ alignSelf: "flex-start" }}
+                          />
                         </>
                       ) : null}
                     </PickerPanel>
@@ -383,13 +345,13 @@ export default function SettingsScreen() {
                 </SettingsRow>
               </SettingsGroup>
 
-              <SettingsGroup title="ACCOUNT & MEMBERSHIP">
+              <SettingsGroup title="Account & membership">
                 <SettingsRow
-                  label="Pro Corner Subscription"
+                  label="Pro Cornerman"
                   value={membership}
-                  dot={isPremium}
+                  active={isPremium}
                   onPress={() => purchases.openPaywall()}
-                  accessibilityLabel={`Pro Corner Subscription, ${membership}`}
+                  accessibilityLabel={`Pro Cornerman, ${membership}`}
                 />
                 <SettingsRow
                   label={status === "restoring" ? "Restoring purchases…" : "Restore purchases"}
@@ -415,7 +377,7 @@ export default function SettingsScreen() {
                 ) : null}
               </SettingsGroup>
 
-              <SettingsGroup title="APPEARANCE">
+              <SettingsGroup title="Appearance">
                 <SettingsRow
                   label="Appearance"
                   right={
@@ -424,13 +386,13 @@ export default function SettingsScreen() {
                       options={APPEARANCES}
                       value={appearance}
                       onChange={setAppearance}
-                      style={{ width: 210 }}
+                      style={{ width: 208 }}
                     />
                   }
                 />
               </SettingsGroup>
 
-              <SettingsGroup title="SUPPORT & LEGAL">
+              <SettingsGroup title="Support & legal">
                 {support.available ? (
                   <SupportButton
                     label="Contact support"
@@ -461,7 +423,7 @@ export default function SettingsScreen() {
                 ) : null}
               </SettingsGroup>
 
-              <SettingsGroup title="ABOUT">
+              <SettingsGroup title="About">
                 <SettingsRow
                   label="Replay onboarding"
                   detail="Pick your level and setup again"
@@ -474,7 +436,6 @@ export default function SettingsScreen() {
               style={{
                 color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
-                fontFamily: monoFont,
                 textAlign: "center",
                 marginTop: theme.spacing.xl,
               }}

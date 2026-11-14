@@ -1,9 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../theme/ThemeProvider";
+
+/**
+ * Room for the icon, a full line of label and the bar's own padding. The default height squeezes
+ * the label to a few points and clips it.
+ */
+const BAR_HEIGHT = 64;
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -12,11 +20,15 @@ export default function TabsLayout() {
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
+          height: BAR_HEIGHT + insets.bottom,
+          paddingTop: 4,
+          paddingBottom: insets.bottom + 4,
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
         },
         tabBarLabelStyle: {
           fontSize: theme.font.size.caption,
+          lineHeight: 16,
           fontWeight: theme.font.weight.medium,
         },
       }}

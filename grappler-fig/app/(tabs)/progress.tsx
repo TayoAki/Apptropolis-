@@ -1,24 +1,15 @@
 // Progress: the streak, level, this week's training, the last session's card and today's
 // nutrition. Logging a meal photo is a premium feature; it estimates the meal with the AI.
-import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
+import { ScrollView, Text, View } from "react-native";
+import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { Lottie, Celebrate } from "../../components/lottie";
 import { FightNightCard } from "../../components/progress/fight-night";
-import { displayFont, monoFont, Panel } from "../../components/progress/panel";
 import { WeeklyTraining } from "../../components/progress/week";
-import {
-  CountUp,
-  GrowBar,
-  PressScale,
-  Skeleton,
-  Stagger,
-  haptic,
-} from "../../components/motion";
+import { CountUp, GrowBar, Skeleton, Stagger, haptic } from "../../components/motion";
+import { ScreenHeader, SecondaryButton, StreakBadge, displayFace } from "../../components/ui";
 import { track } from "../../data/analytics";
 import { useAI } from "../../data/ai";
 import { pickPhoto } from "../../data/photos";
@@ -66,7 +57,6 @@ function parseMeal(text: string): { name: string; calories: number; proteinGrams
 
 export default function ProgressScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const sessions = useCollection<WorkoutSession>("workout_sessions");
   const meals = useCollection<Meal>("meals");
   const { isPremium, openPaywall } = usePurchases();
@@ -118,78 +108,23 @@ export default function ProgressScreen() {
     setLogged(true);
   }
 
+  const figure = [
+    displayFace,
+    { color: theme.colors.text, fontSize: theme.font.size.headline },
+  ];
+
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: theme.colors.background }}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: theme.spacing.lg,
-          paddingVertical: theme.spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-          backgroundColor: theme.colors.surface,
-        }}
-      >
-        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
-          <AiImage
-            prompt="a flame icon, flat and bold, red and orange, no text, transparent background"
-            fit="contain"
-            style={{ width: 22, height: 22 }}
-          />
-          <CountUp
-            value={streak}
-            style={{
-              color: theme.colors.text,
-              fontFamily: displayFont,
-              fontSize: theme.font.size.headline,
-            }}
-          />
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: displayFont,
-              fontSize: theme.font.size.headline,
-            }}
-          >
-            DAYS
-          </Text>
-        </View>
-        <Text
-          accessibilityRole="header"
-          style={{
-            flex: 2,
-            textAlign: "center",
-            color: theme.colors.text,
-            fontFamily: displayFont,
-            fontSize: theme.font.size.title,
-            letterSpacing: 1,
-          }}
-        >
-          PROGRESS
-        </Text>
-        <View style={{ flex: 1, alignItems: "flex-end" }}>
-          <Pressable
-            onPress={() => router.push("/settings")}
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-            hitSlop={12}
-            style={({ pressed }) => ({
-              width: 44,
-              height: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <AiImage
-              prompt="a settings gear icon, flat line style, light grey, no text, transparent background"
-              fit="contain"
-              style={{ width: 28, height: 28 }}
-            />
-          </Pressable>
-        </View>
-      </View>
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <ScreenHeader
+        title="Progress"
+        right={
+          sessions.loading ? (
+            <Skeleton width={72} height={32} radius={16} />
+          ) : (
+            <StreakBadge days={streak} />
+          )
+        }
+      />
 
       <ScrollView
         contentContainerStyle={{
@@ -200,9 +135,9 @@ export default function ProgressScreen() {
       >
         {loading ? (
           <View style={{ gap: theme.spacing.lg }}>
-            <Skeleton height={96} radius={theme.radius.md} />
-            <Skeleton height={150} radius={theme.radius.md} />
-            <Skeleton height={260} radius={theme.radius.md} />
+            <Skeleton height={112} radius={theme.radius.md} />
+            <Skeleton height={176} radius={theme.radius.md} />
+            <Skeleton height={240} radius={theme.radius.md} />
           </View>
         ) : (
           <Stagger step={80} style={{ gap: theme.spacing.lg }}>
@@ -217,167 +152,89 @@ export default function ProgressScreen() {
             ) : null}
 
             {latest ? (
-              <Panel>
+              <Card>
                 <Text
                   accessibilityRole="header"
                   style={{
                     color: theme.colors.text,
-                    fontFamily: displayFont,
                     fontSize: theme.font.size.title,
-                    letterSpacing: 0.5,
+                    fontWeight: theme.font.weight.bold,
                   }}
                 >
-                  {`LEVEL ${level.level} — ${title.toUpperCase()}`}
+                  {`Level ${level.level} · ${title}`}
                 </Text>
-                <GrowBar progress={level.fraction} height={12} />
-                <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-                  <CountUp
-                    value={level.into}
-                    format={(n) => Math.round(n).toLocaleString()}
-                    style={{
-                      color: theme.colors.text,
-                      fontFamily: monoFont,
-                      fontSize: theme.font.size.body,
-                    }}
-                  />
-                  <Text
-                    style={{
-                      color: theme.colors.textMuted,
-                      fontFamily: monoFont,
-                      fontSize: theme.font.size.body,
-                    }}
-                  >
-                    {` / ${level.needed.toLocaleString()} XP`}
-                  </Text>
-                </View>
-              </Panel>
+                <GrowBar progress={level.fraction} height={10} />
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: theme.font.size.caption + 2,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                >
+                  {`${level.into.toLocaleString()} of ${level.needed.toLocaleString()} XP to level ${level.level + 1}`}
+                </Text>
+              </Card>
             ) : null}
 
             {latest ? (
-              <Panel>
+              <Card>
                 <WeeklyTraining days={week} />
-              </Panel>
+              </Card>
             ) : null}
 
             {latest ? <FightNightCard session={latest} fix={fix} /> : null}
 
-            <Panel>
-              <Text
-                accessibilityRole="header"
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: displayFont,
-                  fontSize: theme.font.size.title,
-                  letterSpacing: 0.5,
-                }}
-              >
-                NUTRITION LOG
-              </Text>
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.bold,
-                  letterSpacing: 1,
-                }}
-              >
-                FIGHTER MACROS · TODAY
-              </Text>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: theme.spacing.md,
-                }}
-              >
-                <View style={{ flexDirection: "row", gap: theme.spacing.lg }}>
-                  <View>
-                    <CountUp
-                      value={today.protein}
-                      format={(n) => formatGrams(n)}
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: displayFont,
-                        fontSize: theme.font.size.headline,
-                      }}
-                    />
-                    <Text
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontSize: theme.font.size.caption,
-                      }}
-                    >
-                      PROTEIN
-                    </Text>
-                  </View>
-                  <View>
-                    <CountUp
-                      value={today.calories}
-                      format={(n) => Math.round(n).toLocaleString()}
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: displayFont,
-                        fontSize: theme.font.size.headline,
-                      }}
-                    />
-                    <Text
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontSize: theme.font.size.caption,
-                      }}
-                    >
-                      KCAL
-                    </Text>
-                  </View>
-                </View>
-
-                <PressScale
-                  onPress={() => void logMeal()}
-                  disabled={ai.loading}
-                  scaleTo={0.94}
-                  haptic="light"
-                  accessibilityRole="button"
-                  accessibilityLabel="Log meal photo"
-                  accessibilityState={{ disabled: ai.loading, busy: ai.loading }}
+            <Card>
+              <View style={{ gap: 2 }}>
+                <Text
+                  accessibilityRole="header"
                   style={{
-                    minHeight: 44,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: theme.spacing.sm,
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: theme.spacing.sm,
-                    borderWidth: 1,
-                    borderColor: theme.colors.border,
-                    borderRadius: theme.radius.sm,
-                    backgroundColor: theme.colors.background,
-                    opacity: ai.loading ? 0.6 : 1,
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.title,
+                    fontWeight: theme.font.weight.bold,
                   }}
                 >
-                  <Ionicons
-                    name={isPremium ? "camera-outline" : "lock-closed-outline"}
-                    size={22}
-                    color={theme.colors.text}
-                  />
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontSize: theme.font.size.caption,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    {ai.loading ? "Reading the meal…" : "Log meal photo"}
-                  </Text>
-                </PressScale>
+                  Nutrition log
+                </Text>
+                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
+                  Fighter macros today
+                </Text>
               </View>
-
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <CountUp value={today.protein} format={(n) => formatGrams(n)} style={figure} />
+                  <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
+                    protein
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <CountUp
+                    value={today.calories}
+                    format={(n) => Math.round(n).toLocaleString()}
+                    style={figure}
+                  />
+                  <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
+                    kcal
+                  </Text>
+                </View>
+              </View>
+              <SecondaryButton
+                label={ai.loading ? "Reading the meal…" : "Log meal photo"}
+                icon={isPremium ? "camera-outline" : "lock-closed-outline"}
+                disabled={ai.loading}
+                onPress={() => void logMeal()}
+                accessibilityLabel={isPremium ? "Log meal photo" : "Log meal photo, part of Pro"}
+              />
               {mealError ?? ai.error ? (
-                <Text style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}>
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={{ color: theme.colors.danger, fontSize: theme.font.size.caption + 2, lineHeight: 20 }}
+                >
                   {mealError ?? ai.error}
                 </Text>
               ) : null}
               {logged ? <Lottie name="success" size={64} /> : null}
-            </Panel>
+            </Card>
           </Stagger>
         )}
       </ScrollView>

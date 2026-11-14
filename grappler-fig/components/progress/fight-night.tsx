@@ -4,11 +4,10 @@ import { Text, View } from "react-native";
 import { appInfo } from "../../data/app-info";
 import { formatDay, formatTime, type WorkoutSession } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../AiImage";
-import { PrimaryButton } from "../button";
+import { Card } from "../card";
 import { Appear, CountUp } from "../motion";
 import { useShareImage } from "../share";
-import { displayFont, Panel } from "./panel";
+import { SecondaryButton, displayFace } from "../ui";
 
 /** A rough punch count per minute of work, for the card's "est. punches" figure. */
 const PUNCHES_PER_MINUTE = 20;
@@ -16,17 +15,13 @@ const PUNCHES_PER_MINUTE = 20;
 function Stat({ value, label }: { value: number; label: string }) {
   const theme = useTheme();
   return (
-    <View>
+    <View style={{ flex: 1 }}>
       <CountUp
         value={value}
         format={(n) => Math.round(n).toLocaleString()}
-        style={{
-          color: theme.colors.text,
-          fontFamily: displayFont,
-          fontSize: theme.font.size.headline,
-        }}
+        style={[displayFace, { color: theme.colors.text, fontSize: theme.font.size.headline }]}
       />
-      <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
         {label}
       </Text>
     </View>
@@ -38,7 +33,6 @@ export function FightNightCard({ session, fix }: { session: WorkoutSession; fix:
   const { ref, share, sharing } = useShareImage();
   const minutes = Math.round((session.rounds * session.roundSeconds) / 60);
   const punches = minutes * PUNCHES_PER_MINUTE;
-  const titleSize = Math.round(theme.font.size.display * 0.6);
   const message = `${session.rounds} rounds, ${minutes} minutes on ${appInfo.name}.${
     fix ? ` Coach fix: ${fix}` : ""
   }`;
@@ -47,86 +41,61 @@ export function FightNightCard({ session, fix }: { session: WorkoutSession; fix:
     <Appear>
       <View style={{ gap: theme.spacing.md }}>
         <View ref={ref} collapsable={false}>
-          <Panel>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.medium,
-              }}
-            >
-              {`${formatDay(session.date)} · ${formatTime(session.date)}`}
-            </Text>
-            <Text
-              accessibilityRole="header"
-              style={{
-                fontFamily: displayFont,
-                fontSize: titleSize,
-                lineHeight: titleSize,
-                color: theme.colors.primary,
-              }}
-            >
-              FIGHT
-            </Text>
-            <Text
-              style={{
-                fontFamily: displayFont,
-                fontSize: titleSize,
-                lineHeight: titleSize,
-                color: theme.colors.text,
-              }}
-            >
-              NIGHT
-            </Text>
+          <Card>
+            <View style={{ gap: 2 }}>
+              <Text
+                accessibilityRole="header"
+                style={[
+                  displayFace,
+                  {
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.headline,
+                    letterSpacing: 0.5,
+                    textTransform: "uppercase",
+                  },
+                ]}
+              >
+                <Text style={{ color: theme.colors.primary }}>Fight</Text> night
+              </Text>
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
+                {`Last session · ${formatDay(session.date)}, ${formatTime(session.date)}`}
+              </Text>
+            </View>
 
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Stat value={minutes} label="mins" />
-              <Stat value={session.rounds} label="rounds" />
+            <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+              <Stat value={minutes} label={minutes === 1 ? "minute" : "minutes"} />
+              <Stat value={session.rounds} label={session.rounds === 1 ? "round" : "rounds"} />
               <Stat value={punches} label="est. punches" />
             </View>
 
             {fix ? (
               <View
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: theme.spacing.md,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.sm,
-                  backgroundColor: theme.colors.background,
-                  padding: theme.spacing.md,
+                  gap: theme.spacing.xs,
+                  paddingTop: theme.spacing.md,
+                  borderTopWidth: 1,
+                  borderTopColor: theme.colors.border,
                 }}
               >
                 <Text
                   style={{
-                    flex: 1,
-                    color: theme.colors.text,
-                    fontSize: theme.font.size.body,
+                    color: theme.colors.primary,
+                    fontSize: theme.font.size.caption + 2,
+                    fontWeight: theme.font.weight.bold,
                   }}
                 >
-                  <Text
-                    style={{
-                      color: theme.colors.primary,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    COACH TOP FIX:{" "}
-                  </Text>
+                  Coach's top fix
+                </Text>
+                <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
                   {fix}
                 </Text>
-                <AiImage
-                  prompt="a red crosshair target icon, thin line style, no text, transparent background"
-                  fit="contain"
-                  style={{ width: 28, height: 28 }}
-                />
               </View>
             ) : null}
-          </Panel>
+          </Card>
         </View>
-        <PrimaryButton
-          label="SHARE SESSION CARD"
-          icon="play"
+        <SecondaryButton
+          label={sharing ? "Opening share…" : "Share session card"}
+          icon="share-outline"
           disabled={sharing}
           onPress={() => void share({ message, title: `${appInfo.name} session` })}
         />

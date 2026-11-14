@@ -76,7 +76,9 @@ function meal(
   return { id, name, calories, proteinGrams, loggedAt: isoDaysAgo(days, hour, minute) };
 }
 
-export const seed: Collections = {
+// Checked against Collections without being annotated as it: the storage layer reads the seed by
+// collection name, which an interface type doesn't allow.
+export const seed = {
   workout_sessions: [
     session(
       "w1",
@@ -227,4 +229,4 @@ export const seed: Collections = {
     meal("m5", "Salmon, sweet potato and broccoli", 710, 52, 2, 19, 30),
     meal("m6", "Banana and peanut butter", 280, 7, 2, 16, 0),
   ],
-};
+} satisfies Collections;

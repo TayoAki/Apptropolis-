@@ -1,14 +1,14 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
-import type { Outlook } from "../../data/schema";
+import { comingDayName, type Outlook } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { CountUp, Mascot, useReducedMotion } from "../motion";
 
 /** A half circle (radius 86) across the top of a 200 x 112 canvas. */
 const ARC = "M 14 100 A 86 86 0 0 1 186 100";
 const ARC_LENGTH = Math.PI * 86;
-const GAUGE_W = 180;
+const GAUGE_W = 192;
 const GAUGE_H = (GAUGE_W * 112) / 200;
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
@@ -64,9 +64,35 @@ function Gauge({ score }: { score: number }) {
   );
 }
 
+/** The mascot pose that fits each form tier. */
+export const FORM_POSE: Record<Outlook["tier"], string> = {
+  sharp: "dash-game-day-sharp",
+  steady: "dash-match-ready",
+  flat: "dash-heavy-legs",
+};
+
+const LEGS: Record<Outlook["tier"], string> = {
+  sharp: "Fresh legs",
+  steady: "Solid legs",
+  flat: "Heavy legs",
+};
+
 /**
- * The Form Rating hero: a glowing card with the arc gauge and score on the left, the headline
- * under them, and the mascot on the right.
+ * The hero's headline: how the legs feel and what for. It names the next game or training day
+ * when Settings has one ("Solid legs for Saturday"), and the sport's noun otherwise.
+ */
+export function formHeadline(
+  tier: Outlook["tier"],
+  game: { nextGame: string | null; today: string; noun: string; now: Date },
+): string {
+  if (!game.nextGame) return `${LEGS[tier]} for your next ${game.noun}`;
+  if (game.nextGame === game.today) return `${LEGS[tier]} for today's ${game.noun}`;
+  return `${LEGS[tier]} for ${comingDayName(game.nextGame, game.now)}`;
+}
+
+/**
+ * The Form Rating hero: the arc gauge and score beside the mascot, then the headline and the
+ * outlook line (what the score means and what would raise it) across the card.
  */
 export function FormHero({
   form,
@@ -83,49 +109,32 @@ export function FormHero({
   const theme = useTheme();
   return (
     <View
+      accessible
+      accessibilityLabel={`Form rating ${form} out of 100. ${headline}. ${outlook.line}`}
       style={{
+        padding: theme.spacing.lg,
+        gap: theme.spacing.md,
         borderRadius: theme.radius.lg,
-        shadowColor: theme.colors.primary,
-        shadowOpacity: 0.5,
-        shadowRadius: 18,
-        shadowOffset: { width: 0, height: 0 },
-        elevation: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.primary,
+        backgroundColor: theme.colors.surface,
       }}
     >
-      <View
-        accessible
-        accessibilityLabel={`Form rating ${form} out of 100. ${headline}. ${outlook.line}`}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          overflow: "hidden",
-          paddingLeft: theme.spacing.lg,
-          paddingVertical: theme.spacing.lg,
-          borderRadius: theme.radius.lg,
-          borderWidth: 1.5,
-          borderColor: theme.colors.primary,
-          backgroundColor: theme.colors.surface,
-        }}
-      >
-        <View style={{ flex: 1, alignItems: "center", gap: theme.spacing.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ flex: 1, alignItems: "center" }}>
           <View style={{ width: GAUGE_W, height: GAUGE_H }}>
             <Gauge score={form} />
             <View
               style={{
                 position: "absolute",
-                top: 32,
+                top: 34,
                 left: 0,
                 right: 0,
                 alignItems: "center",
               }}
             >
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontSize: theme.font.size.body,
-                }}
-              >
-                Form Rating
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                Form rating
               </Text>
               <View
                 style={{
@@ -139,16 +148,17 @@ export function FormHero({
                   duration={1000}
                   style={{
                     color: theme.colors.primary,
-                    fontSize: 52,
-                    lineHeight: 56,
+                    fontSize: theme.font.size.display,
+                    lineHeight: 60,
                     fontWeight: theme.font.weight.bold,
                   }}
                 />
                 <Text
                   style={{
                     color: theme.colors.textMuted,
-                    fontSize: 22,
-                    marginLeft: 4,
+                    fontSize: theme.font.size.title,
+                    marginLeft: theme.spacing.xs,
+                    fontVariant: ["tabular-nums"],
                   }}
                 >
                   / 100
@@ -156,20 +166,23 @@ export function FormHero({
               </View>
             </View>
           </View>
-          <Text
-            accessibilityRole="header"
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-              textAlign: "center",
-              paddingHorizontal: theme.spacing.sm,
-            }}
-          >
-            {headline}
-          </Text>
         </View>
-        <Mascot pose={pose} size={140} style={{ marginRight: -6, marginBottom: -6 }} />
+        <Mascot pose={pose} size={116} />
+      </View>
+      <View style={{ gap: theme.spacing.xs }}>
+        <Text
+          accessibilityRole="header"
+          style={{
+            color: theme.colors.text,
+            fontSize: theme.font.size.title,
+            fontWeight: theme.font.weight.bold,
+          }}
+        >
+          {headline}
+        </Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+          {outlook.line}
+        </Text>
       </View>
     </View>
   );

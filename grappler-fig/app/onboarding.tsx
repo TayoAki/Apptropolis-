@@ -1,17 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { Stack } from "expo-router";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
-import {
-  Animated,
-  Easing,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  type TextStyle,
-} from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing, ScrollView, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionBar } from "../components/onboarding/action-bar";
@@ -25,6 +15,7 @@ import {
   haptic,
   useReducedMotion,
 } from "../components/motion";
+import { IconButton, SecondaryButton, displayFace, type IconName } from "../components/ui";
 import { useAppState } from "../data/app-state";
 import { useReminder } from "../data/reminders";
 import { useTheme } from "../theme/ThemeProvider";
@@ -35,7 +26,6 @@ const STEP_COUNT = 4;
 const ROUND_SECONDS = 30;
 const CALLOUT_EVERY = 2;
 const CALLOUTS = ["Jab", "Cross", "Hook", "Jab", "Cross", "Slip", "Uppercut", "Cross"];
-const BARS = [0.4, 0.7, 0.5, 0.9, 1, 0.9, 0.5, 0.7, 0.4];
 const RING_SIZE = 180;
 const RING_STROKE = 12;
 const RING_R = (RING_SIZE - RING_STROKE) / 2;
@@ -70,64 +60,73 @@ const CAPTION = "Core timer & callouts are forever free";
 
 type ReminderResult = "idle" | "on" | "off";
 
-// Type faces for the mockup's look: a tall condensed headline and a monospace step label.
-// The phone's own condensed and monospace faces are used, so nothing has to be bundled.
-const HEADLINE_FONT: TextStyle = Platform.select<TextStyle>({
-  ios: { fontFamily: "AvenirNextCondensed-Heavy" },
-  android: { fontFamily: "sans-serif-condensed", fontWeight: "700" },
-  default: { fontWeight: "700" },
-});
-const MONO_FONT: TextStyle = Platform.select<TextStyle>({
-  ios: { fontFamily: "Menlo" },
-  android: { fontFamily: "monospace" },
-  default: { fontFamily: "monospace" },
-});
-
-function StepHeader({ eyebrow, title, body }: { eyebrow: string; title: string; body?: string }) {
+function StepHeader({ title, body }: { title: string; body?: string }) {
   const theme = useTheme();
-  const headline = Math.round(theme.font.size.display * 0.75);
   return (
     <View style={{ gap: theme.spacing.sm }}>
       <Text
-        style={[
-          MONO_FONT,
-          {
-            color: theme.colors.primary,
-            fontSize: theme.font.size.body,
-            letterSpacing: 3,
-          },
-        ]}
-      >
-        {eyebrow}
-      </Text>
-      <Text
         accessibilityRole="header"
-        style={[
-          HEADLINE_FONT,
-          {
-            color: theme.colors.text,
-            fontSize: headline,
-            lineHeight: Math.round(headline * 1.05),
-          },
-        ]}
+        style={{
+          color: theme.colors.text,
+          fontSize: theme.font.size.headline,
+          fontWeight: theme.font.weight.bold,
+          lineHeight: 34,
+        }}
       >
         {title}
       </Text>
       {body ? (
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>{body}</Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 24 }}>
+          {body}
+        </Text>
       ) : null}
     </View>
   );
 }
 
+/** Where the person is in setup: a segment per step and the count in words. */
+function StepProgress({ step, count }: { step: number; count: number }) {
+  const theme = useTheme();
+  return (
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={`Step ${step + 1} of ${count}`}
+      accessibilityValue={{ min: 1, max: count, now: step + 1 }}
+      style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}
+    >
+      <View style={{ flex: 1, flexDirection: "row", gap: theme.spacing.xs }}>
+        {Array.from({ length: count }, (_, index) => (
+          <View
+            key={index}
+            style={{
+              flex: 1,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: index <= step ? theme.colors.primary : theme.colors.surfaceAlt,
+            }}
+          />
+        ))}
+      </View>
+      <Text
+        style={{
+          color: theme.colors.textMuted,
+          fontSize: theme.font.size.caption + 2,
+          fontVariant: ["tabular-nums"],
+        }}
+      >
+        {`Step ${step + 1} of ${count}`}
+      </Text>
+    </View>
+  );
+}
+
 function QuestionStep({
-  eyebrow,
   title,
   options,
   value,
   onChoose,
 }: {
-  eyebrow: string;
   title: string;
   options: { value: string; body: string }[];
   value: string;
@@ -135,8 +134,8 @@ function QuestionStep({
 }) {
   const theme = useTheme();
   return (
-    <View style={{ gap: theme.spacing.xl }}>
-      <StepHeader eyebrow={eyebrow} title={title} />
+    <View accessibilityRole="radiogroup" style={{ gap: theme.spacing.xl }}>
+      <StepHeader title={title} />
       <Stagger step={50} style={{ gap: theme.spacing.md }}>
         {options.map((option) => (
           <ChoiceCard
@@ -152,14 +151,13 @@ function QuestionStep({
   );
 }
 
-function DemoStep({ eyebrow }: { eyebrow: string }) {
+function DemoStep() {
   const theme = useTheme();
   const reduced = useReducedMotion();
   const [left, setLeft] = useState(ROUND_SECONDS);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const ring = useRef(new Animated.Value(1)).current;
-  const beat = useRef(new Animated.Value(0)).current;
   const calloutIndex = Math.floor((ROUND_SECONDS - left) / CALLOUT_EVERY) % CALLOUTS.length;
 
   // Count down one second at a time, with a click on every second.
@@ -195,20 +193,6 @@ function DemoStep({ eyebrow }: { eyebrow: string }) {
     return () => anim.stop();
   }, [left, reduced, ring]);
 
-  // Each callout makes the waveform jump together.
-  useEffect(() => {
-    if (!running || reduced) return;
-    beat.setValue(1);
-    const anim = Animated.timing(beat, {
-      toValue: 0,
-      duration: 480,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [calloutIndex, running, reduced, beat]);
-
   const offset = ring.interpolate({ inputRange: [0, 1], outputRange: [RING_C, 0] });
 
   function start() {
@@ -222,7 +206,6 @@ function DemoStep({ eyebrow }: { eyebrow: string }) {
   return (
     <View style={{ gap: theme.spacing.xl }}>
       <StepHeader
-        eyebrow={eyebrow}
         title="Try a 30-second round"
         body={`Punch names come up as you go, like "jab, cross, hook". Throw along and feel the rhythm.`}
       />
@@ -258,72 +241,41 @@ function DemoStep({ eyebrow }: { eyebrow: string }) {
             />
           </Svg>
           <Text
-            style={{
-              position: "absolute",
-              fontSize: theme.font.size.display,
-              fontWeight: theme.font.weight.bold,
-              color: theme.colors.text,
-              fontVariant: ["tabular-nums"],
-            }}
+            style={[
+              displayFace,
+              {
+                position: "absolute",
+                fontSize: theme.font.size.display,
+                color: theme.colors.text,
+                fontVariant: ["tabular-nums"],
+              },
+            ]}
           >
             {left}
           </Text>
         </View>
 
-        <View style={{ alignItems: "center", gap: theme.spacing.xs }}>
+        <Appear key={calloutIndex} distance={10} duration={260}>
           <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.medium,
-              letterSpacing: 2,
-            }}
-          >
-            CALLOUT
-          </Text>
-          <Appear key={calloutIndex} distance={10} duration={260}>
-            <Text
-              accessibilityLiveRegion="polite"
-              style={{
-                color: theme.colors.text,
+            accessibilityLiveRegion="polite"
+            style={[
+              displayFace,
+              {
+                color: running ? theme.colors.primary : theme.colors.textMuted,
                 fontSize: theme.font.size.display,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              {CALLOUTS[calloutIndex]}
-            </Text>
-          </Appear>
-        </View>
-
-        <View
-          style={{
-            height: 76,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-          }}
-        >
-          {BARS.map((level, i) => (
-            <Animated.View
-              key={i}
-              style={{
-                width: 6,
-                borderRadius: 3,
-                backgroundColor: theme.colors.primary,
-                height: beat.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [8, 8 + level * 60],
-                }),
-              }}
-            />
-          ))}
-        </View>
+                lineHeight: 70,
+                textTransform: "uppercase",
+              },
+            ]}
+          >
+            {CALLOUTS[calloutIndex]}
+          </Text>
+        </Appear>
 
         {done ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
             <Lottie name="success" size={56} />
-            <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body }}>
+            <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
               That's the pace every round asks for. Your rounds will follow it.
             </Text>
           </View>
@@ -332,6 +284,7 @@ function DemoStep({ eyebrow }: { eyebrow: string }) {
             style={{
               color: theme.colors.textMuted,
               fontSize: theme.font.size.body,
+              lineHeight: 24,
               textAlign: "center",
             }}
           >
@@ -339,47 +292,23 @@ function DemoStep({ eyebrow }: { eyebrow: string }) {
           </Text>
         )}
 
-        <PressScale
+        <SecondaryButton
+          label={label}
+          icon={running ? undefined : "play"}
           onPress={start}
           disabled={running}
-          haptic="light"
-          scaleTo={0.94}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          accessibilityState={{ disabled: running }}
-          style={{
-            minHeight: 52,
-            paddingHorizontal: theme.spacing.lg,
-            borderRadius: theme.radius.sm,
-            borderWidth: 1.5,
-            borderColor: theme.colors.primary,
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: running ? 0.6 : 1,
-          }}
-        >
-          <Text
-            style={{
-              color: theme.colors.primary,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            {label}
-          </Text>
-        </PressScale>
+          fullWidth={false}
+        />
       </View>
     </View>
   );
 }
 
 function ReminderStep({
-  eyebrow,
   timeIndex,
   onPickTime,
   result,
 }: {
-  eyebrow: string;
   timeIndex: number;
   onPickTime: (index: number) => void;
   result: ReminderResult;
@@ -390,7 +319,6 @@ function ReminderStep({
   return (
     <View style={{ gap: theme.spacing.xl }}>
       <StepHeader
-        eyebrow={eyebrow}
         title="Daily training reminder"
         body="Pick a time and we'll nudge you to keep your streak alive. You can change it any time."
       />
@@ -398,15 +326,17 @@ function ReminderStep({
       <View style={{ gap: theme.spacing.sm }}>
         <Text
           style={{
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
-            fontWeight: theme.font.weight.medium,
-            letterSpacing: 1,
+            color: theme.colors.text,
+            fontSize: theme.font.size.body,
+            fontWeight: theme.font.weight.bold,
           }}
         >
-          REMIND ME AT
+          Remind me at
         </Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+        <View
+          accessibilityRole="radiogroup"
+          style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}
+        >
           {REMINDER_TIMES.map((t, i) => {
             const selected = i === timeIndex;
             return (
@@ -416,23 +346,28 @@ function ReminderStep({
                 disabled={locked}
                 haptic="selection"
                 scaleTo={0.94}
-                accessibilityRole="button"
+                accessibilityRole="radio"
                 accessibilityLabel={`Remind me at ${t.label}`}
-                accessibilityState={{ selected, disabled: locked }}
+                accessibilityState={{ selected, checked: selected, disabled: locked }}
                 style={{
                   minHeight: 44,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.xs,
                   paddingHorizontal: theme.spacing.lg,
-                  justifyContent: "center",
                   borderRadius: theme.radius.pill,
                   borderWidth: 1,
-                  borderColor: selected ? theme.colors.primary : theme.colors.border,
+                  borderColor: selected ? theme.colors.primary : theme.colors.textMuted,
                   backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
                   opacity: locked && !selected ? 0.5 : 1,
                 }}
               >
+                {selected ? (
+                  <Ionicons name="checkmark" size={18} color={theme.colors.onPrimary} />
+                ) : null}
                 <Text
                   style={{
-                    color: selected ? theme.colors.background : theme.colors.text,
+                    color: selected ? theme.colors.onPrimary : theme.colors.text,
                     fontSize: theme.font.size.body,
                     fontWeight: theme.font.weight.medium,
                     fontVariant: ["tabular-nums"],
@@ -451,8 +386,8 @@ function ReminderStep({
           flexDirection: "row",
           gap: theme.spacing.md,
           padding: theme.spacing.lg,
-          borderRadius: theme.radius.sm,
-          borderWidth: 1.5,
+          borderRadius: theme.radius.md,
+          borderWidth: 1,
           borderColor: theme.colors.border,
           backgroundColor: theme.colors.surface,
         }}
@@ -479,13 +414,13 @@ function ReminderStep({
           >
             {REMINDER_COPY.title}
           </Text>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 24 }}>
             {REMINDER_COPY.body}
           </Text>
           <Text
             style={{
               color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
+              fontSize: theme.font.size.caption + 2,
               fontVariant: ["tabular-nums"],
             }}
           >
@@ -497,12 +432,12 @@ function ReminderStep({
       {result === "on" ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
           <Lottie name="success" size={56} />
-          <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body }}>
+          <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
             Reminder set for {time.label} every day. Your first round starts today.
           </Text>
         </View>
       ) : result === "off" ? (
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 24 }}>
           Notifications are off for this app. Allow them in your phone's Settings to get reminders.
           You can still train without them.
         </Text>
@@ -514,7 +449,7 @@ function ReminderStep({
 type Action = {
   label: string;
   onPress: () => void;
-  icon?: ComponentProps<typeof Ionicons>["name"];
+  icon?: IconName;
   busy?: boolean;
 };
 
@@ -532,8 +467,6 @@ export default function OnboardingScreen() {
   const [timeIndex, setTimeIndex] = useState(2);
   const [result, setResult] = useState<ReminderResult>("idle");
   const [asking, setAsking] = useState(false);
-
-  const eyebrow = `STEP ${step + 1} OF ${STEP_COUNT}`;
 
   function go(next: number) {
     setDirection(next > step ? 1 : -1);
@@ -558,7 +491,6 @@ export default function OnboardingScreen() {
     if (step === 0) {
       return (
         <QuestionStep
-          eyebrow={eyebrow}
           title="What's your level?"
           options={SKILL_OPTIONS}
           value={skill}
@@ -569,7 +501,6 @@ export default function OnboardingScreen() {
     if (step === 1) {
       return (
         <QuestionStep
-          eyebrow={eyebrow}
           title="Where do you train?"
           options={SETUP_OPTIONS}
           value={setup}
@@ -577,10 +508,9 @@ export default function OnboardingScreen() {
         />
       );
     }
-    if (step === 2) return <DemoStep eyebrow={eyebrow} />;
+    if (step === 2) return <DemoStep />;
     return (
       <ReminderStep
-        eyebrow={eyebrow}
         timeIndex={timeIndex}
         onPickTime={setTimeIndex}
         result={result}
@@ -622,41 +552,21 @@ export default function OnboardingScreen() {
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <Stack.Screen options={{ title: "Welcome" }} />
 
-      {/* A faint vignette: the surface color glows at the middle and falls back to black at the edges. */}
-      <LinearGradient
-        colors={[theme.colors.background, theme.colors.surface, theme.colors.background]}
-        locations={[0, 0.4, 1]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        pointerEvents="none"
-        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-      />
-
       <View
         style={{
-          height: insets.top + 44,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: theme.spacing.sm,
+          minHeight: insets.top + 52,
           paddingTop: insets.top,
-          paddingHorizontal: theme.spacing.sm,
-          justifyContent: "center",
+          paddingLeft: step > 0 ? theme.spacing.xs : theme.spacing.lg,
+          paddingRight: theme.spacing.lg,
         }}
       >
         {step > 0 ? (
-          <Pressable
-            onPress={() => go(step - 1)}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-            style={({ pressed }) => ({
-              width: 44,
-              height: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Ionicons name="chevron-back" size={26} color={theme.colors.text} />
-          </Pressable>
+          <IconButton icon="chevron-back" label="Back" size={26} onPress={() => go(step - 1)} />
         ) : null}
+        <StepProgress step={step} count={STEP_COUNT} />
       </View>
 
       <ScrollView

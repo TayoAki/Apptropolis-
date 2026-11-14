@@ -24,10 +24,13 @@ import {
 import { Rocco } from "../../components/Rocco";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
+import { SETS_PER_EXERCISE, nextSessionDate, repsFor, startingWeight } from "../../data/plan";
+import { usePlanner } from "../../data/planner";
 import { useCollection } from "../../data/repo";
 import {
   count,
   dayKey,
+  dayLabel,
   formatTime,
   sharedWeek,
   todaysWorkout,
@@ -41,7 +44,7 @@ import {
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const TARGET_SETS = 3;
+const TARGET_SETS = SETS_PER_EXERCISE;
 const WEEKDAY_NAMES = [
   "Sunday",
   "Monday",
@@ -66,7 +69,11 @@ export default function TodayScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
-  const { answers } = useAppState();
+  const { answers, resetOnboarding } = useAppState();
+  // The saved plan. The planner also lays out each new week from it, and re-renders this
+  // screen when the calendar day changes.
+  const planner = usePlanner();
+  const template = planner.template;
   const workoutsStore = useCollection<Workout>("workouts");
   const setsStore = useCollection<SetLog>("set_logs");
   const exercisesStore = useCollection<Exercise>("exercises");
@@ -79,6 +86,8 @@ export default function TodayScreen() {
   const [buttonSize, setButtonSize] = useState({ w: 0, h: 0 });
   const trace = useRef(new Animated.Value(0)).current;
   const tone = useRef(new Animated.Value(0)).current;
+  // True while a completion is being saved, so a second tap can't post it twice.
+  const completing = useRef(false);
 
   const now = new Date();
   const today = dayKey(now);
@@ -86,14 +95,24 @@ export default function TodayScreen() {
   const sets = setsStore.items;
   const updates = updatesStore.items;
   const loading =
-    workoutsStore.loading || setsStore.loading || exercisesStore.loading || updatesStore.loading;
+    planner.loading ||
+    workoutsStore.loading ||
+    setsStore.loading ||
+    exercisesStore.loading ||
+    updatesStore.loading;
 
   const workout = todaysWorkout(workouts, now);
   const completed = Boolean(workout?.completed);
   const week = weekStats(workouts, now);
-  // "Team" is the shared score, the same number the Partner tab draws as its ring.
-  const teamPercent = sharedWeek(workouts, updates, now).percent;
-  const sessionsTarget = Math.max(1, Number(answers.daysperweek) || week.planned);
+  // A partner is linked once an update from them has arrived. Until then the score is the
+  // person's own; afterwards it is the shared one, the same number the Partner tab draws.
+  const paired = updates.some((u) => u.from === "partner");
+  const scorePercent = paired ? sharedWeek(workouts, updates, now).percent : week.percent;
+  // The week's target is the sessions the plan laid out this week: as many as the training
+  // days picked in setup (fewer in the week the plan was built, which starts from that day).
+  const sessionsTarget = week.planned;
+  const planGoal = template?.goal ?? answers.goal;
+  const nextSession = template ? nextSessionDate(template, now) : null;
 
   const exerciseById = useMemo(
     () => new Map(exercisesStore.items.map((e) => [e.id, e] as const)),
@@ -111,14 +130,21 @@ export default function TodayScreen() {
   const draftFor = (id: string): Draft => {
     const existing = drafts[id];
     if (existing) return existing;
+    // The last set logged for this lift (today or any earlier day), else a sensible start: the
+    // plan's reps for the goal and a light weight for the equipment.
     const last = lastOf(loggedFor(id)) ?? lastOf(sets.filter((s) => s.exercise === id));
-    return { weight: last?.weight ?? 0, reps: last?.reps ?? 8 };
+    return {
+      weight: last?.weight ?? startingWeight(exerciseById.get(id)?.equipment),
+      reps: last?.reps ?? repsFor(planGoal),
+    };
   };
   const isDone = (id: string) => loggedFor(id).length >= TARGET_SETS;
   const firstOpen = session.find((e) => !isDone(e.id));
+  // The open card: the one the person tapped (a finished one too, to take a set back),
+  // otherwise the first exercise with sets left.
   const activeId = completed
     ? null
-    : picked && session.some((e) => e.id === picked) && !isDone(picked)
+    : picked && session.some((e) => e.id === picked)
       ? picked
       : (firstOpen?.id ?? null);
 
@@ -126,8 +152,6 @@ export default function TodayScreen() {
   const partnerDone = updates.find(
     (u) => u.from === "partner" && u.type === "completion" && dayOf(u.createdAt) === today,
   );
-  // Until the partner has sent anything, there is nobody to show a face for.
-  const partnerJoined = updates.some((u) => u.from === "partner");
   const cheeredToday = updates.some(
     (u) => u.from === "you" && u.type === "cheer" && dayOf(u.createdAt) === today,
   );
@@ -172,15 +196,34 @@ export default function TodayScreen() {
         reps: draft.reps,
         weight: draft.weight,
       });
-      if (setNumber === TARGET_SETS) haptic("success");
+      if (setNumber === TARGET_SETS) {
+        haptic("success");
+        // Its sets are in: move on to the next exercise with sets left.
+        setPicked(null);
+      }
       setNotice(null);
     } catch {
       setNotice("That set didn't save. Try logging it again.");
     }
   }
 
-  async function completeWorkout() {
+  /** Takes back the last set logged for an exercise (a wrong weight or a mis-tap). */
+  async function undoSet(exercise: Exercise) {
     if (!workout || completed) return;
+    const last = lastOf(loggedFor(exercise.id));
+    if (!last) return;
+    haptic("selection");
+    try {
+      await setsStore.remove(last.id);
+      setNotice(null);
+    } catch {
+      setNotice("That set couldn't be removed. Try again.");
+    }
+  }
+
+  async function completeWorkout() {
+    if (!workout || completed || completing.current) return;
+    completing.current = true;
     if (!reduced) {
       trace.setValue(0);
       Animated.timing(trace, { toValue: 1, duration: 320, useNativeDriver: false }).start();
@@ -204,7 +247,9 @@ export default function TodayScreen() {
       setCelebration((n) => n + 1);
       setNotice(null);
     } catch {
-      setNotice("Couldn't save the workout. Check your connection and try again.");
+      setNotice("The workout didn't save. Try again.");
+    } finally {
+      completing.current = false;
     }
   }
 
@@ -213,6 +258,11 @@ export default function TodayScreen() {
     haptic("selection");
     try {
       await workoutsStore.update(workout.id, { completed: false, completedAt: null });
+      // The "done" note it posted goes too, so finishing again doesn't leave two of them.
+      const posted = updates.filter(
+        (u) => u.from === "you" && u.type === "completion" && dayOf(u.createdAt) === today,
+      );
+      for (const update of posted) await updatesStore.remove(update.id);
     } catch {
       setNotice("Couldn't reopen the workout. Try again.");
     }
@@ -255,6 +305,7 @@ export default function TodayScreen() {
   }
 
   const dateLabel = `${WEEKDAY_NAMES[now.getDay()]}, ${MONTH_NAMES[now.getMonth()]} ${now.getDate()}`;
+  const partnerName = (answers.partner_name ?? "").trim();
   const partnerLine = partnerDone
     ? `Finished today's workout at ${formatTime(partnerDone.createdAt)}.`
     : "Not finished today yet. You'll see it here the moment they do.";
@@ -322,11 +373,11 @@ export default function TodayScreen() {
                 lineHeight: 38,
               }}
             >
-              {workout ? workout.title : "Rest day"}
+              {workout ? workout.title : template ? "Rest day" : "No plan yet"}
             </Text>
-            {answers.goal ? (
+            {template && planGoal ? (
               <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                {`Goal: ${answers.goal}`}
+                {`Goal: ${planGoal}`}
               </Text>
             ) : null}
           </View>
@@ -338,84 +389,112 @@ export default function TodayScreen() {
       </Appear>
 
       <Appear delay={120}>
-        <Card
-          label={partnerDone ? "Your partner finished today" : "Your partner hasn't finished today"}
-          style={{ gap: theme.spacing.md }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-            <View>
-              <Avatar prompt={partnerJoined ? PARTNER_PHOTO : undefined} size={52} />
-              <View
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  bottom: 0,
-                  width: 14,
-                  height: 14,
-                  borderRadius: 7,
-                  borderWidth: 2,
-                  borderColor: theme.colors.surface,
-                  backgroundColor: partnerDone ? theme.colors.success : theme.colors.textMuted,
-                }}
-              />
-            </View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.body,
-                  fontWeight: theme.font.weight.bold,
-                }}
-              >
-                Your partner
-              </Text>
-              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                {partnerLine}
-              </Text>
-            </View>
-            {partnerDone ? (
-              <Pulse>
+        {paired ? (
+          <Card
+            label={partnerDone ? "Your partner finished today" : "Your partner hasn't finished today"}
+            style={{ gap: theme.spacing.md }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+              <View>
+                <Avatar prompt={PARTNER_PHOTO} name={partnerName} size={52} />
                 <View
                   style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: theme.radius.pill,
-                    borderWidth: 1,
-                    borderColor: theme.colors.success,
+                    position: "absolute",
+                    right: 0,
+                    bottom: 0,
+                    width: 14,
+                    height: 14,
+                    borderRadius: 7,
+                    borderWidth: 2,
+                    borderColor: theme.colors.surface,
+                    backgroundColor: partnerDone ? theme.colors.success : theme.colors.textMuted,
+                  }}
+                />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
                   }}
                 >
-                  <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />
-                  <Text
-                    style={{
-                      color: theme.colors.success,
-                      fontSize: theme.font.size.caption,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    Done
-                  </Text>
-                </View>
-              </Pulse>
-            ) : null}
-          </View>
-          {partnerDone ? (
-            cheeredToday ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-                <View style={{ width: 40, height: 40, overflow: "hidden" }}>
-                  <Lottie name="heart" size={40} />
-                </View>
-                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, flex: 1 }}>
-                  Cheer sent. They'll see it on their side.
+                  {partnerName || "Your partner"}
+                </Text>
+                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                  {partnerLine}
                 </Text>
               </View>
-            ) : (
-              <Button label="Cheer" icon="flame" onPress={cheer} />
-            )
-          ) : null}
-        </Card>
+              {partnerDone ? (
+                <Pulse>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: theme.radius.pill,
+                      borderWidth: 1,
+                      borderColor: theme.colors.success,
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />
+                    <Text
+                      style={{
+                        color: theme.colors.success,
+                        fontSize: theme.font.size.caption,
+                        fontWeight: theme.font.weight.bold,
+                      }}
+                    >
+                      Done
+                    </Text>
+                  </View>
+                </Pulse>
+              ) : null}
+            </View>
+            {partnerDone ? (
+              cheeredToday ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+                  <View style={{ width: 40, height: 40, overflow: "hidden" }}>
+                    <Lottie name="heart" size={40} />
+                  </View>
+                  <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, flex: 1 }}>
+                    Cheer sent. They'll see it on their side.
+                  </Text>
+                </View>
+              ) : (
+                <Button label="Cheer" icon="flame" onPress={cheer} />
+              )
+            ) : null}
+          </Card>
+        ) : (
+          // No partner is linked: phones can't be linked in this version, so the card says so
+          // and points at the one thing that does reach a partner, the scorecard.
+          <Card
+            onPress={() => router.navigate("/partner")}
+            label="No partner linked yet. Open the Partner tab to send your scorecard."
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+              <Avatar name={partnerName} size={52} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                >
+                  {partnerName ? `${partnerName} isn't linked yet` : "No partner linked yet"}
+                </Text>
+                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                  Send your scorecard from the Partner tab so they can see you showed up.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+            </View>
+          </Card>
+        )}
       </Appear>
 
       <Appear delay={180}>
@@ -437,15 +516,23 @@ export default function TodayScreen() {
             >
               Accountability
             </Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+            {/* A score only once a session has been due this week: 0% of nothing isn't a result. */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.spacing.xs,
+                display: week.due ? "flex" : "none",
+              }}
+            >
               <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-                Team:
+                {paired ? "Team:" : "You:"}
               </Text>
               <CountUp
-                value={teamPercent}
+                value={scorePercent}
                 format={(n) => `${Math.round(n)}%`}
                 style={{
-                  color: teamPercent >= 70 ? theme.colors.success : theme.colors.warning,
+                  color: scorePercent >= 70 ? theme.colors.success : theme.colors.warning,
                   fontSize: theme.font.size.body,
                   fontWeight: theme.font.weight.bold,
                 }}
@@ -522,9 +609,11 @@ export default function TodayScreen() {
 
           <GrowBar progress={week.percent / 100} color={theme.colors.success} height={6} />
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-            {week.planned
+            {sessionsTarget
               ? `${week.completed} of ${count(sessionsTarget, "session")} done this week`
-              : "No sessions planned this week"}
+              : nextSession
+                ? `Your first session is ${dayLabel(nextSession, now)}`
+                : "No sessions planned this week"}
           </Text>
         </View>
       </Appear>
@@ -711,13 +800,26 @@ export default function TodayScreen() {
             </Pressable>
           ) : null}
         </>
-      ) : (
+      ) : template ? (
         <EmptyState
-          icon="calendar-outline"
+          icon="moon-outline"
           title="Nothing planned today"
-          body="Your plan schedules each training day from your answers. Open My Plan to build this week, or enjoy a rest day."
+          body={
+            nextSession
+              ? `Your next session is ${dayLabel(nextSession, now)}. My Plan has the whole week.`
+              : "My Plan has the whole week."
+          }
           actionLabel="Open My Plan"
-          onAction={() => router.push("/plan")}
+          onAction={() => router.navigate("/plan")}
+        />
+      ) : (
+        // Setup was skipped: three questions build the plan, and the answers given so far are kept.
+        <EmptyState
+          icon="barbell-outline"
+          title="Build your lifting week"
+          body="Answer three questions (your goal, your training days and your equipment) and your plan for this week is laid out."
+          actionLabel="Set up my plan"
+          onAction={() => void resetOnboarding()}
         />
       )}
 
@@ -759,10 +861,12 @@ export default function TodayScreen() {
                   target={TARGET_SETS}
                   active={activeId === item.id}
                   locked={completed}
+                  targetReps={repsFor(planGoal)}
                   draft={draftFor(item.id)}
                   onSelect={() => setPicked(item.id)}
                   onStep={(field, delta) => step(item.id, field, delta)}
                   onLog={() => logSet(item)}
+                  onUndo={() => undoSet(item)}
                 />
               </View>
             </Appear>

@@ -184,7 +184,8 @@ function OptionChip({
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityLabel={label}
-      accessibilityState={{ selected }}
+      accessibilityState={{ checked: selected }}
+      aria-checked={selected}
       hitSlop={6}
       style={({ pressed }) => ({
         minHeight: 44,
@@ -234,6 +235,7 @@ export function ChoiceRow({
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityState={{ expanded: open }}
+        aria-expanded={open}
         style={({ pressed }) => ({
           backgroundColor: pressed ? theme.colors.surfaceAlt : undefined,
         })}

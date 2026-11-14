@@ -47,6 +47,9 @@ export function WeekRing({ percent, label = "Shared score for this week" }: { pe
       accessibilityRole="progressbar"
       accessibilityLabel={label}
       accessibilityValue={{ min: 0, max: 100, now: score }}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={score}
       style={{ width: SIZE, height: SIZE }}
     >
       <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>

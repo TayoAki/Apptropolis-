@@ -27,7 +27,7 @@ export function IconTile({ name, tint = "accent" }: { name: IconName; tint?: Col
   );
 }
 
-/** An uppercase section header, a rounded card of rows, and an optional footer caption. */
+/** A section header, a rounded card of rows, and an optional footer caption. */
 export function SettingsSection({
   title,
   footer,
@@ -46,9 +46,7 @@ export function SettingsSection({
         style={{
           color: theme.colors.textMuted,
           fontSize: theme.font.size.caption,
-          fontWeight: theme.font.weight.medium,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
+          fontWeight: theme.font.weight.bold,
           paddingHorizontal: theme.spacing.sm,
         }}
       >
@@ -146,7 +144,7 @@ export function SettingsRow({
       }}
     >
       {icon ? <IconTile name={icon} tint={tint} /> : null}
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flexGrow: 1, flexShrink: 1, gap: 2 }}>
         <Text
           style={{
             color: theme.colors[labelTint],
@@ -164,13 +162,12 @@ export function SettingsRow({
       </View>
       {value ? (
         <Text
-          numberOfLines={1}
           style={{
             color: theme.colors[valueTint],
             fontSize: theme.font.size.body,
             fontVariant: ["tabular-nums"],
-            flexShrink: 1,
-            maxWidth: "45%",
+            flexShrink: 0,
+            maxWidth: "60%",
             textAlign: "right",
           }}
         >
@@ -241,8 +238,8 @@ export function Chips<T extends string | number>({
             key={String(option.id)}
             accessibilityRole="radio"
             accessibilityLabel={option.label}
-            accessibilityState={{ selected }}
-            hitSlop={6}
+            accessibilityState={{ checked: selected }}
+            hitSlop={4}
             onPress={() => {
               if (selected) return;
               haptic("selection");
@@ -250,15 +247,20 @@ export function Chips<T extends string | number>({
             }}
             style={({ pressed }) => ({
               minHeight: 44,
-              justifyContent: "center",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: theme.spacing.xs,
               paddingHorizontal: theme.spacing.md,
               borderRadius: theme.radius.pill,
               borderWidth: 1,
-              borderColor: selected ? theme.colors.primary : theme.colors.border,
-              backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt,
+              borderColor: selected ? theme.colors.primary : theme.colors.textMuted,
+              backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
               opacity: pressed ? 0.75 : 1,
             })}
           >
+            {selected ? (
+              <Ionicons name="checkmark" size={16} color={theme.colors.onPrimary} />
+            ) : null}
             <Text
               style={{
                 color: selected ? theme.colors.onPrimary : theme.colors.text,
@@ -302,6 +304,7 @@ export function Stepper({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={what}
+      accessibilityState={{ disabled }}
       disabled={disabled}
       hitSlop={8}
       onPress={() => move(target)}
@@ -311,11 +314,16 @@ export function Stepper({
         borderRadius: 22,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: theme.colors.surfaceAlt,
-        opacity: disabled ? 0.35 : pressed ? 0.7 : 1,
+        borderWidth: 1,
+        borderColor: disabled ? theme.colors.border : theme.colors.textMuted,
+        backgroundColor: pressed ? theme.colors.surfaceAlt : theme.colors.surface,
       })}
     >
-      <Ionicons name={icon} size={22} color={theme.colors.primary} />
+      <Ionicons
+        name={icon}
+        size={22}
+        color={disabled ? theme.colors.textMuted : theme.colors.primary}
+      />
     </Pressable>
   );
   return (

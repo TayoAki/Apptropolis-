@@ -1,8 +1,9 @@
+import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
-import { Text, View } from "react-native";
-import { AiImage } from "../AiImage";
-import { CountUp } from "../motion";
+import { StyleSheet, Text, View } from "react-native";
+import { formatCount, formatDay, formatDrinks } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
+import { CountUp } from "../motion";
 
 export interface DayBar {
   key: string;
@@ -10,51 +11,40 @@ export interface DayBar {
   /** Standard drinks logged that day. */
   value: number;
   gameDay: boolean;
-  /** The next game day: gets the Game Day callout and the glow. */
-  highlight: boolean;
+  today: boolean;
+  /** The day is marked alcohol-free. */
+  alcoholFree: boolean;
 }
 
 interface Props {
   days: DayBar[];
-  /** The per-night guide, drawn as a dashed line. */
+  /** Standard drinks in one day that the dashed line marks. */
   guide: number;
   total: number;
   limit: number;
-  dryDays: number;
-  dryTarget: number;
-  onTrack: boolean;
+  freeDays: number;
+  freeTarget: number;
+  over: boolean;
 }
 
-const CHART_HEIGHT = 180;
-const CALLOUT_HEIGHT = 64;
+const CHART_HEIGHT = 164;
+const MARK_HEIGHT = 22;
 const VALUE_HEIGHT = 20;
 const BAR_WIDTH = 24;
 
-const round = (n: number) => Math.round(n * 10) / 10;
-
-function Chip({ label, children }: { label: string; children: ReactNode }) {
+function Stat({
+  label,
+  flex = 1,
+  children,
+}: {
+  label: string;
+  flex?: number;
+  children: ReactNode;
+}) {
   const theme = useTheme();
   return (
-    <View
-      style={{
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-        gap: theme.spacing.xs,
-        minHeight: 64,
-        paddingHorizontal: theme.spacing.xs,
-        paddingVertical: theme.spacing.sm,
-        borderRadius: theme.radius.md,
-        backgroundColor: theme.colors.surfaceAlt,
-      }}
-    >
-      <Text
-        style={{
-          color: theme.colors.textMuted,
-          fontSize: theme.font.size.caption,
-          textAlign: "center",
-        }}
-      >
+    <View style={{ flex, gap: theme.spacing.xs }}>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
         {label}
       </Text>
       {children}
@@ -62,20 +52,29 @@ function Chip({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** The week as a bar chart of drinks per day, with the week's totals under it. */
 export function WeeklyProgressCard({
   days,
   guide,
   total,
   limit,
-  dryDays,
-  dryTarget,
-  onTrack,
+  freeDays,
+  freeTarget,
+  over,
 }: Props) {
   const theme = useTheme();
   const scale = Math.max(3, guide, ...days.map((day) => day.value));
-  const barMax = CHART_HEIGHT - CALLOUT_HEIGHT - VALUE_HEIGHT;
+  const barMax = CHART_HEIGHT - MARK_HEIGHT - VALUE_HEIGHT;
   const guideBottom = (guide / scale) * barMax;
-  const statusColor = onTrack ? theme.colors.success : theme.colors.danger;
+  const statusColor = over ? theme.colors.warning : theme.colors.success;
+  const hasGameDay = days.some((day) => day.gameDay);
+  const value = {
+    color: theme.colors.text,
+    fontSize: theme.font.size.body,
+    fontWeight: theme.font.weight.bold,
+    fontVariant: ["tabular-nums" as const],
+  };
+  const legend = { color: theme.colors.textMuted, fontSize: theme.font.size.caption };
 
   return (
     <View
@@ -84,7 +83,7 @@ export function WeeklyProgressCard({
         padding: theme.spacing.lg,
         borderRadius: theme.radius.lg,
         borderWidth: 1,
-        borderColor: theme.colors.primary,
+        borderColor: theme.colors.border,
         backgroundColor: theme.colors.surface,
       }}
     >
@@ -92,189 +91,140 @@ export function WeeklyProgressCard({
         <Text
           accessibilityRole="header"
           style={{
-            color: theme.colors.primary,
-            fontSize: theme.font.size.caption,
+            color: theme.colors.text,
+            fontSize: theme.font.size.title,
             fontWeight: theme.font.weight.bold,
-            letterSpacing: 1,
           }}
         >
-          WEEKLY PROGRESS
+          Drinks per day
         </Text>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-          Standard drinks per day this week
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+          Standard drinks you logged each day this week.
         </Text>
       </View>
 
-      <View style={{ height: CHART_HEIGHT }}>
-        <View style={{ flex: 1, flexDirection: "row" }}>
-          {days.map((day) => {
-            const height = day.value > 0 ? Math.max(4, (day.value / scale) * barMax) : 0;
-            return (
-              <View
-                key={day.key}
-                style={{ flex: 1, alignItems: "center", justifyContent: "flex-end" }}
-              >
-                {day.highlight ? (
-                  <View
+      <View>
+        <View style={{ height: CHART_HEIGHT }}>
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: guideBottom,
+              borderTopWidth: 1,
+              borderStyle: "dashed",
+              borderColor: theme.colors.textMuted,
+            }}
+          />
+          <View style={{ flex: 1, flexDirection: "row" }}>
+            {days.map((day) => {
+              const height = day.value > 0 ? Math.max(4, (day.value / scale) * barMax) : 0;
+              return (
+                <View
+                  key={day.key}
+                  accessible
+                  accessibilityLabel={`${formatDay(day.key, "long")}: ${formatDrinks(day.value)}${
+                    day.alcoholFree ? ", marked alcohol-free" : ""
+                  }${day.gameDay ? ", game day" : ""}`}
+                  style={{ flex: 1, alignItems: "center", justifyContent: "flex-end" }}
+                >
+                  <View style={{ height: MARK_HEIGHT, justifyContent: "center" }}>
+                    {day.gameDay ? (
+                      <Ionicons name="flag" size={16} color={theme.colors.accent} />
+                    ) : null}
+                  </View>
+                  <Text
                     style={{
-                      height: CALLOUT_HEIGHT,
-                      alignItems: "center",
-                      justifyContent: "flex-end",
-                      gap: 2,
+                      height: VALUE_HEIGHT,
+                      color: theme.colors.text,
+                      fontSize: theme.font.size.caption,
+                      fontWeight: theme.font.weight.medium,
+                      fontVariant: ["tabular-nums"],
                     }}
                   >
-                    <AiImage
-                      prompt="a gold stadium icon, flat line illustration"
-                      fit="contain"
-                      style={{ width: 30, height: 30 }}
-                    />
-                    <Text
-                      style={{
-                        color: theme.colors.primary,
-                        fontSize: theme.font.size.caption,
-                        fontWeight: theme.font.weight.bold,
-                        textAlign: "center",
-                        lineHeight: 15,
-                      }}
-                    >
-                      {"GAME\nDAY"}
-                    </Text>
-                  </View>
-                ) : null}
-                <Text
-                  style={{
-                    height: VALUE_HEIGHT,
-                    color: theme.colors.text,
-                    fontSize: theme.font.size.caption,
-                    fontWeight: theme.font.weight.medium,
-                    fontVariant: ["tabular-nums"],
-                  }}
-                >
-                  {round(day.value)}
-                </Text>
-                <View
-                  style={[
-                    {
+                    {formatCount(day.value)}
+                  </Text>
+                  <View
+                    style={{
                       width: BAR_WIDTH,
                       height,
                       borderTopLeftRadius: 6,
                       borderTopRightRadius: 6,
-                    },
-                    day.value > 0 ? { backgroundColor: theme.colors.primary } : null,
-                    day.highlight
-                      ? {
-                          shadowColor: theme.colors.primary,
-                          shadowOpacity: 0.8,
-                          shadowRadius: 10,
-                          shadowOffset: { width: 0, height: 0 },
-                          elevation: 6,
-                        }
-                      : null,
-                  ]}
-                />
-              </View>
-            );
-          })}
+                      backgroundColor: theme.colors.primary,
+                    }}
+                  />
+                </View>
+              );
+            })}
+          </View>
         </View>
-
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: guideBottom,
-            borderTopWidth: 1,
-            borderStyle: "dashed",
-            borderColor: theme.colors.textMuted,
-          }}
-        />
-        <Text
-          style={{
-            position: "absolute",
-            right: 0,
-            bottom: guideBottom + 4,
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
-          }}
-        >
-          {`Target: ≤ ${guide}`}
-        </Text>
+        <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.textMuted }} />
+        <View style={{ flexDirection: "row", paddingTop: theme.spacing.sm }}>
+          {days.map((day) => (
+            <View key={day.key} style={{ flex: 1, alignItems: "center", gap: 2 }}>
+              <Text
+                style={{
+                  color: day.today ? theme.colors.text : theme.colors.textMuted,
+                  fontSize: theme.font.size.caption,
+                  fontWeight: day.today ? theme.font.weight.bold : theme.font.weight.medium,
+                }}
+              >
+                {day.label}
+              </Text>
+              <View style={{ height: 14 }}>
+                {day.alcoholFree ? (
+                  <Ionicons name="checkmark-circle" size={14} color={theme.colors.success} />
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
       </View>
 
-      <View style={{ flexDirection: "row" }}>
-        {days.map((day) => (
-          <Text
-            key={day.key}
-            style={{
-              flex: 1,
-              textAlign: "center",
-              color: day.highlight ? theme.colors.primary : theme.colors.textMuted,
-              fontSize: theme.font.size.body,
-              fontWeight: day.highlight ? theme.font.weight.bold : theme.font.weight.medium,
-            }}
-          >
-            {day.label}
-          </Text>
-        ))}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: theme.spacing.lg, rowGap: 4 }}>
+        <Text style={legend}>{`Dashed line: ${formatDrinks(guide)} in a day`}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Ionicons name="checkmark-circle" size={14} color={theme.colors.success} />
+          <Text style={legend}>Alcohol-free day</Text>
+        </View>
+        {hasGameDay ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Ionicons name="flag" size={14} color={theme.colors.accent} />
+            <Text style={legend}>Game day</Text>
+          </View>
+        ) : null}
       </View>
 
-      <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-        <Chip label="Weekly Total:">
-          <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-            <CountUp
-              value={total}
-              format={(n) => String(round(n))}
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.bold,
-              }}
-            />
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-              {` / ${limit} Max`}
-            </Text>
-          </View>
-        </Chip>
+      <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }} />
 
-        <Chip label="Dry Days:">
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            {`${dryDays}`}
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.regular,
-              }}
-            >
-              {` / ${dryTarget} Target`}
-            </Text>
+      <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+        <Stat label="This week">
+          <Text style={value}>
+            <CountUp value={total} format={formatCount} style={value} />
+            <Text style={{ fontWeight: theme.font.weight.regular }}>{` of ${formatCount(limit)}`}</Text>
           </Text>
-        </Chip>
-
-        <Chip label="Match Status:">
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        </Stat>
+        <Stat label="Alcohol-free">
+          <Text style={value}>
+            {freeDays}
             <Text
-              style={{
-                color: statusColor,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              {onTrack ? "On Track" : "Over Limit"}
-            </Text>
-            <View
-              style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }}
+              style={{ fontWeight: theme.font.weight.regular }}
+            >{` of ${freeTarget} days`}</Text>
+          </Text>
+        </Stat>
+        <Stat label="Status" flex={1.2}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Ionicons
+              name={over ? "alert-circle" : "checkmark-circle"}
+              size={16}
+              color={statusColor}
             />
+            <Text style={[value, { color: statusColor, flexShrink: 1 }]}>
+              {over ? "Over limit" : "On track"}
+            </Text>
           </View>
-        </Chip>
+        </Stat>
       </View>
     </View>
   );

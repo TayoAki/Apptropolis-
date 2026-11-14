@@ -1,18 +1,12 @@
-// Pieces of the Coach screen: a framed card with corner ticks, the annotated technique photo, the
-// dot wave while the coach writes, and the drill tile that springs out of an answer.
+// Pieces of the Coach screen: the trace drawn over the technique photo, the dot wave while the
+// coach writes, and the drill row that springs out of an answer.
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, type ReactNode } from "react";
-import {
-  Animated,
-  Easing,
-  Text,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, Text, View, type ViewStyle } from "react-native";
 import Svg, { Path, Polyline } from "react-native-svg";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PressScale, useReducedMotion } from "../motion";
+import { tint } from "../ui";
 
 /** A drill the coach wrote for a fix: it runs as a timed round on the Train tab. */
 export interface Drill {
@@ -20,55 +14,6 @@ export interface Drill {
   rounds: number;
   roundSeconds: number;
   callouts: string;
-}
-
-/** A surface card with thin corner ticks, the frame the mockup's cards use. */
-export function Frame({
-  children,
-  style,
-  accent = false,
-}: {
-  children: ReactNode;
-  style?: StyleProp<ViewStyle>;
-  /** Ticks in the primary color (the coach's cards). */
-  accent?: boolean;
-}) {
-  const theme = useTheme();
-  const tick = accent ? theme.colors.primary : theme.colors.textMuted;
-  const corner: ViewStyle = { position: "absolute", width: 14, height: 14, borderColor: tick };
-  return (
-    <View
-      style={[
-        {
-          borderRadius: theme.radius.lg,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          backgroundColor: theme.colors.surface,
-          padding: theme.spacing.md,
-          gap: theme.spacing.sm,
-        },
-        style,
-      ]}
-    >
-      {children}
-      <View
-        pointerEvents="none"
-        style={[corner, { top: -1, left: -1, borderTopWidth: 2, borderLeftWidth: 2 }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[corner, { top: -1, right: -1, borderTopWidth: 2, borderRightWidth: 2 }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[corner, { bottom: -1, left: -1, borderBottomWidth: 2, borderLeftWidth: 2 }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[corner, { bottom: -1, right: -1, borderBottomWidth: 2, borderRightWidth: 2 }]}
-      />
-    </View>
-  );
 }
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -125,19 +70,27 @@ export function TechniqueOverlay({ label }: { label: string }) {
           opacity={0.7}
         />
       </Svg>
-      <Text
+      <View
         style={{
           position: "absolute",
-          right: 14,
-          top: 84,
-          color: theme.colors.primary,
-          fontSize: theme.font.size.caption,
-          fontWeight: theme.font.weight.bold,
-          letterSpacing: 1,
+          right: theme.spacing.md,
+          bottom: theme.spacing.md,
+          paddingHorizontal: theme.spacing.sm,
+          paddingVertical: 2,
+          borderRadius: theme.radius.pill,
+          backgroundColor: theme.colors.primary,
         }}
       >
-        {label}
-      </Text>
+        <Text
+          style={{
+            color: theme.colors.onPrimary,
+            fontSize: theme.font.size.caption,
+            fontWeight: theme.font.weight.bold,
+          }}
+        >
+          {label}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -223,7 +176,7 @@ export function DrillTile({ drill, onRun }: { drill: Drill; onRun: () => void })
   const fade = spring.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] });
   const detail = [
     `${drill.rounds} ${drill.rounds === 1 ? "round" : "rounds"}`,
-    `${drill.roundSeconds} s`,
+    drill.roundSeconds % 60 === 0 ? `${drill.roundSeconds / 60} min` : `${drill.roundSeconds} sec`,
     drill.callouts,
   ]
     .filter(Boolean)
@@ -233,55 +186,44 @@ export function DrillTile({ drill, onRun }: { drill: Drill; onRun: () => void })
       <PressScale
         onPress={onRun}
         haptic="medium"
-        scaleTo={0.96}
+        scaleTo={0.97}
         accessibilityRole="button"
-        accessibilityLabel={`Run drill: ${drill.title}`}
+        accessibilityLabel={`Run drill: ${drill.title}. ${detail}`}
         style={{
           flexDirection: "row",
           alignItems: "center",
           gap: theme.spacing.md,
           minHeight: 64,
           padding: theme.spacing.md,
-          borderRadius: theme.radius.md,
-          backgroundColor: theme.colors.primary,
+          borderRadius: theme.radius.sm,
+          borderWidth: 1,
+          borderColor: theme.colors.primary,
+          backgroundColor: tint(theme.colors.primary, "1F"),
         }}
       >
-        <Ionicons name="flash" size={22} color={theme.colors.onPrimary} />
+        <Ionicons name="flash" size={22} color={theme.colors.primary} />
         <View style={{ flex: 1, gap: 2 }}>
           <Text
             style={{
-              color: theme.colors.onPrimary,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.bold,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              opacity: 0.85,
-            }}
-          >
-            Generated drill
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.onPrimary,
+              color: theme.colors.text,
               fontSize: theme.font.size.body,
               fontWeight: theme.font.weight.bold,
-              textTransform: "uppercase",
             }}
           >
             {drill.title}
           </Text>
           <Text
             style={{
-              color: theme.colors.onPrimary,
-              fontSize: theme.font.size.caption,
-              opacity: 0.85,
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption + 2,
+              lineHeight: 20,
               fontVariant: ["tabular-nums"],
             }}
           >
             {detail}
           </Text>
         </View>
-        <Ionicons name="play" size={20} color={theme.colors.onPrimary} />
+        <Ionicons name="play-circle" size={28} color={theme.colors.primary} />
       </PressScale>
     </Animated.View>
   );

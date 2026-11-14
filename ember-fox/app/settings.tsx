@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router, Stack } from "expo-router";
 import { useState } from "react";
 import {
@@ -13,7 +12,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Appear, Mascot, Stagger, haptic } from "../components/motion";
+import { Stagger, haptic } from "../components/motion";
+import { showPaywall } from "../components/paywallSource";
 import { Chips, SettingsRow, SettingsSection, Stepper } from "../components/settings/rows";
 import { SupportButton, useSupport } from "../components/support";
 import { appInfo } from "../data/app-info";
@@ -21,15 +21,17 @@ import { useAppState } from "../data/app-state";
 import { useReminder } from "../data/reminders";
 import { useCollection } from "../data/repo";
 import {
-  DEFAULT_PROFILE,
   SPORTS,
   dayKey,
   drinkName,
+  limitFrom,
+  profileFrom,
+  sportFrom,
   weekStart,
+  weekStartsOn,
   type BodyType,
   type Checkin,
   type Drink,
-  type Sport,
   type WeeklyGoal,
 } from "../data/schema";
 import { usePurchases } from "../data/purchases";
@@ -37,13 +39,12 @@ import { useTheme } from "../theme/ThemeProvider";
 
 const SPORT_OPTIONS = SPORTS.map((sport) => ({ id: sport.id, label: sport.label }));
 const TRAINING_OPTIONS = [
-  "Wednesday & Saturday",
-  "Tuesday & Thursday",
-  "Saturday",
-  "Sunday",
-  "Every day",
-].map((id) => ({ id, label: id }));
-const LIMIT_OPTIONS = [4, 5, 6, 7, 8, 10, 12, 14].map((n) => ({ id: n, label: String(n) }));
+  { id: "", label: "Not set" },
+  ...["Wednesday & Saturday", "Tuesday & Thursday", "Saturday", "Sunday", "Every day"].map(
+    (id) => ({ id, label: id }),
+  ),
+];
+const LIMIT_CHOICES = [3, 4, 5, 6, 7, 8, 10, 12, 14];
 const WEEK_OPTIONS = [
   { id: "Monday", label: "Monday" },
   { id: "Sunday", label: "Sunday" },
@@ -61,7 +62,6 @@ const TIME_SLOTS: [number, number][] = [
   [21, 0],
   [22, 0],
 ];
-const DEFAULT_LBS = Math.round(DEFAULT_PROFILE.weightKg / 0.45359237);
 const MANAGE_URL =
   Platform.OS === "ios"
     ? "https://apps.apple.com/account/subscriptions"
@@ -74,16 +74,6 @@ function clock(hour: number, minute: number): string {
 
 const TIME_OPTIONS = TIME_SLOTS.map(([h, m]) => ({ id: `${h}:${m}`, label: clock(h, m) }));
 
-/** The month a subscription next renews, from when it started. */
-function renewsOn(since: string, period: "week" | "month" | "year" | "lifetime"): string | null {
-  if (period === "lifetime") return null;
-  const date = new Date(since);
-  if (period === "week") date.setDate(date.getDate() + 7);
-  else if (period === "month") date.setMonth(date.getMonth() + 1);
-  else date.setFullYear(date.getFullYear() + 1);
-  return date.toLocaleDateString([], { month: "short", year: "numeric" });
-}
-
 function drinkCsv(drinks: Drink[]): string {
   const rows = [...drinks]
     .sort((a, b) => a.logged_at.localeCompare(b.logged_at))
@@ -95,8 +85,9 @@ function drinkCsv(drinks: Drink[]): string {
   return ["date,logged_at,drink,standard_drinks,edited", ...rows].join("\n");
 }
 
+/** One at a time: each removal rewrites the whole collection, so they must not overlap. */
 async function removeAll(rows: { id: string }[], remove: (id: string) => Promise<void>) {
-  await Promise.all(rows.map((row) => remove(row.id)));
+  for (const row of rows) await remove(row.id);
 }
 
 export default function SettingsScreen() {
@@ -107,10 +98,8 @@ export default function SettingsScreen() {
   const {
     isPremium,
     activeOffer,
-    entitlement,
     status,
     restorePurchases,
-    openPaywall,
   } = usePurchases();
   const support = useSupport();
   const drinks = useCollection<Drink>("drinks");
@@ -125,19 +114,23 @@ export default function SettingsScreen() {
 
   const toggle = (key: string) => setOpen((current) => (current === key ? null : key));
 
-  // Preferences, saved as onboarding-style answers the rest of the app can read.
-  const sport = (answers.sport as Sport | undefined) ?? "team";
-  const sportLabel = SPORTS.find((s) => s.id === sport)?.label ?? "Soccer / basketball";
-  const training = answers.training_days ?? "Wednesday & Saturday";
-  const limit = Number(answers.weekly_limit ?? 7);
-  const weekStartsOn = answers.week_start ?? "Monday";
-  const startsOn = weekStartsOn === "Sunday" ? 0 : 1;
-  const weight = Number(answers.weight_lbs ?? DEFAULT_LBS);
-  const bodyType = (answers.body_type as BodyType | undefined) ?? DEFAULT_PROFILE.bodyType;
-  const sexLabel = SEX_OPTIONS.find((o) => o.id === bodyType)?.label ?? "Other";
+  // Preferences, saved as onboarding-style answers the rest of the app reads through
+  // data/schema (sportFrom, limitFrom, weekStartsOn, profileFrom, gameWeekdays).
+  const sport = sportFrom(answers);
+  const sportLabel = SPORTS.find((s) => s.id === sport)?.label ?? "";
+  const training = answers.training_days ?? "";
+  const limit = limitFrom(answers);
+  const limitOptions = [...new Set([...LIMIT_CHOICES, limit])]
+    .sort((a, b) => a - b)
+    .map((n) => ({ id: n, label: String(n) }));
+  const startsOn = weekStartsOn(answers);
+  const weekStartsOnLabel = startsOn === 0 ? "Sunday" : "Monday";
+  const profile = profileFrom(answers);
+  const sexLabel = SEX_OPTIONS.find((o) => o.id === profile.bodyType)?.label ?? "Other";
   const timeId = `${reminder.hour}:${reminder.minute}`;
-  const renews =
-    entitlement && activeOffer ? renewsOn(entitlement.since, activeOffer.period) : null;
+  const timeOptions = TIME_OPTIONS.some((o) => o.id === timeId)
+    ? TIME_OPTIONS
+    : [{ id: timeId, label: clock(reminder.hour, reminder.minute) }, ...TIME_OPTIONS];
 
   async function setLimit(next: number) {
     void setAnswer("weekly_limit", String(next));
@@ -158,7 +151,7 @@ export default function SettingsScreen() {
     });
     if (!allowed)
       setNudgeNote(
-        "Notifications for ShotOClock are off. Allow them in your phone's Settings to get the nudge.",
+        "Notifications are off for ShotOClock. Allow them in your phone's settings to get the nudge.",
       );
   }
 
@@ -209,91 +202,53 @@ export default function SettingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Stack.Screen options={{ title: "Settings", headerShown: false }} />
-      <LinearGradient
-        colors={[theme.colors.background, theme.colors.surface]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+      <Stack.Screen
+        options={{
+          title: "Settings",
+          headerShown: true,
+          // Opened directly (a link, a reload) there is nothing to go back to: offer the app.
+          headerLeft: router.canGoBack()
+            ? undefined
+            : () => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to Tonight"
+                  hitSlop={12}
+                  onPress={() => router.replace("/")}
+                  style={({ pressed }) => ({
+                    width: 44,
+                    height: 44,
+                    justifyContent: "center",
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                >
+                  <Ionicons name="chevron-back" size={26} color={theme.colors.text} />
+                </Pressable>
+              ),
+        }}
       />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + theme.spacing.sm,
+          paddingTop: theme.spacing.lg,
           paddingBottom: insets.bottom + theme.spacing.xl,
           paddingHorizontal: theme.spacing.lg,
           gap: theme.spacing.xl,
         }}
       >
-        <Appear>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-            style={({ pressed }) => ({
-              width: 44,
-              height: 44,
-              justifyContent: "center",
-              alignItems: "flex-start",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Ionicons name="chevron-back" size={30} color={theme.colors.text} />
-          </Pressable>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: theme.spacing.sm,
-            }}
-          >
-            <Text
-              accessibilityRole="header"
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.headline,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              Settings
-            </Text>
-            <View
-              style={{
-                width: 68,
-                height: 68,
-                borderRadius: 34,
-                borderWidth: 2,
-                borderColor: theme.colors.primary,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: theme.colors.surfaceAlt,
-                shadowColor: theme.colors.primary,
-                shadowOpacity: 0.7,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 0 },
-                elevation: 6,
-              }}
-            >
-              <Mascot pose="dash-match-ready" size={60} />
-            </View>
-          </View>
-        </Appear>
-
         <Stagger step={70} style={{ gap: theme.spacing.xl }}>
-          <SettingsSection title="Athlete & Sport">
+          <SettingsSection title="Athlete and sport">
             <SettingsRow
               icon="football-outline"
               tint="primary"
-              label="Primary Sport"
+              label="Sport"
               value={sportLabel}
               open={open === "sport"}
               onPress={() => toggle("sport")}
             >
               {open === "sport" ? (
                 <Chips
-                  label="Primary sport"
+                  label="Sport"
                   options={SPORT_OPTIONS}
                   value={sport}
                   onChange={(id) => void setAnswer("sport", id)}
@@ -303,14 +258,14 @@ export default function SettingsScreen() {
             <SettingsRow
               icon="calendar-outline"
               tint="primary"
-              label="Next Match / Training Days"
-              subtitle={training}
+              label="Game and training days"
+              subtitle={training || "Not set. Pick your days to mark them on Week."}
               open={open === "training"}
               onPress={() => toggle("training")}
             >
               {open === "training" ? (
                 <Chips
-                  label="Next match or training days"
+                  label="Game and training days"
                   options={TRAINING_OPTIONS}
                   value={training}
                   onChange={(id) => void setAnswer("training_days", id)}
@@ -318,17 +273,17 @@ export default function SettingsScreen() {
               ) : null}
             </SettingsRow>
             <SettingsRow
-              icon="beer-outline"
+              icon="speedometer-outline"
               tint="primary"
-              label="Weekly Drink Limit"
-              value={`${limit} standard drinks`}
+              label="Weekly limit"
+              value={`${limit} ${limit === 1 ? "drink" : "drinks"}`}
               open={open === "limit"}
               onPress={() => toggle("limit")}
             >
               {open === "limit" ? (
                 <Chips
-                  label="Weekly drink limit"
-                  options={LIMIT_OPTIONS}
+                  label="Weekly limit, in standard drinks"
+                  options={limitOptions}
                   value={limit}
                   onChange={(n) => void setLimit(n)}
                 />
@@ -336,9 +291,9 @@ export default function SettingsScreen() {
             </SettingsRow>
             <SettingsRow
               icon="sync-outline"
-              tint="accent"
-              label="Week Starts On"
-              value={weekStartsOn}
+              tint="primary"
+              label="Week starts on"
+              value={weekStartsOnLabel}
               open={open === "week"}
               onPress={() => toggle("week")}
             >
@@ -346,7 +301,7 @@ export default function SettingsScreen() {
                 <Chips
                   label="Week starts on"
                   options={WEEK_OPTIONS}
-                  value={weekStartsOn}
+                  value={weekStartsOnLabel}
                   onChange={(id) => void setAnswer("week_start", id)}
                 />
               ) : null}
@@ -354,24 +309,26 @@ export default function SettingsScreen() {
           </SettingsSection>
 
           <SettingsSection
-            title="BAC Metabolism Calibration"
-            footer="Used strictly for formulaic metabolic burn estimates. Never consider estimates safe for driving decisions."
+            title="BAC estimate"
+            footer="Used only for the rough blood alcohol estimate on Tonight. Other uses a value midway between male and female. The estimate is never a reason to drive."
           >
             <SettingsRow
               icon="scale-outline"
               tint="accent"
-              label="Body Weight"
-              value={`${weight} lbs`}
+              label="Body weight"
+              subtitle={profile.weightSet ? undefined : "Default. Set yours for a closer estimate."}
+              value={`${profile.weightLbs} lb`}
               open={open === "weight"}
               onPress={() => toggle("weight")}
             >
               {open === "weight" ? (
                 <Stepper
-                  label="Body weight"
-                  value={weight}
+                  label="body weight"
+                  value={profile.weightLbs}
                   min={80}
                   max={400}
-                  format={(n) => `${n} lbs`}
+                  step={5}
+                  format={(n) => `${n} lb`}
                   onChange={(n) => void setAnswer("weight_lbs", String(n))}
                 />
               ) : null}
@@ -379,16 +336,16 @@ export default function SettingsScreen() {
             <SettingsRow
               icon="person-outline"
               tint="accent"
-              label="Biological Sex / Profile"
+              label="Sex or body profile"
               value={sexLabel}
               open={open === "sex"}
               onPress={() => toggle("sex")}
             >
               {open === "sex" ? (
                 <Chips
-                  label="Biological sex or profile"
+                  label="Sex or body profile"
                   options={SEX_OPTIONS}
-                  value={bodyType}
+                  value={profile.bodyType}
                   onChange={(id) => void setAnswer("body_type", id)}
                 />
               ) : null}
@@ -396,27 +353,28 @@ export default function SettingsScreen() {
           </SettingsSection>
 
           <SettingsSection
-            title="Reminders & Coaching"
-            footer="Single quiet notification. No spam or nagging text messages."
+            title="Reminders"
+            footer="One quiet notification a day, from this phone. No texts and no nagging."
           >
             <SettingsRow
               icon="notifications-outline"
               tint="primary"
-              label="Quiet Pre-Game Nudge"
+              label="Quiet pre-game nudge"
               chevron={false}
               trailing={
                 <Switch
                   value={reminder.enabled}
                   onValueChange={(on) => void toggleNudge(on)}
-                  trackColor={{ false: theme.colors.border, true: theme.colors.success }}
-                  thumbColor={theme.colors.text}
-                  ios_backgroundColor={theme.colors.border}
+                  trackColor={{ false: theme.colors.textMuted, true: theme.colors.success }}
+                  thumbColor={theme.dark ? theme.colors.text : theme.colors.background}
+                  ios_backgroundColor={theme.colors.textMuted}
                   accessibilityLabel="Quiet pre-game nudge"
                 />
               }
             >
               {nudgeNote ? (
                 <Text
+                  accessibilityLiveRegion="polite"
                   style={{
                     color: theme.colors.warning,
                     fontSize: theme.font.size.caption,
@@ -430,8 +388,8 @@ export default function SettingsScreen() {
             </SettingsRow>
             <SettingsRow
               icon="time-outline"
-              tint="accent"
-              label="Check-In Time"
+              tint="primary"
+              label="Check-in time"
               value={clock(reminder.hour, reminder.minute)}
               open={open === "time"}
               onPress={() => toggle("time")}
@@ -439,7 +397,7 @@ export default function SettingsScreen() {
               {open === "time" ? (
                 <Chips
                   label="Check-in time"
-                  options={TIME_OPTIONS}
+                  options={timeOptions}
                   value={timeId}
                   onChange={(id) => {
                     const [h, m] = id.split(":").map(Number);
@@ -453,23 +411,35 @@ export default function SettingsScreen() {
           <SettingsSection title="Membership">
             {isPremium ? (
               <SettingsRow
-                label="ShotOClock Plus: Active"
-                labelTint="primary"
-                strong
-                value={renews ? `Renews ${renews}` : "Lifetime"}
-                valueTint="primary"
-                onPress={() => void Linking.openURL(MANAGE_URL)}
-                accessibilityLabel="ShotOClock Plus is active. Manage subscription"
+                icon="star-outline"
+                tint="primary"
+                label="ShotOClock Plus is active"
+                value={activeOffer ? activeOffer.label : undefined}
+                onPress={() => showPaywall("settings")}
+                accessibilityLabel="ShotOClock Plus is active. See your plan"
               />
             ) : (
-              <SettingsRow label="ShotOClock Plus" value="See plans" onPress={() => openPaywall()} />
+              <SettingsRow
+                icon="star-outline"
+                tint="primary"
+                label="ShotOClock Plus"
+                value="See plans"
+                onPress={() => showPaywall("settings")}
+              />
             )}
+            {isPremium ? (
+              <SettingsRow
+                icon="card-outline"
+                tint="primary"
+                label="Manage or cancel"
+                subtitle={`Opens your ${Platform.OS === "ios" ? "App Store" : "Google Play"} subscriptions, where the renewal date is shown.`}
+                onPress={() => void Linking.openURL(MANAGE_URL)}
+              />
+            ) : null}
             <SettingsRow
-              label="Manage Subscription"
-              onPress={() => void Linking.openURL(MANAGE_URL)}
-            />
-            <SettingsRow
-              label="Restore Purchases"
+              icon="refresh-outline"
+              tint="primary"
+              label="Restore purchases"
               value={status === "restoring" ? "Restoring…" : undefined}
               subtitle={restoreNote ?? undefined}
               onPress={() => void restoreNow()}
@@ -477,10 +447,11 @@ export default function SettingsScreen() {
           </SettingsSection>
 
           <SettingsSection
-            title="Data & Privacy"
+            title="Data and privacy"
             footer={
               status_ ? (
                 <Text
+                  accessibilityLiveRegion="polite"
                   style={{
                     color: theme.colors.success,
                     fontSize: theme.font.size.caption,
@@ -490,74 +461,53 @@ export default function SettingsScreen() {
                   {status_}
                 </Text>
               ) : (
-                "Logged drinks, check-ins and goals stay on this phone until you erase them."
+                "Logged drinks, check-ins and weekly results stay on this phone until you erase them."
               )
             }
           >
             <SettingsRow
               icon="share-outline"
               tint="primary"
-              label="Export Logged History (.CSV)"
+              label="Export drink log (CSV)"
               onPress={() => void exportHistory()}
             />
             <SettingsRow
-              label="Reset Career Progress"
-              labelTint="textMuted"
+              icon="arrow-undo-outline"
+              tint="textMuted"
+              label="Reset career progress"
               value="Keeps drinks"
               onPress={() => askConfirm("reset")}
             />
             <SettingsRow
-              label="Erase All Data"
+              icon="trash-outline"
+              tint="danger"
+              label="Erase all data"
               labelTint="danger"
               strong
               chevron={false}
               onPress={() => askConfirm("erase")}
             />
             {confirm ? (
-              <View style={{ padding: theme.spacing.md, gap: theme.spacing.sm }}>
+              <View style={{ padding: theme.spacing.md, gap: theme.spacing.md }}>
                 <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>
                   {confirm === "erase"
-                    ? "Erase every drink, check-in and weekly goal on this phone? This can't be undone."
-                    : "Reset weekly goals and alcohol-free days? Your logged drinks stay."}
+                    ? "Erase every drink, check-in and weekly result on this phone? This can't be undone."
+                    : "Reset weekly results and alcohol-free days? Your logged drinks stay."}
                 </Text>
                 <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={confirm === "erase" ? "Erase my data" : "Reset my progress"}
-                    onPress={() => void (confirm === "erase" ? eraseAll() : resetProgress())}
-                    style={({ pressed }) => ({
-                      flex: 1,
-                      minHeight: 44,
-                      borderRadius: theme.radius.pill,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: theme.colors.danger,
-                      opacity: pressed ? 0.8 : 1,
-                    })}
-                  >
-                    <Text
-                      style={{
-                        color: theme.colors.background,
-                        fontSize: theme.font.size.body,
-                        fontWeight: theme.font.weight.bold,
-                      }}
-                    >
-                      {confirm === "erase" ? "Erase my data" : "Reset my progress"}
-                    </Text>
-                  </Pressable>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Cancel"
                     onPress={() => setConfirm(null)}
                     style={({ pressed }) => ({
                       flex: 1,
-                      minHeight: 44,
-                      borderRadius: theme.radius.pill,
+                      minHeight: 48,
+                      borderRadius: theme.radius.md,
                       alignItems: "center",
                       justifyContent: "center",
                       borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      opacity: pressed ? 0.7 : 1,
+                      borderColor: theme.colors.textMuted,
+                      backgroundColor: pressed ? theme.colors.surfaceAlt : theme.colors.surface,
                     })}
                   >
                     <Text
@@ -568,6 +518,30 @@ export default function SettingsScreen() {
                       }}
                     >
                       Cancel
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={confirm === "erase" ? "Erase my data" : "Reset my progress"}
+                    onPress={() => void (confirm === "erase" ? eraseAll() : resetProgress())}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      minHeight: 48,
+                      borderRadius: theme.radius.md,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: theme.colors.danger,
+                      opacity: pressed ? 0.8 : 1,
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.onPrimary,
+                        fontSize: theme.font.size.body,
+                        fontWeight: theme.font.weight.bold,
+                      }}
+                    >
+                      {confirm === "erase" ? "Erase my data" : "Reset my progress"}
                     </Text>
                   </Pressable>
                 </View>
@@ -600,8 +574,14 @@ export default function SettingsScreen() {
                 onPress={() => void Linking.openURL(appInfo.privacyUrl)}
                 style={{ minHeight: 44, justifyContent: "center" }}
               >
-                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                  Privacy Policy
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: theme.font.size.caption,
+                    textDecorationLine: "underline",
+                  }}
+                >
+                  Privacy policy
                 </Text>
               </Pressable>
             ) : null}
@@ -613,8 +593,14 @@ export default function SettingsScreen() {
                 onPress={() => void Linking.openURL(appInfo.termsUrl)}
                 style={{ minHeight: 44, justifyContent: "center" }}
               >
-                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                  Terms of Use
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: theme.font.size.caption,
+                    textDecorationLine: "underline",
+                  }}
+                >
+                  Terms of use
                 </Text>
               </Pressable>
             ) : null}

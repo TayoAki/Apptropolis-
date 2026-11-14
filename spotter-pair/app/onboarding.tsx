@@ -1,12 +1,15 @@
+// Plan setup: three questions (goal, training days, equipment), then the plan they produce.
+// Every answer is saved as it is given and the step is saved too, so leaving the app and coming
+// back resumes here. Nothing is asked that the plan doesn't use, and the plan on the last screen
+// is the real one: it is built on the phone from the three answers, with no waiting screen.
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Animated, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Celebrate, Lottie } from "../components/lottie";
+import { Lottie } from "../components/lottie";
 import {
   Appear,
-  GrowBar,
   PressScale,
   Skeleton,
   Stagger,
@@ -14,51 +17,76 @@ import {
   haptic,
   useReducedMotion,
 } from "../components/motion";
-import {
-  LogChip,
-  OptionRow,
-  PreviewCard,
-  PrivacyFooter,
-  ProgressBadge,
-  StepSegments,
-} from "../components/onboarding/Parts";
+import { DayToggles, OptionRow, PlanPreview, StepSegments } from "../components/onboarding/Parts";
 import { Rocco } from "../components/Rocco";
+import { track } from "../data/analytics";
 import { useAppState } from "../data/app-state";
+import {
+  EQUIPMENT_INFO,
+  EQUIPMENT_OPTIONS,
+  GOAL_INFO,
+  MAX_TRAINING_DAYS,
+  MIN_TRAINING_DAYS,
+  SETS_PER_EXERCISE,
+  buildPlan,
+  nextSessionDate,
+  parseTrainingDays,
+  repsFor,
+  splitAbout,
+  trainingDaysLabel,
+  type EquipmentChoice,
+  type Goal,
+} from "../data/plan";
+import { usePlanner } from "../data/planner";
 import { useReminder } from "../data/reminders";
-import { useCollection } from "../data/repo";
-import { DAYS_PER_WEEK_OPTIONS, GOAL_OPTIONS, formatClock, type Exercise } from "../data/schema";
+import { GOAL_OPTIONS, count, dayLabel, formatClock } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 type ReminderState = "idle" | "working" | "on" | "declined";
 
-const STEP_COUNT = 4;
+/** The questions, then the result. The names are the ones the step events carry. */
+const STEPS = ["goal", "days", "equipment", "plan"] as const;
+const QUESTIONS = 3;
+const PLAN_STEP = 3;
 const MASCOT = 88;
-const GOALS = GOAL_OPTIONS;
-const DAYS: Array<{ value: (typeof DAYS_PER_WEEK_OPTIONS)[number]; detail: string }> = [
-  { value: "2 days", detail: "A solid base you can keep up in a busy week" },
-  { value: "3 days", detail: "Full-body sessions with a rest day between" },
-  { value: "4 days", detail: "Upper and lower splits, each trained twice" },
-  { value: "5 days", detail: "A dedicated session for each muscle group" },
-];
 const TIMES = [
   { hour: 6, minute: 30 },
   { hour: 12, minute: 0 },
   { hour: 18, minute: 0 },
   { hour: 20, minute: 0 },
 ];
-const DEMO_TITLE = "Bench Press (Barbell)";
-const DEMO_EXERCISE = "bench-press";
-const DEMO_SUBTITLE = "3 sets, target 8–10 reps";
-const DEMO_SETS = 3;
-const DEMO_TARGET = "8–10";
-const DEMO_LOG_REPS = 8;
-const START_WEIGHT = 135;
-const WEIGHT_STEP = 5;
 const REMINDER = {
   title: "Time to train",
-  body: "Your session is ready. Log your first set and keep your partner in the loop.",
+  body: "Open Spotter Pair for today's session and log your sets.",
 };
+
+function asGoal(value: string | undefined): Goal | null {
+  return (GOAL_OPTIONS as readonly string[]).includes(value ?? "") ? (value as Goal) : null;
+}
+
+function asEquipment(value: string | undefined): EquipmentChoice | null {
+  return (EQUIPMENT_OPTIONS as readonly string[]).includes(value ?? "")
+    ? (value as EquipmentChoice)
+    : null;
+}
+
+function validDays(days: number[]): boolean {
+  return days.length >= MIN_TRAINING_DAYS && days.length <= MAX_TRAINING_DAYS;
+}
+
+/** The step to open on: the saved one, but never past a question that still has no answer. */
+function resumeStep(answers: Record<string, string>): number {
+  const saved = parseInt(answers.onboarding_step ?? "", 10);
+  const reachable = !asGoal(answers.goal)
+    ? 0
+    : !validDays(parseTrainingDays(answers.training_days))
+      ? 1
+      : !asEquipment(answers.equipment)
+        ? 2
+        : PLAN_STEP;
+  return Math.max(0, Math.min(Number.isFinite(saved) ? saved : 0, reachable));
+}
 
 /** Mascot that slides in from the right, then flexes when a choice is made. */
 function PeekMascot({ chosen }: { chosen: boolean }) {
@@ -155,64 +183,33 @@ function Heading({
   );
 }
 
-/** A round +/- control for the weight, at least 44pt. */
-function Stepper({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+/** A question with the line that says what its answer is used for. */
+function Question({ title, use }: { title: string; use: string }) {
   const theme = useTheme();
   return (
-    <PressScale
-      onPress={onPress}
-      scaleTo={0.9}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: theme.colors.surfaceAlt,
-        borderWidth: 1,
-        borderColor: theme.colors.textMuted,
-      }}
-    >
-      <Ionicons name={icon} size={22} color={theme.colors.text} />
-    </PressScale>
+    <View style={{ gap: theme.spacing.xs }}>
+      <Text
+        accessibilityRole="header"
+        style={{
+          fontSize: theme.font.size.body,
+          fontWeight: theme.font.weight.bold,
+          color: theme.colors.text,
+        }}
+      >
+        {title}
+      </Text>
+      <Text style={{ fontSize: theme.font.size.caption, color: theme.colors.textMuted }}>
+        {use}
+      </Text>
+    </View>
   );
 }
 
 export default function OnboardingScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const reduced = useReducedMotion();
-  const { ready, answers, setAnswer, completeOnboarding } = useAppState();
-  const reminder = useReminder();
-  const exercises = useCollection<Exercise>("exercises");
-  const demo = exercises.items.find((exercise) => exercise.id === DEMO_EXERCISE);
-
-  const [step, setStep] = useState(0);
-  const [direction, setDirection] = useState<1 | -1>(1);
-  const [goal, setGoal] = useState<string>(GOALS[0]!);
-  const [days, setDays] = useState<string | null>(null);
-  const [weight, setWeight] = useState(START_WEIGHT);
-  const [loggedWeights, setLoggedWeights] = useState<number[]>([]);
-  const [timeIndex, setTimeIndex] = useState(2);
-  const [reminderState, setReminderState] = useState<ReminderState>("idle");
-  const bump = useRef(new Animated.Value(1)).current;
-
-  // Answers saved on an earlier launch take over the defaults once they've loaded.
-  useEffect(() => {
-    if (ready && answers.goal) setGoal(answers.goal);
-  }, [ready, answers.goal]);
-  useEffect(() => {
-    if (ready && answers.daysperweek) setDays(answers.daysperweek);
-  }, [ready, answers.daysperweek]);
-
-  const last = STEP_COUNT - 1;
-  const complete = loggedWeights.length >= DEMO_SETS;
-  const time = TIMES[timeIndex]!;
-  const reminderDone = reminderState === "on" || reminderState === "declined";
-
+  const { ready } = useAppState();
+  // The saved step is read once the saved answers have loaded, so the flow opens where it was left.
   if (!ready) {
     return (
       <View
@@ -231,64 +228,118 @@ export default function OnboardingScreen() {
       </View>
     );
   }
+  return <Setup />;
+}
+
+function Setup() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const { answers, setAnswer, completeOnboarding } = useAppState();
+  const planner = usePlanner();
+  const reminder = useReminder();
+
+  const [step, setStep] = useState(() => resumeStep(answers));
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [dayNote, setDayNote] = useState<string | null>(null);
+  const [timeIndex, setTimeIndex] = useState(2);
+  const [reminderState, setReminderState] = useState<ReminderState>("idle");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const reportedSuccess = useRef(false);
+
+  const goal = asGoal(answers.goal);
+  const days = useMemo(() => parseTrainingDays(answers.training_days), [answers.training_days]);
+  const equipment = asEquipment(answers.equipment);
+  const time = TIMES[timeIndex]!;
+
+  // The plan on the last step: the real one, built from the three answers as soon as they exist.
+  const plan = useMemo(
+    () =>
+      goal && equipment && validDays(days)
+        ? buildPlan({ goal, days, equipment, catalog: planner.catalog })
+        : null,
+    [goal, days, equipment, planner.catalog],
+  );
+  const names = useMemo(
+    () => new Map(planner.catalog.map((e) => [e.id, e.name] as const)),
+    [planner.catalog],
+  );
+
+  // The first success: the person's own plan is on screen.
+  useEffect(() => {
+    if (step !== PLAN_STEP || !plan || reportedSuccess.current) return;
+    reportedSuccess.current = true;
+    track("first_success", { kind: "plan_built", days: plan.days.length });
+  }, [step, plan]);
 
   function go(delta: 1 | -1) {
+    const next = Math.max(0, Math.min(PLAN_STEP, step + delta));
     setDirection(delta);
-    setStep((current) => Math.min(last, Math.max(0, current + delta)));
+    setStep(next);
+    setSaveError(null);
+    void setAnswer("onboarding_step", String(next));
   }
 
-  function finish() {
-    void completeOnboarding();
+  function next() {
+    track("onboarding_step_completed", { step: STEPS[step]! });
+    go(1);
   }
 
-  function pickGoal(option: string) {
+  function pickGoal(option: Goal) {
     haptic("selection");
-    setGoal(option);
     void setAnswer("goal", option);
   }
 
-  function pickDays(option: string) {
+  function toggleDay(weekday: number) {
+    const on = days.includes(weekday);
+    if (!on && days.length >= MAX_TRAINING_DAYS) {
+      haptic("warning");
+      setDayNote("Five training days is the most. Rest days are part of the plan.");
+      return;
+    }
     haptic("selection");
-    setDays(option);
-    void setAnswer("daysperweek", option);
+    setDayNote(null);
+    const chosen = on ? days.filter((d) => d !== weekday) : [...days, weekday];
+    void setAnswer("training_days", chosen.sort((a, b) => a - b).join(","));
   }
 
-  function bumpWeight(delta: number) {
-    haptic("heavy");
-    setWeight((current) => Math.max(0, current + delta));
-    if (!reduced) {
-      bump.setValue(1.12);
-      Animated.spring(bump, {
-        toValue: 1,
-        useNativeDriver: true,
-        speed: 22,
-        bounciness: 12,
-      }).start();
+  function pickEquipment(option: EquipmentChoice) {
+    haptic("selection");
+    void setAnswer("equipment", option);
+  }
+
+  /** Leave setup without a plan. Today and My Plan both offer the way back in. */
+  function skip() {
+    void completeOnboarding();
+  }
+
+  /** Saves the plan on screen, lays out this week, and opens the app. */
+  async function start() {
+    if (!plan || !goal || !equipment || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await planner.build({ goal, days, equipment, variant: 0 });
+      if (!saved) throw new Error("no plan");
+      track("onboarding_step_completed", { step: "plan" });
+      await setAnswer("onboarding_step", "0");
+      await completeOnboarding();
+    } catch {
+      setSaving(false);
+      setSaveError("Your plan didn't save. Your answers are kept: try again.");
     }
   }
-
-  function logSet() {
-    if (complete) return;
-    haptic("success");
-    setLoggedWeights((list) => [...list, weight]);
-  }
-
-  const logLabel = complete
-    ? "All sets logged"
-    : loggedWeights.length === 0
-      ? "Log first set"
-      : "Log next set";
 
   function pickTime(index: number) {
     haptic("selection");
     setTimeIndex(index);
     if (reminderState === "on") {
-      const next = TIMES[index]!;
-      void reminder.setTime(next.hour, next.minute);
+      const slot = TIMES[index]!;
+      void reminder.setTime(slot.hour, slot.minute);
     }
   }
 
-  async function turnOnReminders() {
+  async function turnOnReminder() {
     setReminderState("working");
     let ok = false;
     try {
@@ -305,30 +356,23 @@ export default function OnboardingScreen() {
     setReminderState(ok ? "on" : "declined");
   }
 
-  const action: {
-    label: string;
-    icon?: IconName;
-    onPress: () => void;
-    disabled: boolean;
-  } =
-    step === 3
-      ? reminderDone
-        ? { label: "Start my plan", icon: "arrow-forward", onPress: finish, disabled: false }
-        : {
-            label: "Turn on reminders",
-            icon: "notifications-outline",
-            onPress: () => void turnOnReminders(),
-            disabled: reminderState === "working",
-          }
+  const dayHint = !validDays(days)
+    ? `Pick at least ${MIN_TRAINING_DAYS} days.`
+    : `${count(days.length, "day")} a week: ${splitAbout(days.length)}. Your scorecard counts ${count(days.length, "session")} a week.`;
+
+  const action: { label: string; icon?: IconName; onPress: () => void; disabled: boolean } =
+    step === PLAN_STEP
+      ? {
+          label: saving ? "Saving your plan…" : "Start training",
+          icon: saving ? undefined : "arrow-forward",
+          onPress: () => void start(),
+          disabled: saving || !plan,
+        }
       : {
           label: "Continue",
-          onPress: () => {
-            if (step === 0) void setAnswer("goal", goal);
-            go(1);
-          },
-          disabled: step === 1 && !days,
+          onPress: next,
+          disabled: step === 0 ? !goal : step === 1 ? !validDays(days) : !equipment,
         };
-
   const actionInk = action.disabled ? theme.colors.textMuted : theme.colors.onPrimary;
 
   let content: ReactNode;
@@ -337,279 +381,140 @@ export default function OnboardingScreen() {
     content = (
       <>
         <Heading
-          title="Train for yourself."
-          second="Show up for each other."
-          body="Spotter Pair writes your custom lifting split while keeping your actual weights 100% private. Your partner only sees if you showed up."
+          title="Your lifting week,"
+          second="built from three answers."
+          body="Pick a goal, your training days and your equipment. You get this week's plan with every lift chosen, and a scorecard that shows a partner whether you trained, never your weights."
           mascot={<Rocco pose="rocco-neutral-ready" size={MASCOT} />}
         />
         <View style={{ gap: theme.spacing.md }}>
-          <Text
-            accessibilityRole="header"
-            style={{
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-              color: theme.colors.text,
-            }}
-          >
-            What is your primary training goal?
-          </Text>
+          <Question
+            title="What are you training for?"
+            use="Your goal sets the reps for each set and which lifts come first."
+          />
           <Stagger step={70} style={{ gap: theme.spacing.md }}>
-            {GOALS.map((option) => (
+            {GOAL_OPTIONS.map((option) => (
               <OptionRow
                 key={option}
                 label={option}
+                detail={GOAL_INFO[option].summary}
                 selected={goal === option}
                 onPress={() => pickGoal(option)}
               />
             ))}
           </Stagger>
         </View>
-        <Appear delay={260}>
-          {exercises.loading ? (
-            <View
-              style={{
-                backgroundColor: theme.colors.surface,
-                borderRadius: theme.radius.lg,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                padding: theme.spacing.lg,
-                gap: theme.spacing.sm,
-              }}
-            >
-              <Skeleton width="70%" height={22} />
-              <Skeleton width="45%" height={14} />
-              <Skeleton width="100%" height={44} radius={theme.radius.pill} />
-            </View>
-          ) : (
-            <PreviewCard
-              title={DEMO_TITLE}
-              subtitle={DEMO_SUBTITLE}
-              logged={loggedWeights.length}
-              total={DEMO_SETS}
-              complete={complete}
-              actionLabel={logLabel}
-              onLog={logSet}
-            />
-          )}
-        </Appear>
       </>
     );
   } else if (step === 1) {
     content = (
       <>
         <Heading
-          title="How many days a week?"
-          body="Pick what you can really keep up. Your partner counts on the days you commit to, not the ones you hope for."
-          mascot={<PeekMascot chosen={days !== null} />}
+          title="Which days will you train?"
+          body="Pick two to five days you can really keep. The number you pick is your weekly target, and your sessions land on these days."
+          mascot={<PeekMascot chosen={validDays(days)} />}
         />
-        <Stagger step={70} style={{ gap: theme.spacing.md }}>
-          {DAYS.map((option) => (
-            <OptionRow
-              key={option.value}
-              label={option.value}
-              detail={option.detail}
-              selected={days === option.value}
-              onPress={() => pickDays(option.value)}
-            />
-          ))}
-        </Stagger>
+        <View style={{ gap: theme.spacing.md }}>
+          <DayToggles selected={days} onToggle={toggleDay} />
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{
+              fontSize: theme.font.size.body,
+              lineHeight: 22,
+              color: dayNote ? theme.colors.text : theme.colors.textMuted,
+            }}
+          >
+            {dayNote ?? dayHint}
+          </Text>
+        </View>
       </>
     );
   } else if (step === 2) {
     content = (
       <>
         <Heading
-          title="Log your first set"
-          body="Try one set of bench press. Each set you log counts toward today's workout, and finished workouts count toward your week."
+          title="What can you train with?"
+          body="Only lifts you can do with this go into your plan."
+          mascot={<Rocco pose="rocco-vault-guardian" size={MASCOT} />}
         />
-        <Appear delay={120}>
-          <View
-            style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: theme.radius.lg,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              padding: theme.spacing.lg,
-              gap: theme.spacing.md,
-            }}
-          >
-            <View style={{ gap: theme.spacing.xs }}>
-              {exercises.loading ? (
-                <>
-                  <Skeleton width="70%" height={24} />
-                  <Skeleton width="45%" height={14} />
-                </>
-              ) : (
-                <>
-                  <Text
-                    style={{
-                      fontSize: theme.font.size.title,
-                      fontWeight: theme.font.weight.bold,
-                      color: theme.colors.text,
-                    }}
-                  >
-                    {DEMO_TITLE}
-                  </Text>
-                  <Text style={{ fontSize: theme.font.size.body, color: theme.colors.textMuted }}>
-                    {DEMO_SUBTITLE}
-                  </Text>
-                  {demo?.cue ? (
-                    <Text
-                      style={{ fontSize: theme.font.size.caption, color: theme.colors.textMuted }}
-                    >
-                      {demo.cue}
-                    </Text>
-                  ) : null}
-                </>
-              )}
-            </View>
-
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginTop: theme.spacing.sm,
-              }}
-            >
-              <View>
-                <Text
-                  style={{
-                    fontSize: theme.font.size.caption,
-                    fontWeight: theme.font.weight.medium,
-                    color: theme.colors.textMuted,
-                  }}
-                >
-                  Weight per set
-                </Text>
-                <Animated.View style={{ transform: [{ scale: bump }] }}>
-                  <Text
-                    style={{
-                      fontSize: theme.font.size.headline,
-                      fontWeight: theme.font.weight.bold,
-                      fontVariant: ["tabular-nums"],
-                      color: theme.colors.text,
-                    }}
-                  >
-                    {`${weight} lb`}
-                  </Text>
-                </Animated.View>
-              </View>
-              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-                <Stepper
-                  icon="remove"
-                  label={`Lighter by ${WEIGHT_STEP} pounds`}
-                  onPress={() => bumpWeight(-WEIGHT_STEP)}
-                />
-                <Stepper
-                  icon="add"
-                  label={`Heavier by ${WEIGHT_STEP} pounds`}
-                  onPress={() => bumpWeight(WEIGHT_STEP)}
-                />
-              </View>
-            </View>
-
-            <View style={{ gap: theme.spacing.sm }}>
-              {Array.from({ length: DEMO_SETS }, (_, i) => {
-                const done = i < loggedWeights.length;
-                return (
-                  <View
-                    key={i}
-                    style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}
-                  >
-                    <Ionicons
-                      name={done ? "checkmark-circle" : "ellipse-outline"}
-                      size={20}
-                      color={done ? theme.colors.success : theme.colors.textMuted}
-                    />
-                    <Text
-                      style={{
-                        flex: 1,
-                        fontSize: theme.font.size.body,
-                        fontVariant: ["tabular-nums"],
-                        color: done ? theme.colors.text : theme.colors.textMuted,
-                      }}
-                    >
-                      {done
-                        ? `Set ${i + 1} · ${loggedWeights[i]} lb × ${DEMO_LOG_REPS}`
-                        : `Set ${i + 1} · target ${DEMO_TARGET} reps`}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-              <View style={{ flex: 1, gap: theme.spacing.xs }}>
-                <GrowBar progress={loggedWeights.length / DEMO_SETS} height={10} />
-                <Text style={{ fontSize: theme.font.size.caption, color: theme.colors.textMuted }}>
-                  {complete
-                    ? "Workout complete. It counts toward your week."
-                    : "Finish all sets to count this workout toward your week."}
-                </Text>
-              </View>
-              {loggedWeights.length > 0 ? (
-                <View style={{ width: 48, height: 48, overflow: "hidden" }}>
-                  <Lottie key={loggedWeights.length} name="success" size={48} />
-                </View>
-              ) : null}
-            </View>
-
-            <View
-              style={{
-                flexDirection: "row",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: theme.spacing.sm,
-              }}
-            >
-              <LogChip label={logLabel} complete={complete} onPress={logSet} />
-              <ProgressBadge logged={loggedWeights.length} total={DEMO_SETS} complete={complete} />
-            </View>
-
-            <PrivacyFooter>Your privacy · weights stay yours</PrivacyFooter>
-          </View>
-        </Appear>
+        <Stagger step={70} style={{ gap: theme.spacing.md }}>
+          {EQUIPMENT_OPTIONS.map((option) => (
+            <OptionRow
+              key={option}
+              label={option}
+              detail={EQUIPMENT_INFO[option].summary}
+              selected={equipment === option}
+              onPress={() => pickEquipment(option)}
+            />
+          ))}
+        </Stagger>
       </>
     );
   } else {
+    const first = plan ? nextSessionDate(plan, new Date()) : null;
     content = (
       <>
         <Heading
-          title="A nudge on workout days"
-          body="Pick a time and we'll send one reminder a day so you don't let your partner down. You can change it in Settings."
-          mascot={
-            <Rocco
-              pose={reminderState === "on" ? "rocco-fist-bump-spotter" : "rocco-vault-guardian"}
-              size={MASCOT}
-            />
+          title="Your week is built"
+          body={
+            goal && equipment
+              ? `From your answers: ${goal}, ${trainingDaysLabel(days)}, ${equipment}. Go back to change any of them.`
+              : "Go back and finish the three questions to see your plan."
           }
+          mascot={<Rocco pose="rocco-fist-bump-spotter" size={MASCOT} />}
         />
-        <Appear delay={100}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-start",
-              gap: theme.spacing.md,
-              backgroundColor: theme.colors.surface,
-              borderRadius: theme.radius.lg,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              padding: theme.spacing.lg,
-            }}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: theme.colors.surfaceAlt,
-              }}
-            >
-              <Ionicons name="notifications-outline" size={20} color={theme.colors.primary} />
+        {planner.loading ? (
+          <View style={{ gap: theme.spacing.sm }}>
+            <Skeleton height={72} radius={theme.radius.lg} />
+            <Skeleton height={72} radius={theme.radius.lg} />
+            <Skeleton height={72} radius={theme.radius.lg} />
+          </View>
+        ) : plan ? (
+          <Appear>
+            <View style={{ gap: theme.spacing.md }}>
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text
+                  accessibilityRole="header"
+                  style={{
+                    fontSize: theme.font.size.title,
+                    fontWeight: theme.font.weight.bold,
+                    color: theme.colors.text,
+                  }}
+                >
+                  {plan.split}
+                </Text>
+                <Text style={{ fontSize: theme.font.size.body, color: theme.colors.textMuted }}>
+                  {`${SETS_PER_EXERCISE} sets of ${repsFor(goal ?? undefined)} on every lift.${
+                    first ? ` First session: ${dayLabel(first)}.` : ""
+                  }`}
+                </Text>
+              </View>
+              <PlanPreview days={plan.days} names={names} />
             </View>
+          </Appear>
+        ) : (
+          <Text style={{ fontSize: theme.font.size.body, color: theme.colors.danger }}>
+            The plan couldn't be built from these answers. Go back and check your training days.
+          </Text>
+        )}
+
+        {/* The one optional part: a daily reminder, asked with its reason and easy to leave off. */}
+        <View
+          style={{
+            gap: theme.spacing.md,
+            backgroundColor: theme.colors.surface,
+            borderRadius: theme.radius.lg,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            padding: theme.spacing.lg,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}>
+            <Ionicons
+              name="notifications-outline"
+              size={24}
+              color={theme.colors.primary}
+              style={{ marginTop: 2 }}
+            />
             <View style={{ flex: 1, gap: theme.spacing.xs }}>
               <Text
                 style={{
@@ -618,7 +523,7 @@ export default function OnboardingScreen() {
                   color: theme.colors.text,
                 }}
               >
-                One reminder a day
+                A daily nudge (optional)
               </Text>
               <Text
                 style={{
@@ -627,23 +532,14 @@ export default function OnboardingScreen() {
                   color: theme.colors.textMuted,
                 }}
               >
-                At the time you pick, once a day. It never mentions your weights.
+                One reminder a day at the time you pick, so a session doesn't slip by. It never
+                mentions your weights, and you can turn it off in Settings.
               </Text>
             </View>
           </View>
-        </Appear>
-        <View style={{ gap: theme.spacing.sm }}>
-          <Text
-            style={{
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-              color: theme.colors.text,
-            }}
-          >
-            Remind me at
-          </Text>
           <View
             accessibilityRole="radiogroup"
+            accessibilityLabel="Reminder time"
             style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}
           >
             {TIMES.map((slot, i) => {
@@ -654,23 +550,29 @@ export default function OnboardingScreen() {
                   onPress={() => pickTime(i)}
                   accessibilityRole="radio"
                   accessibilityLabel={formatClock(slot.hour, slot.minute)}
-                  accessibilityState={{ selected: on }}
+                  accessibilityState={{ checked: on }}
+                  aria-checked={on}
                   hitSlop={6}
                   style={({ pressed }) => ({
                     minHeight: 44,
-                    justifyContent: "center",
-                    paddingHorizontal: theme.spacing.lg,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.xs,
+                    paddingHorizontal: theme.spacing.md,
                     borderRadius: theme.radius.pill,
                     borderWidth: 1,
                     borderColor: on ? theme.colors.primary : theme.colors.border,
-                    backgroundColor: on ? theme.colors.primary : theme.colors.surface,
+                    backgroundColor: on ? theme.colors.primary : theme.colors.surfaceAlt,
                     opacity: pressed ? 0.8 : 1,
                   })}
                 >
+                  {on ? (
+                    <Ionicons name="checkmark" size={16} color={theme.colors.onPrimary} />
+                  ) : null}
                   <Text
                     style={{
                       fontSize: theme.font.size.body,
-                      fontWeight: theme.font.weight.medium,
+                      fontWeight: on ? theme.font.weight.bold : theme.font.weight.medium,
                       fontVariant: ["tabular-nums"],
                       color: on ? theme.colors.onPrimary : theme.colors.text,
                     }}
@@ -681,30 +583,78 @@ export default function OnboardingScreen() {
               );
             })}
           </View>
-        </View>
-        {reminderState === "on" ? (
-          <Appear style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-            <View style={{ width: 56, height: 56, overflow: "hidden" }}>
-              <Lottie name="success" size={56} />
-            </View>
-            <Text style={{ flex: 1, fontSize: theme.font.size.body, color: theme.colors.text }}>
-              {`Reminder set for ${formatClock(time.hour, time.minute)}. Change it any time in Settings.`}
-            </Text>
-          </Appear>
-        ) : reminderState === "declined" ? (
-          <Appear>
-            <Text
-              style={{
-                fontSize: theme.font.size.body,
-                lineHeight: 24,
-                color: theme.colors.textMuted,
-              }}
+          {reminderState === "on" ? (
+            <View
+              accessibilityLiveRegion="polite"
+              style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}
             >
-              Notifications are off for Spotter Pair. Allow them in your phone's Settings to get
-              reminders. Your plan works without them.
-            </Text>
-          </Appear>
-        ) : null}
+              <View style={{ width: 40, height: 40, overflow: "hidden" }}>
+                <Lottie name="success" size={40} />
+              </View>
+              <Text style={{ flex: 1, fontSize: theme.font.size.body, color: theme.colors.text }}>
+                {`Nudge set for ${formatClock(time.hour, time.minute)} every day.`}
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* The wrapper stretches so the button fills the card. */}
+              <View>
+                <PressScale
+                  onPress={() => void turnOnReminder()}
+                  disabled={reminderState === "working"}
+                  scaleTo={0.97}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Turn on the nudge at ${formatClock(time.hour, time.minute)}`}
+                  accessibilityState={{ disabled: reminderState === "working" }}
+                  style={{
+                    minHeight: 48,
+                    paddingHorizontal: theme.spacing.lg,
+                    borderRadius: theme.radius.pill,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: theme.spacing.sm,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surfaceAlt,
+                  }}
+                >
+                  <Ionicons
+                    name="notifications-outline"
+                    size={18}
+                    color={
+                      reminderState === "working" ? theme.colors.textMuted : theme.colors.primary
+                    }
+                  />
+                  <Text
+                    style={{
+                      fontSize: theme.font.size.body,
+                      fontWeight: theme.font.weight.bold,
+                      color:
+                        reminderState === "working" ? theme.colors.textMuted : theme.colors.text,
+                    }}
+                  >
+                    {reminderState === "working" ? "Asking your phone…" : "Turn on the nudge"}
+                  </Text>
+                </PressScale>
+              </View>
+              {reminderState === "declined" ? (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={{
+                    fontSize: theme.font.size.caption,
+                    lineHeight: 20,
+                    color: theme.colors.textMuted,
+                  }}
+                >
+                  Notifications are off for Spotter Pair, so no nudge is set. Allow them in your
+                  phone's Settings, then turn this on in the app's Settings. Your plan works without
+                  it.
+                </Text>
+              ) : null}
+            </>
+          )}
+        </View>
       </>
     );
   }
@@ -717,39 +667,50 @@ export default function OnboardingScreen() {
         paddingTop: insets.top,
       }}
     >
-      <Stack.Screen options={{ title: "Welcome" }} />
+      <Stack.Screen options={{ title: "Plan setup" }} />
 
+      {/* Progress that counts only the questions: three of them, then the plan itself. */}
       <View
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: theme.spacing.md,
+          gap: theme.spacing.xs,
           paddingHorizontal: theme.spacing.xl,
           paddingTop: theme.spacing.sm,
+          paddingBottom: theme.spacing.sm,
         }}
       >
-        <StepSegments count={STEP_COUNT} index={step} />
-        <Pressable
-          onPress={finish}
-          accessibilityRole="button"
-          accessibilityLabel="Skip onboarding"
-          hitSlop={12}
-          style={({ pressed }) => ({
-            minHeight: 44,
-            justifyContent: "center",
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Text
-            style={{
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.medium,
-              color: theme.colors.textMuted,
-            }}
-          >
-            Skip
-          </Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+          <StepSegments count={QUESTIONS} index={step} />
+          {step < PLAN_STEP ? (
+            <Pressable
+              onPress={skip}
+              accessibilityRole="button"
+              accessibilityLabel="Skip plan setup and open the app without a plan"
+              hitSlop={12}
+              style={({ pressed }) => ({
+                minHeight: 44,
+                justifyContent: "center",
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.medium,
+                  color: theme.colors.textMuted,
+                }}
+              >
+                Skip
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={{ minHeight: 44 }} />
+          )}
+        </View>
+        <Text style={{ fontSize: theme.font.size.caption, color: theme.colors.textMuted }}>
+          {step < PLAN_STEP
+            ? `Plan setup: step ${step + 1} of ${QUESTIONS}`
+            : "Plan setup: all three answered"}
+        </Text>
       </View>
 
       <ScrollView
@@ -777,14 +738,28 @@ export default function OnboardingScreen() {
           gap: theme.spacing.sm,
         }}
       >
+        {saveError ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{
+              fontSize: theme.font.size.caption,
+              textAlign: "center",
+              color: theme.colors.danger,
+            }}
+          >
+            {saveError}
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
           {step > 0 ? (
             <PressScale
               onPress={() => go(-1)}
+              disabled={saving}
               scaleTo={0.92}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Back"
+              accessibilityState={{ disabled: saving }}
               style={{
                 width: 56,
                 height: 56,
@@ -808,7 +783,8 @@ export default function OnboardingScreen() {
               haptic="light"
               accessibilityRole="button"
               accessibilityLabel={action.label}
-              accessibilityState={{ disabled: action.disabled }}
+              accessibilityState={{ disabled: action.disabled, busy: saving }}
+              aria-busy={saving}
               style={{
                 minHeight: 56,
                 paddingHorizontal: theme.spacing.lg,
@@ -823,7 +799,6 @@ export default function OnboardingScreen() {
                 backgroundColor: action.disabled ? theme.colors.surfaceAlt : theme.colors.primary,
               }}
             >
-              {action.icon ? <Ionicons name={action.icon} size={20} color={actionInk} /> : null}
               <Text
                 style={{
                   fontSize: theme.font.size.body,
@@ -833,30 +808,11 @@ export default function OnboardingScreen() {
               >
                 {action.label}
               </Text>
+              {action.icon ? <Ionicons name={action.icon} size={20} color={actionInk} /> : null}
             </PressScale>
           </View>
         </View>
-        {step === 3 && reminderState === "idle" ? (
-          <Pressable
-            onPress={finish}
-            accessibilityRole="button"
-            accessibilityLabel="Not now, start my plan without reminders"
-            hitSlop={12}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text style={{ fontSize: theme.font.size.body, color: theme.colors.textMuted }}>
-              Not now
-            </Text>
-          </Pressable>
-        ) : null}
       </View>
-
-      <Celebrate trigger={complete} />
     </View>
   );
 }

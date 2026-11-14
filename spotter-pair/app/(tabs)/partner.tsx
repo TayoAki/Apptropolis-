@@ -1,7 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  ScrollView,
+  Share,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar, PARTNER_PHOTO } from "../../components/Avatar";
 import { Button } from "../../components/Button";
@@ -18,19 +27,23 @@ import {
   useReducedMotion,
 } from "../../components/motion";
 import { WeekRing } from "../../components/partner/WeekRing";
+import { openPaywallFrom } from "../../components/paywall/open";
 import { Rocco } from "../../components/Rocco";
 import { useShareImage } from "../../components/share";
+import { appInfo } from "../../data/app-info";
 import { useAppState } from "../../data/app-state";
+import { useToday } from "../../data/clock";
 import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import {
   addDays,
   count,
+  parseDayKey,
   sharedWeek,
   startOfWeek,
   timeAgo,
+  weekStats,
   type PartnerUpdate,
-  type SharedWeek,
   type Workout,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -84,17 +97,48 @@ function weekRange(monday: Date): string {
   return `${MONTHS[monday.getMonth()]} ${monday.getDate()} – ${MONTHS[sunday.getMonth()]} ${sunday.getDate()}`;
 }
 
-function headline(s: SharedWeek): string {
+/** A week's score: the pair's shared one once a partner is linked, the person's own before. */
+interface Summary {
+  paired: boolean;
+  due: number;
+  yours: number;
+  partnerDone: number;
+  percent: number;
+}
+
+/**
+ * The week containing `asOf`. Until an update from a partner has arrived there is no partner
+ * to count, so the score is the person's own sessions done out of those due.
+ */
+function summarize(
+  workouts: Workout[],
+  updates: PartnerUpdate[],
+  asOf: Date,
+  paired: boolean,
+): Summary {
+  if (paired) return { paired, ...sharedWeek(workouts, updates, asOf) };
+  const mine = weekStats(workouts, asOf);
+  return {
+    paired,
+    due: mine.due,
+    yours: mine.completed,
+    partnerDone: 0,
+    percent: mine.percent,
+  };
+}
+
+function headline(s: Summary): string {
   if (!s.due) return "Nothing due yet";
-  if (s.percent >= 100) return "Both showed up";
-  if (s.percent >= 75) return "On track together";
-  if (s.percent >= 40) return "Catching up together";
+  if (s.percent >= 100) return s.paired ? "Both showed up" : "You showed up";
+  if (s.percent >= 75) return s.paired ? "On track together" : "On track";
+  if (s.percent >= 40) return s.paired ? "Catching up together" : "Catching up";
   return "Time to show up";
 }
 
-function owedLine(s: SharedWeek): string {
+function owedLine(s: Summary): string {
   if (!s.due) return "Nothing is owed until a session is due.";
   const you = s.yours < s.due;
+  if (!s.paired) return you ? "You owe the stake this week." : "Nothing owed. Every session done.";
   const them = s.partnerDone < s.due;
   if (you && them) return "You both owe it this week.";
   if (you) return "You owe it this week.";
@@ -123,12 +167,13 @@ function Chip({
   label,
   icon,
   onPress,
-  selected = false,
+  selected,
   locked = false,
 }: {
   label: string;
   icon: IconName;
   onPress: () => void;
+  /** Given for chips that are one choice of several (the stakes): the chip is then a radio. */
   selected?: boolean;
   locked?: boolean;
 }) {
@@ -138,9 +183,10 @@ function Chip({
       onPress={onPress}
       scaleTo={0.94}
       hitSlop={8}
-      accessibilityRole="button"
+      accessibilityRole={selected === undefined ? "button" : "radio"}
       accessibilityLabel={label}
-      accessibilityState={{ selected }}
+      accessibilityState={selected === undefined ? undefined : { checked: selected }}
+      aria-checked={selected}
       style={{
         minHeight: 44,
         flexDirection: "row",
@@ -356,13 +402,15 @@ export default function PartnerScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { answers } = useAppState();
-  const { isPremium, openPaywall } = usePurchases();
+  const { isPremium } = usePurchases();
+  // Re-render when the calendar day changes, so the week on screen is the current one.
+  useToday();
   const workouts = useCollection<Workout>("workouts");
   const updates = useCollection<PartnerUpdate>("partner_updates");
   const { ref, share, sharing } = useShareImage();
 
-  // The partner's name, as entered during onboarding ("partner_name"). Until it's known, the
-  // screen speaks of "your partner".
+  // The partner's name, as typed in Settings ("partner_name"). Until it's known, the screen
+  // speaks of "your partner".
   const partnerName = (answers.partner_name ?? "").trim();
   const firstName = partnerName || "Partner";
 
@@ -386,14 +434,12 @@ export default function PartnerScreen() {
 
   const loading = workouts.loading || updates.loading;
   const now = new Date();
-  const today = sharedWeek(workouts.items, updates.items, now);
-  const { due, yours, partnerDone, percent } = today;
-  const shared = yours + partnerDone;
-  if (!loading && baseline.current === null) baseline.current = shared;
-  const celebrate =
-    percent >= 100 && baseline.current !== null && shared > baseline.current ? shared : 0;
 
+  // A partner is linked once an update from them has arrived on this phone. Nothing in this
+  // version delivers one (linking needs a sync service), so until then the screen is the
+  // person's own week plus the ways to show it to a partner.
   const partnerUpdates = updates.items.filter((u) => u.from === "partner");
+  const paired = partnerUpdates.length > 0;
   const lastPartner = partnerUpdates.reduce<string | null>(
     (latest, u) => (latest === null || u.createdAt > latest ? u.createdAt : latest),
     null,
@@ -402,10 +448,17 @@ export default function PartnerScreen() {
     lastPartner !== null && now.getTime() - new Date(lastPartner).getTime() < 2 * 86_400_000;
   const partnerStatus =
     lastPartner === null
-      ? "Waiting for them to join"
+      ? "Not linked yet"
       : partnerActive
         ? "Active today"
         : `Last update ${timeAgo(lastPartner)}`;
+
+  const today = summarize(workouts.items, updates.items, now, paired);
+  const { due, yours, partnerDone, percent } = today;
+  const shared = yours + partnerDone;
+  if (!loading && baseline.current === null) baseline.current = shared;
+  const celebrate =
+    percent >= 100 && baseline.current !== null && shared > baseline.current ? shared : 0;
   const stakes = updates.items
     .filter((u) => u.type === "stake")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -416,23 +469,38 @@ export default function PartnerScreen() {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 8);
 
-  const history = [1, 2, 3]
-    .map((weeksAgo) => {
-      const monday = addDays(startOfWeek(now), -7 * weeksAgo);
-      return {
-        monday,
-        summary: sharedWeek(workouts.items, updates.items, addDays(monday, 6)),
-      };
-    })
-    .filter((row) => row.summary.due > 0);
+  // Every earlier week that had a session due, newest first, back to the plan's first week.
+  const firstDate = workouts.items
+    .filter((w) => !w.deleted)
+    .reduce<string | null>((first, w) => (first === null || w.date < first ? w.date : first), null);
+  const firstMonday = firstDate ? startOfWeek(parseDayKey(firstDate)) : startOfWeek(now);
+  const history: Array<{ monday: Date; summary: Summary }> = [];
+  for (let weeksAgo = 1; weeksAgo <= 104; weeksAgo++) {
+    const monday = addDays(startOfWeek(now), -7 * weeksAgo);
+    if (monday.getTime() < firstMonday.getTime()) break;
+    const summary = summarize(workouts.items, updates.items, addDays(monday, 6), paired);
+    if (summary.due > 0) history.push({ monday, summary });
+  }
 
   const pose = percent >= 75 ? MASCOT_HAPPY : MASCOT_CALM;
   // While the card is being made (or the week is loading) the share button goes neutral, not faded.
   const shareOff = sharing || loading;
   const shareInk = shareOff ? theme.colors.textMuted : theme.colors.onPrimary;
-  const shareMessage = due
-    ? `Spotter Pair week ${weekNumber(now)}: ${percent}% shared on track. ${yours} of ${due} for me, ${partnerDone} of ${due} for my partner.`
-    : "Spotter Pair: our training week starts today.";
+  // The words that go with the scorecard: completion counts and the stake, never a weight.
+  const stakeLine = stakeTitle ? ` Stake: ${stakeTitle.replace(/[.!?]+$/, "")}.` : "";
+  const shareMessage = !due
+    ? `Spotter Pair: my training week starts now.${stakeLine}`
+    : paired
+      ? `Spotter Pair week ${weekNumber(now)}: ${percent}% shared on track. ${yours} of ${due} for me, ${partnerDone} of ${due} for my partner.${stakeLine}`
+      : `Spotter Pair week ${weekNumber(now)}: ${yours} of ${count(due, "workout")} done (${percent}%).${stakeLine}`;
+
+  /** Tells a partner about the app through the share sheet. Nothing is linked by it. */
+  async function invite() {
+    haptic("light");
+    await Share.share({
+      message: `Train with me on ${appInfo.name}. I'll send you my scorecard each week: send me yours.`,
+    }).catch(() => undefined);
+  }
 
   function launch(icon: IconName) {
     const id = ++burstId.current;
@@ -458,13 +526,12 @@ export default function PartnerScreen() {
         weekScore: percent,
       });
     } catch {
-      setCheerNote("That didn't send. Check your connection and tap again.");
+      setCheerNote("That didn't send. Tap it again.");
     }
   }
 
-  async function setStake(title: string, detail: string) {
-    haptic("success");
-    setSaved(true);
+  /** Saves a stake. Resolves false (and says so on screen) when it didn't save. */
+  async function setStake(title: string, detail: string): Promise<boolean> {
     setStakeNote(null);
     try {
       await updates.add({
@@ -474,9 +541,12 @@ export default function PartnerScreen() {
         createdAt: new Date().toISOString(),
         weekScore: percent,
       });
+      haptic("success");
+      setSaved(true);
+      return true;
     } catch {
-      setSaved(false);
-      setStakeNote("The stake didn't save. Check your connection and try again.");
+      setStakeNote("The stake didn't save. Try again.");
+      return false;
     }
   }
 
@@ -488,12 +558,14 @@ export default function PartnerScreen() {
     void setStake(preset.title, preset.detail);
   }
 
-  function saveCustom() {
+  async function saveCustom() {
     const title = draft.replace(/\s+/g, " ").trim();
     if (!title) return;
-    setDraft("");
-    setComposing(false);
-    void setStake(title, "Whoever finishes below 100% owes it this week.");
+    // The words stay in the box until they are saved, so a failed save loses nothing.
+    if (await setStake(title, "Whoever finishes below 100% owes it this week.")) {
+      setDraft("");
+      setComposing(false);
+    }
   }
 
   return (
@@ -548,11 +620,7 @@ export default function PartnerScreen() {
           >
             <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
               <View style={{ width: 56, height: 56 }}>
-                <Avatar
-                  prompt={lastPartner === null ? undefined : PARTNER_PHOTO}
-                  name={partnerName}
-                  size={56}
-                />
+                <Avatar prompt={paired ? PARTNER_PHOTO : undefined} name={partnerName} size={56} />
                 <View
                   style={{
                     position: "absolute",
@@ -586,7 +654,7 @@ export default function PartnerScreen() {
             <Pressable
               onPress={() => router.push("/settings")}
               accessibilityRole="button"
-              accessibilityLabel="Manage pairing"
+              accessibilityLabel="Manage partner settings"
               hitSlop={12}
               style={({ pressed }) => ({
                 minHeight: 44,
@@ -606,7 +674,30 @@ export default function PartnerScreen() {
             </Pressable>
           </View>
 
-          {/* The shared accountability card (also the card that gets shared as an image). */}
+          {/* Before a partner is linked: what that means here, and the two things that do work. */}
+          {paired ? null : (
+            <View
+              style={{
+                gap: theme.spacing.md,
+                padding: theme.spacing.lg,
+                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.surfaceAlt,
+              }}
+            >
+              <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}>
+                Two phones can't be linked in this version, so nothing here is sent for you. Your
+                partner sees your week when you share your scorecard, at the bottom of this screen.
+              </Text>
+              <Button
+                label="Invite a partner"
+                icon="person-add-outline"
+                variant="secondary"
+                onPress={() => void invite()}
+              />
+            </View>
+          )}
+
+          {/* The accountability card (also the card that gets shared as an image). */}
           <View
             ref={ref}
             collapsable={false}
@@ -633,7 +724,10 @@ export default function PartnerScreen() {
               {loading ? (
                 <Skeleton width={124} height={124} radius={62} />
               ) : (
-                <WeekRing percent={percent} />
+                <WeekRing
+                  percent={percent}
+                  label={paired ? "Shared score for this week" : "Your score for this week"}
+                />
               )}
               <View style={{ flex: 1, gap: theme.spacing.sm }}>
                 {loading ? (
@@ -665,13 +759,16 @@ export default function PartnerScreen() {
             ) : (
               <View style={{ flexDirection: "row", gap: theme.spacing.lg }}>
                 {[
-                  { who: "You", done: yours },
-                  { who: firstName, done: partnerDone },
+                  { who: "You", value: `${yours}/${due} workouts` },
+                  {
+                    who: firstName,
+                    value: paired ? `${partnerDone}/${due} workouts` : "Not linked",
+                  },
                 ].map((side) => (
                   <View
                     key={side.who}
                     accessible
-                    accessibilityLabel={`${side.who}: ${side.done} of ${count(due, "workout")}`}
+                    accessibilityLabel={`${side.who}: ${side.value.replace("/", " of ")}`}
                     style={{ flex: 1, gap: 2 }}
                   >
                     <Text
@@ -688,7 +785,7 @@ export default function PartnerScreen() {
                         fontVariant: ["tabular-nums"],
                       }}
                     >
-                      {`${side.done}/${due} workouts`}
+                      {side.value}
                     </Text>
                   </View>
                 ))}
@@ -807,7 +904,9 @@ export default function PartnerScreen() {
                 icon="create-outline"
                 locked={!isPremium}
                 selected={composing && isPremium}
-                onPress={() => (isPremium ? setComposing((open) => !open) : openPaywall())}
+                onPress={() =>
+                  isPremium ? setComposing((open) => !open) : openPaywallFrom("custom_stake")
+                }
               />
             </ScrollView>
             {composing && isPremium ? (
@@ -829,7 +928,7 @@ export default function PartnerScreen() {
                   accessibilityLabel="Your stake"
                   maxLength={80}
                   returnKeyType="done"
-                  onSubmitEditing={saveCustom}
+                  onSubmitEditing={() => void saveCustom()}
                   style={{
                     minHeight: 48,
                     color: theme.colors.text,
@@ -841,7 +940,11 @@ export default function PartnerScreen() {
                     backgroundColor: theme.colors.background,
                   }}
                 />
-                <Button label="Set this stake" onPress={saveCustom} disabled={!draft.trim()} />
+                <Button
+                  label="Set this stake"
+                  onPress={() => void saveCustom()}
+                  disabled={!draft.trim()}
+                />
               </View>
             ) : null}
             {stakeNote ? (
@@ -851,49 +954,52 @@ export default function PartnerScreen() {
             ) : null}
           </View>
 
-          {/* Quick fire: one-tap cheers, with a burst that floats up from the row. */}
-          <View style={{ gap: theme.spacing.sm }}>
-            <SectionLabel>SEND QUICK FIRE</SectionLabel>
-            <View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginHorizontal: -theme.spacing.lg }}
-                contentContainerStyle={{
-                  gap: theme.spacing.sm,
-                  paddingHorizontal: theme.spacing.lg,
-                }}
-              >
-                {CHEERS.map((cheer) => (
-                  <Chip
-                    key={cheer.label}
-                    label={cheer.label}
-                    icon={cheer.icon}
-                    onPress={() => void sendCheer(cheer.label, cheer.icon)}
-                  />
-                ))}
-              </ScrollView>
-              <View
-                pointerEvents="none"
-                style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 44 }}
-              >
-                {bursts.map((burst) => (
-                  <CheerBurst
-                    key={burst.id}
-                    icon={burst.icon}
-                    left={burst.left}
-                    drift={burst.drift}
-                    onDone={() => finish(burst.id)}
-                  />
-                ))}
+          {/* Quick fire: one-tap cheers, with a burst that floats up from the row. They need a
+              linked partner to receive them, so the row is only here once there is one. */}
+          {paired ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <SectionLabel>SEND QUICK FIRE</SectionLabel>
+              <View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginHorizontal: -theme.spacing.lg }}
+                  contentContainerStyle={{
+                    gap: theme.spacing.sm,
+                    paddingHorizontal: theme.spacing.lg,
+                  }}
+                >
+                  {CHEERS.map((cheer) => (
+                    <Chip
+                      key={cheer.label}
+                      label={cheer.label}
+                      icon={cheer.icon}
+                      onPress={() => void sendCheer(cheer.label, cheer.icon)}
+                    />
+                  ))}
+                </ScrollView>
+                <View
+                  pointerEvents="none"
+                  style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 44 }}
+                >
+                  {bursts.map((burst) => (
+                    <CheerBurst
+                      key={burst.id}
+                      icon={burst.icon}
+                      left={burst.left}
+                      drift={burst.drift}
+                      onDone={() => finish(burst.id)}
+                    />
+                  ))}
+                </View>
               </View>
+              {cheerNote ? (
+                <Text style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}>
+                  {cheerNote}
+                </Text>
+              ) : null}
             </View>
-            {cheerNote ? (
-              <Text style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}>
-                {cheerNote}
-              </Text>
-            ) : null}
-          </View>
+          ) : null}
 
           {/* Recent activity: real avatars with status badges, timestamps on the right. */}
           <View style={{ gap: theme.spacing.xs }}>
@@ -952,7 +1058,13 @@ export default function PartnerScreen() {
             ) : (
               <ScoreRow
                 title="This week"
-                detail={due ? `${shared} of ${due * 2} sessions shared` : "No sessions due yet"}
+                detail={
+                  !due
+                    ? "No sessions due yet"
+                    : paired
+                      ? `${shared} of ${due * 2} sessions shared`
+                      : `${yours} of ${count(due, "session")} done`
+                }
                 percent={percent}
               />
             )}
@@ -967,9 +1079,9 @@ export default function PartnerScreen() {
               ))
             ) : (
               <PressScale
-                onPress={openPaywall}
+                onPress={() => openPaywallFrom("score_history")}
                 accessibilityRole="button"
-                accessibilityLabel="Unlock past weeks and scorecards with Spotter Pair Pro"
+                accessibilityLabel="See every past week's score with Spotter Pair Pro"
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -990,10 +1102,10 @@ export default function PartnerScreen() {
                       fontWeight: theme.font.weight.bold,
                     }}
                   >
-                    Past weeks and scorecards
+                    Past weeks
                   </Text>
                   <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                    Pro shows every week you've scored, with the scorecards you shared.
+                    Pro keeps every earlier week's score here, not only this week's.
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
@@ -1006,7 +1118,7 @@ export default function PartnerScreen() {
             onPress={() =>
               void share({
                 message: shareMessage,
-                title: "Our Spotter Pair week",
+                title: paired ? "Our Spotter Pair week" : "My Spotter Pair week",
               })
             }
             haptic="light"
@@ -1014,6 +1126,7 @@ export default function PartnerScreen() {
             accessibilityRole="button"
             accessibilityLabel="Share weekly scorecard"
             accessibilityState={{ disabled: shareOff, busy: sharing }}
+            aria-busy={sharing}
             style={{
               minHeight: 64,
               paddingVertical: theme.spacing.sm,

@@ -1,53 +1,13 @@
-// Starting records for a new install. Dates are relative to the day the app first runs.
+// Starting records for a new install. A new install starts with no drinks, check-ins or weekly
+// results: the first entry is the person's own (onboarding ends in it), never sample history.
 // `unlocks` is the reference content for the Career tab: the athlete's levels, kits and gear.
 // Levels unlock by weeks within the weekly limit, kits and gear by alcohol-free days. The first
-// item of each kind is free; the rest are premium.
-import {
-  addDays,
-  daysAgoKey,
-  dayKey,
-  isoDaysAgo,
-  isoMinutesAgo,
-  parseDay,
-  weekStart,
-  type Checkin,
-  type Drink,
-  type Unlock,
-  type WeeklyGoal,
-} from "./schema";
+// three levels and the first kit and gear of each sport are free; the rest are premium.
+import type { Checkin, Drink, Unlock, WeeklyGoal } from "./schema";
 
-const now = new Date();
-const thisWeek = weekStart(now, 1);
-/** The Monday-start week, n weeks before this one. */
-const weekAgo = (n: number) => dayKey(addDays(parseDay(thisWeek), -7 * n));
-
-const drinks: Drink[] = [
-  { id: "d1", logged_at: isoMinutesAgo(130, now), label: "beer", standard_drinks: 1.5, edited: false },
-  { id: "d2", logged_at: isoMinutesAgo(70, now), label: "wine", standard_drinks: 1, edited: true },
-  { id: "d3", logged_at: isoDaysAgo(1, 21, 10, now), label: "beer", standard_drinks: 1, edited: false },
-  { id: "d4", logged_at: isoDaysAgo(1, 22, 40, now), label: "shot", standard_drinks: 1, edited: false },
-  { id: "d5", logged_at: isoDaysAgo(3, 20, 15, now), label: "wine", standard_drinks: 2, edited: false },
-  { id: "d6", logged_at: isoDaysAgo(4, 19, 5, now), label: "wine", standard_drinks: 2, edited: false },
-  { id: "d7", logged_at: isoDaysAgo(6, 22, 30, now), label: "custom", standard_drinks: 2.5, edited: false },
-];
-
-const checkins: Checkin[] = [
-  { id: "c1", date: daysAgoKey(0, now), alcohol_free: false, game_day: true, note: "Game tonight. Keeping it to two." },
-  { id: "c2", date: daysAgoKey(2, now), alcohol_free: true, game_day: true, note: "Five-a-side. Legs felt quick." },
-  { id: "c3", date: daysAgoKey(3, now), alcohol_free: false, game_day: false, note: "Dinner out with the team." },
-  { id: "c4", date: daysAgoKey(4, now), alcohol_free: false, game_day: false, note: "Two glasses at dinner. Slow on the morning run." },
-  { id: "c5", date: daysAgoKey(5, now), alcohol_free: true, game_day: false, note: "" },
-  { id: "c6", date: daysAgoKey(6, now), alcohol_free: false, game_day: true, note: "Match day. Late dinner after." },
-  { id: "c7", date: daysAgoKey(7, now), alcohol_free: true, game_day: true, note: "12 km long run, felt easy." },
-];
-
-const weeklyGoals: WeeklyGoal[] = [
-  { id: "w1", week_start: weekAgo(1), limit: 7, total_drinks: 6, goal_met: true },
-  { id: "w2", week_start: weekAgo(2), limit: 7, total_drinks: 9, goal_met: false },
-  { id: "w3", week_start: weekAgo(3), limit: 7, total_drinks: 5, goal_met: true },
-  { id: "w4", week_start: weekAgo(4), limit: 7, total_drinks: 7, goal_met: true },
-  { id: "w5", week_start: weekAgo(5), limit: 7, total_drinks: 10, goal_met: false },
-];
+const drinks: Drink[] = [];
+const checkins: Checkin[] = [];
+const weeklyGoals: WeeklyGoal[] = [];
 
 const unlocks: Unlock[] = [
   { id: "l1", kind: "level", name: "Rookie", description: "Turns up ready to train.", sport: "any", metric: "weeks_met", needs: 0, premium: false },

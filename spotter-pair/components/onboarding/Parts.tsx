@@ -1,13 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, type ReactNode } from "react";
-import { Animated, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Pressable, Text, View } from "react-native";
+import { WEEKDAY_LABELS, WEEKDAY_NAMES, type PlanDay } from "../../data/plan";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PressScale, useReducedMotion } from "../motion";
-
-/** A theme color at a low opacity for soft fills. The alpha is appended to the theme's hex token. */
-function tint(color: string, alpha = 0x24): string {
-  return `${color}${alpha.toString(16).padStart(2, "0")}`;
-}
 
 /** The step indicator: equal pills that fill with the primary color as each step begins. */
 export function StepSegments({ count, index }: { count: number; index: number }) {
@@ -39,7 +35,13 @@ export function StepSegments({ count, index }: { count: number; index: number })
   return (
     <View
       accessibilityRole="progressbar"
-      accessibilityLabel={`Step ${index + 1} of ${count}`}
+      accessibilityLabel={
+        index < count ? `Plan setup, step ${index + 1} of ${count}` : "Plan setup, all steps done"
+      }
+      accessibilityValue={{ min: 0, max: count, now: Math.min(index + 1, count) }}
+      aria-valuemin={0}
+      aria-valuemax={count}
+      aria-valuenow={Math.min(index + 1, count)}
       style={{ flex: 1, flexDirection: "row", gap: theme.spacing.sm }}
     >
       {fills.map((fill, i) => (
@@ -124,7 +126,8 @@ export function OptionRow({
       scaleTo={0.97}
       accessibilityRole="radio"
       accessibilityLabel={detail ? `${label}. ${detail}` : label}
-      accessibilityState={{ selected }}
+      accessibilityState={{ checked: selected }}
+      aria-checked={selected}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -188,143 +191,76 @@ export function OptionRow({
   );
 }
 
-/** The grey filled "+ Log First Set" chip, with an orange plus (or a check once done). */
-export function LogChip({
-  label,
-  complete,
-  onPress,
+/**
+ * The week as seven toggles, Monday to Sunday. A picked day is filled and carries a check, so it
+ * is not marked by color alone, and each toggle announces its day and whether it is picked.
+ */
+export function DayToggles({
+  selected,
+  onToggle,
 }: {
-  label: string;
-  complete: boolean;
-  onPress: () => void;
+  /** Weekday numbers, 0 for Monday. */
+  selected: number[];
+  onToggle: (weekday: number) => void;
 }) {
   const theme = useTheme();
   return (
-    <PressScale
-      onPress={onPress}
-      disabled={complete}
-      scaleTo={0.94}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: complete }}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: theme.spacing.xs,
-        minHeight: 44,
-        paddingHorizontal: theme.spacing.lg,
-        borderRadius: theme.radius.pill,
-        backgroundColor: theme.colors.surfaceAlt,
-      }}
-    >
-      <Ionicons
-        name={complete ? "checkmark" : "add"}
-        size={20}
-        color={complete ? theme.colors.success : theme.colors.primary}
-      />
-      <Text
-        style={{
-          fontSize: theme.font.size.body,
-          fontWeight: theme.font.weight.bold,
-          color: complete ? theme.colors.textMuted : theme.colors.text,
-        }}
-      >
-        {label}
-      </Text>
-    </PressScale>
-  );
-}
-
-/** "1/3 logged  Partner sees: In progress": what the partner will see of this workout. */
-export function ProgressBadge({
-  logged,
-  total,
-  complete,
-}: {
-  logged: number;
-  total: number;
-  complete: boolean;
-}) {
-  const theme = useTheme();
-  const tone = complete ? theme.colors.success : theme.colors.textMuted;
-  return (
-    <View
-      accessibilityLabel={`${logged} of ${total} sets logged. Partner sees ${complete ? "complete" : "in progress"}.`}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: theme.spacing.xs,
-        flexShrink: 1,
-        minHeight: 44,
-        paddingHorizontal: theme.spacing.md,
-        borderRadius: theme.radius.pill,
-        backgroundColor: complete ? tint(theme.colors.success) : theme.colors.surfaceAlt,
-        borderWidth: 1,
-        borderColor: complete ? theme.colors.success : theme.colors.border,
-      }}
-    >
-      <Text
-        numberOfLines={1}
-        style={{
-          flexShrink: 1,
-          fontSize: theme.font.size.caption,
-          color: theme.colors.text,
-          fontVariant: ["tabular-nums"],
-        }}
-      >
-        {`${logged}/${total} logged`}
-        <Text style={{ color: theme.colors.textMuted }}>{"  Partner sees: "}</Text>
-        <Text style={{ color: tone, fontWeight: theme.font.weight.bold }}>
-          {complete ? "Complete" : "In progress"}
-        </Text>
-      </Text>
-      {complete ? <Ionicons name="flame" size={14} color={theme.colors.warning} /> : null}
+    <View style={{ flexDirection: "row", gap: 6 }}>
+      {WEEKDAY_LABELS.map((label, weekday) => {
+        const on = selected.includes(weekday);
+        return (
+          <Pressable
+            key={label}
+            onPress={() => onToggle(weekday)}
+            accessibilityRole="checkbox"
+            accessibilityLabel={WEEKDAY_NAMES[weekday]}
+            accessibilityState={{ checked: on }}
+            aria-checked={on}
+            hitSlop={4}
+            style={({ pressed }) => ({
+              flex: 1,
+              minHeight: 76,
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.spacing.xs,
+              paddingVertical: theme.spacing.sm,
+              borderRadius: theme.radius.pill,
+              borderWidth: 2,
+              borderColor: on ? theme.colors.primary : theme.colors.border,
+              backgroundColor: on ? theme.colors.primary : theme.colors.surface,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: theme.font.size.caption,
+                fontWeight: on ? theme.font.weight.bold : theme.font.weight.medium,
+                color: on ? theme.colors.onPrimary : theme.colors.text,
+              }}
+            >
+              {label}
+            </Text>
+            <Ionicons
+              name={on ? "checkmark-circle" : "ellipse-outline"}
+              size={20}
+              color={on ? theme.colors.onPrimary : theme.colors.textMuted}
+            />
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
 
-/** The divider and lock line at the foot of a workout card. Keep it to one short line. */
-export function PrivacyFooter({ children }: { children: ReactNode }) {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: theme.spacing.sm,
-        paddingTop: theme.spacing.md,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.border,
-      }}
-    >
-      <Ionicons name="lock-closed" size={14} color={theme.colors.textMuted} />
-      <Text
-        numberOfLines={1}
-        style={{ flex: 1, fontSize: theme.font.size.caption, color: theme.colors.textMuted }}
-      >
-        {children}
-      </Text>
-    </View>
-  );
-}
-
-/** A compact exercise card for the welcome step: title, target, a log action and the partner badge. */
-export function PreviewCard({
-  title,
-  subtitle,
-  logged,
-  total,
-  complete,
-  actionLabel,
-  onLog,
+/** The plan's sessions, one row a training day: the day, the session's name and its lifts. */
+export function PlanPreview({
+  days,
+  names,
 }: {
-  title: string;
-  subtitle: string;
-  logged: number;
-  total: number;
-  complete: boolean;
-  actionLabel: string;
-  onLog: () => void;
+  days: PlanDay[];
+  /** Exercise names by catalog id. */
+  names: Map<string, string>;
 }) {
   const theme = useTheme();
   return (
@@ -334,37 +270,56 @@ export function PreviewCard({
         borderRadius: theme.radius.lg,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        padding: theme.spacing.lg,
-        gap: theme.spacing.md,
+        paddingHorizontal: theme.spacing.lg,
       }}
     >
-      <View style={{ gap: theme.spacing.xs }}>
-        <Text
-          accessibilityRole="header"
+      {days.map((day, index) => (
+        <View
+          key={day.weekday}
+          accessible
+          accessibilityLabel={`${WEEKDAY_NAMES[day.weekday]}: ${day.title}. ${day.exercises
+            .map((id) => names.get(id) ?? id)
+            .join(", ")}`}
           style={{
-            fontSize: theme.font.size.title,
-            fontWeight: theme.font.weight.bold,
-            color: theme.colors.text,
+            flexDirection: "row",
+            gap: theme.spacing.md,
+            paddingVertical: theme.spacing.md,
+            borderTopWidth: index > 0 ? 1 : 0,
+            borderTopColor: theme.colors.border,
           }}
         >
-          {title}
-        </Text>
-        <Text style={{ fontSize: theme.font.size.body, color: theme.colors.textMuted }}>
-          {subtitle}
-        </Text>
-      </View>
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: theme.spacing.sm,
-        }}
-      >
-        <LogChip label={actionLabel} complete={complete} onPress={onLog} />
-        <ProgressBadge logged={logged} total={total} complete={complete} />
-      </View>
-      <PrivacyFooter>Your privacy · weights stay yours</PrivacyFooter>
+          <Text
+            style={{
+              width: 40,
+              fontSize: theme.font.size.body,
+              fontWeight: theme.font.weight.bold,
+              color: theme.colors.primary,
+            }}
+          >
+            {WEEKDAY_LABELS[day.weekday]}
+          </Text>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text
+              style={{
+                fontSize: theme.font.size.body,
+                fontWeight: theme.font.weight.bold,
+                color: theme.colors.text,
+              }}
+            >
+              {day.title}
+            </Text>
+            <Text
+              style={{
+                fontSize: theme.font.size.caption,
+                lineHeight: 19,
+                color: theme.colors.textMuted,
+              }}
+            >
+              {day.exercises.map((id) => names.get(id) ?? id).join(", ")}
+            </Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }

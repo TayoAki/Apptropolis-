@@ -1,11 +1,15 @@
+// Settings: the partner's name, the answers the plan is built from, the daily nudge, the theme
+// and the subscription. Every control here changes something the rest of the app reads.
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router } from "expo-router";
 import { useState, type ReactNode } from "react";
-import { Linking, Platform, Pressable, ScrollView, Share, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Avatar, PARTNER_PHOTO } from "../components/Avatar";
+import { Avatar } from "../components/Avatar";
 import { Button } from "../components/Button";
 import { haptic, Mascot, PressScale, Stagger } from "../components/motion";
+import { DayToggles } from "../components/onboarding/Parts";
+import { openPaywallFrom } from "../components/paywall/open";
 import {
   ChoiceRow,
   NavRow,
@@ -13,24 +17,26 @@ import {
   SettingsCard,
   ToggleRow,
 } from "../components/settings/rows";
+import { matchPhone, pickPack, usePickedPack } from "../components/settings/themeChoice";
 import { SupportButton, useSupport } from "../components/support";
+import { track } from "../data/analytics";
 import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
+import {
+  EQUIPMENT_OPTIONS,
+  MAX_TRAINING_DAYS,
+  MIN_TRAINING_DAYS,
+  splitAbout,
+  trainingDaysLabel,
+} from "../data/plan";
+import { usePlanner } from "../data/planner";
 import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
-import { DAYS_PER_WEEK_OPTIONS, GOAL_OPTIONS, formatClock } from "../data/schema";
-import { setActiveThemeId } from "../theme/active";
+import { useCollection } from "../data/repo";
+import { GOAL_OPTIONS, count, formatClock, type PartnerUpdate } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
-import { themes } from "../theme/tokens";
+import { defaultThemeId, themes } from "../theme/tokens";
 
-const PARTNER = { name: "Marcus S.", linkedSince: "Sept 2024" };
-
-// Goal and days a week are the answers onboarding saved ("goal", "daysperweek"), with the same
-// choices, so changing them here changes what the rest of the app reads.
-const GOALS: string[] = [...GOAL_OPTIONS];
-const FREQUENCIES = DAYS_PER_WEEK_OPTIONS.map((key) => ({ key, label: `${key} a week` }));
-const DEFAULT_FREQUENCY = "4 days";
-const EQUIPMENT = ["Full commercial gym", "Home dumbbells", "Bodyweight only", "Resistance bands"];
 const TIMES: Array<[number, number]> = [
   [6, 0],
   [6, 30],
@@ -47,20 +53,13 @@ const TIME_OPTIONS = TIMES.map(([hour, minute]) => ({
   key: `${hour}:${minute}`,
   label: formatClock(hour, minute),
 }));
+/** The daily reminder's words. It fires every day at the chosen time, rest days included. */
 const NUDGE = {
   title: "Time to train",
-  body: "Your session is set for today. Log your sets and tell Marcus.",
+  body: "Open Spotter Pair for today's session and log your sets.",
 };
-const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-const asOptions = (list: string[]) => list.map((label) => ({ key: label, label }));
-
-function newInviteCode(): string {
-  return Array.from(
-    { length: 6 },
-    () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)],
-  ).join("");
-}
+const asOptions = (list: readonly string[]) => list.map((label) => ({ key: label, label }));
 
 function Header() {
   const theme = useTheme();
@@ -143,36 +142,92 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 export default function SettingsScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { answers, setAnswer } = useAppState();
+  const { answers, setAnswer, resetOnboarding } = useAppState();
+  const planner = usePlanner();
   const reminder = useReminder();
   const purchases = usePurchases();
   const support = useSupport();
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const updates = useCollection<PartnerUpdate>("partner_updates");
+
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ goal?: string; days?: number[]; equipment?: string }>({});
+  const [daysOpen, setDaysOpen] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [planNote, setPlanNote] = useState<{ text: string; failed: boolean } | null>(null);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
-  const linked = answers.partner_link !== "unlinked";
-  const goal = answers.goal ?? GOALS[0];
-  const frequencyKey = answers.daysperweek ?? DEFAULT_FREQUENCY;
-  const frequency = FREQUENCIES.find((option) => option.key === frequencyKey)?.label ?? frequencyKey;
-  const equipment = answers.equipment ?? EQUIPMENT[0];
+  const isPro = purchases.isPremium;
+  const template = planner.template;
+  // A partner is linked once an update from them has arrived; nothing in this version sends one.
+  const paired = updates.items.some((u) => u.from === "partner");
+  const partnerName = (answers.partner_name ?? "").trim();
+  const nameValue = nameDraft ?? partnerName;
+
+  // The plan's answers as they stand, and the changes picked here that aren't applied yet.
+  const planDays = template?.days.map((day) => day.weekday) ?? [];
+  const goal = draft.goal ?? template?.goal ?? "";
+  const days = draft.days ?? planDays;
+  const equipment = draft.equipment ?? template?.equipment ?? "";
+  const daysValid = days.length >= MIN_TRAINING_DAYS && days.length <= MAX_TRAINING_DAYS;
+  const dirty =
+    template !== null &&
+    (goal !== template.goal ||
+      equipment !== template.equipment ||
+      days.join(",") !== planDays.join(","));
+
   const timeKey = `${reminder.hour}:${reminder.minute}`;
   const restoring = purchases.status === "restoring";
   const blocked = reminder.permission === "denied";
+  const pickedPack = usePickedPack();
 
-  function togglePartner() {
-    haptic(linked ? "warning" : "success");
-    void setAnswer("partner_link", linked ? "unlinked" : "linked");
+  function saveName() {
+    if (nameDraft === null) return;
+    const next = nameDraft.replace(/\s+/g, " ").trim();
+    setNameDraft(null);
+    if (next !== partnerName) void setAnswer("partner_name", next);
   }
 
-  async function shareInvite() {
-    haptic("light");
-    const code = newInviteCode();
-    void setAnswer("invite_code", code);
-    setInviteCode(code);
-    await Share.share({
-      message: `Pair with me on ${appInfo.name}. Invite code: ${code}`,
-    }).catch(() => undefined);
+  function toggleDay(weekday: number) {
+    const on = days.includes(weekday);
+    if (!on && days.length >= MAX_TRAINING_DAYS) {
+      haptic("warning");
+      return;
+    }
+    haptic("selection");
+    setPlanNote(null);
+    setDraft((current) => ({
+      ...current,
+      days: (on ? days.filter((d) => d !== weekday) : [...days, weekday]).sort((a, b) => a - b),
+    }));
+  }
+
+  /** Pro: applies the changed answers and lays the plan out again from today. */
+  async function rebuild() {
+    if (!dirty || !daysValid || rebuilding) return;
+    setRebuilding(true);
+    setPlanNote(null);
+    try {
+      await setAnswer("goal", goal);
+      await setAnswer("equipment", equipment);
+      const plan = await planner.build({ goal, days, equipment });
+      if (!plan) throw new Error("no plan");
+      haptic("success");
+      setDraft({});
+      setDaysOpen(false);
+      setPlanNote({
+        text: "Plan rebuilt. It applies from today; finished sessions are unchanged.",
+        failed: false,
+      });
+      track("plan_regenerated", { days: plan.days.length, from: "settings" });
+    } catch {
+      setPlanNote({
+        text: "The plan couldn't be rebuilt. Your choices are kept: try again.",
+        failed: true,
+      });
+    } finally {
+      setRebuilding(false);
+    }
   }
 
   async function toggleNudge(on: boolean) {
@@ -207,14 +262,22 @@ export default function SettingsScreen() {
     void Linking.openURL(url).catch(() => undefined);
   }
 
+  /** A picked pack is saved, so it is still the app's theme the next time it opens. */
   function chooseTheme(id: string) {
     haptic("selection");
-    setActiveThemeId(id);
+    pickPack(id);
   }
 
+  function chooseMatchPhone() {
+    haptic("selection");
+    matchPhone();
+  }
+
+  const defaultPack = themes.find((pack) => pack.id === defaultThemeId);
   const reminderHelp = blocked
     ? "Notifications are off for Spotter Pair. Allow them in your phone's Settings to get your nudge."
-    : "Your nudge comes once a day at this time, so you never leave Marcus hanging.";
+    : "One reminder a day at this time, rest days included. It never mentions your weights.";
+  const lock = <Ionicons name="lock-closed" size={16} color={theme.colors.textMuted} />;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -227,114 +290,217 @@ export default function SettingsScreen() {
           paddingBottom: insets.bottom + theme.spacing.xl,
         }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
         <Stagger step={70} style={{ gap: theme.spacing.xl }}>
-          <Section label="PARTNER CONNECTION">
+          <Section label="PARTNER">
             <SettingsCard>
               <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-                  <View style={{ width: 56, height: 56 }}>
-                    <Avatar prompt={PARTNER_PHOTO} name={PARTNER.name} size={56} />
-                    <View
+                  <Avatar name={nameValue} size={56} />
+                  <View style={{ flex: 1, gap: theme.spacing.xs }}>
+                    <Text
                       style={{
-                        position: "absolute",
-                        right: 0,
-                        bottom: 0,
-                        width: 14,
-                        height: 14,
-                        borderRadius: 7,
-                        backgroundColor: linked ? theme.colors.success : theme.colors.textMuted,
-                        borderWidth: 2,
-                        borderColor: theme.colors.surface,
+                        color: theme.colors.textMuted,
+                        fontSize: theme.font.size.caption,
+                        fontWeight: theme.font.weight.medium,
+                      }}
+                    >
+                      Partner's name (optional)
+                    </Text>
+                    <TextInput
+                      value={nameValue}
+                      onChangeText={setNameDraft}
+                      onBlur={saveName}
+                      onSubmitEditing={saveName}
+                      placeholder="Their first name"
+                      placeholderTextColor={theme.colors.textMuted}
+                      accessibilityLabel="Partner's name, optional"
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      maxLength={24}
+                      returnKeyType="done"
+                      style={{
+                        minHeight: 48,
+                        color: theme.colors.text,
+                        fontSize: theme.font.size.body,
+                        paddingHorizontal: theme.spacing.md,
+                        borderRadius: theme.radius.sm,
+                        borderWidth: 1,
+                        borderColor: theme.colors.textMuted,
+                        backgroundColor: theme.colors.background,
                       }}
                     />
                   </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      numberOfLines={1}
-                      style={{
-                        color: theme.colors.text,
-                        fontSize: theme.font.size.body,
-                        fontWeight: theme.font.weight.bold,
-                      }}
-                    >
-                      {PARTNER.name}
-                    </Text>
-                    <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                      {linked ? `Linked since ${PARTNER.linkedSince}` : "Not linked right now"}
-                    </Text>
-                  </View>
                 </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-                  {/* The wrapper stretches so the button takes the room the second one leaves. */}
-                  <View style={{ flex: 1 }}>
-                    <Button
-                      label="Share invite code"
-                      icon="share-outline"
-                      variant="secondary"
-                      onPress={shareInvite}
-                    />
-                  </View>
-                  <PressScale
-                    onPress={togglePartner}
-                    scaleTo={0.94}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel={linked ? "Unlink partner" : "Re-invite partner"}
-                    style={{
-                      minHeight: 48,
-                      justifyContent: "center",
-                      paddingHorizontal: theme.spacing.lg,
-                      borderRadius: theme.radius.pill,
-                      borderWidth: 1,
-                      borderColor: theme.colors.textMuted,
-                    }}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={{
-                        color: theme.colors.text,
-                        fontSize: theme.font.size.body,
-                        fontWeight: theme.font.weight.bold,
-                      }}
-                    >
-                      {linked ? "Unlink" : "Re-invite"}
-                    </Text>
-                  </PressScale>
-                </View>
-                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                  {inviteCode
-                    ? `Invite code ${inviteCode} is ready to send. Pairing takes about 3 minutes.`
-                    : "Pairing takes about 3 minutes. Share an invite code to sync your accountability."}
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: theme.font.size.caption,
+                    lineHeight: 19,
+                  }}
+                >
+                  {paired
+                    ? "Linked. Their updates show on the Partner tab."
+                    : "Not linked: two phones can't be linked in this version. The name is only used for this app's own labels, and your partner sees your week when you share your scorecard from the Partner tab."}
                 </Text>
               </View>
             </SettingsCard>
           </Section>
 
-          <Section label="TRAINING PREFERENCES">
-            <SettingsCard>
-              <ChoiceRow
-                title={`Goal: ${goal}`}
-                options={asOptions(GOALS)}
-                selected={goal}
-                onChoose={(value) => void setAnswer("goal", value)}
-              />
-              <ChoiceRow
-                title={`Frequency: ${frequency}`}
-                options={FREQUENCIES}
-                selected={frequencyKey}
-                onChoose={(value) => void setAnswer("daysperweek", value)}
-              />
-              <ChoiceRow
-                title={`Equipment: ${equipment}`}
-                options={asOptions(EQUIPMENT)}
-                selected={equipment}
-                onChoose={(value) => void setAnswer("equipment", value)}
-              />
-            </SettingsCard>
+          <Section label="TRAINING PLAN">
+            {template === null ? (
+              <SettingsCard>
+                <NavRow
+                  title="Set up my plan"
+                  icon="barbell-outline"
+                  onPress={() => void resetOnboarding()}
+                />
+              </SettingsCard>
+            ) : (
+              <SettingsCard
+                footer={
+                  <View
+                    style={{
+                      paddingHorizontal: theme.spacing.lg,
+                      paddingBottom: theme.spacing.md,
+                      gap: theme.spacing.md,
+                    }}
+                  >
+                    {isPro && dirty ? (
+                      <Button
+                        label={rebuilding ? "Rebuilding your plan…" : "Rebuild my plan"}
+                        icon={rebuilding ? undefined : "refresh"}
+                        onPress={() => void rebuild()}
+                        disabled={rebuilding || !daysValid}
+                      />
+                    ) : null}
+                    <Text
+                      accessibilityLiveRegion="polite"
+                      style={{
+                        color: planNote?.failed ? theme.colors.danger : theme.colors.textMuted,
+                        fontSize: theme.font.size.caption,
+                        lineHeight: 19,
+                      }}
+                    >
+                      {planNote
+                        ? planNote.text
+                        : !isPro
+                          ? "Your plan is built from these three answers. Changing them rebuilds it, which is part of Spotter Pair Pro."
+                          : dirty
+                            ? daysValid
+                              ? "Not applied yet. Rebuilding lays the plan out again from today; finished sessions stay as they are."
+                              : `Pick ${MIN_TRAINING_DAYS} to ${MAX_TRAINING_DAYS} training days to rebuild.`
+                            : "Changing any of these rebuilds your plan from today. Finished sessions stay as they are."}
+                    </Text>
+                  </View>
+                }
+              >
+                {isPro ? (
+                  <ChoiceRow
+                    title={`Goal: ${goal}`}
+                    options={asOptions(GOAL_OPTIONS)}
+                    selected={goal}
+                    onChoose={(value) => {
+                      setPlanNote(null);
+                      setDraft((current) => ({ ...current, goal: value }));
+                    }}
+                  />
+                ) : (
+                  <NavRow
+                    title={`Goal: ${goal}`}
+                    chevron={false}
+                    trailing={lock}
+                    onPress={() => openPaywallFrom("settings_training")}
+                  />
+                )}
+                {isPro ? (
+                  <View>
+                    <Pressable
+                      onPress={() => setDaysOpen((open) => !open)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Training days: ${trainingDaysLabel(days)}`}
+                      accessibilityState={{ expanded: daysOpen }}
+                      aria-expanded={daysOpen}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        alignItems: "center",
+                        minHeight: 52,
+                        paddingHorizontal: theme.spacing.lg,
+                        paddingVertical: theme.spacing.md,
+                        gap: theme.spacing.md,
+                        backgroundColor: pressed ? theme.colors.surfaceAlt : undefined,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          flex: 1,
+                          color: theme.colors.text,
+                          fontSize: theme.font.size.body,
+                        }}
+                      >
+                        {`Training days: ${trainingDaysLabel(days) || "none picked"}`}
+                      </Text>
+                      <Ionicons
+                        name={daysOpen ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color={theme.colors.textMuted}
+                      />
+                    </Pressable>
+                    {daysOpen ? (
+                      <View
+                        style={{
+                          gap: theme.spacing.sm,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingBottom: theme.spacing.md,
+                        }}
+                      >
+                        <DayToggles selected={days} onToggle={toggleDay} />
+                        <Text
+                          style={{
+                            color: theme.colors.textMuted,
+                            fontSize: theme.font.size.caption,
+                          }}
+                        >
+                          {daysValid
+                            ? `${count(days.length, "day")} a week: ${splitAbout(days.length)}.`
+                            : `Pick ${MIN_TRAINING_DAYS} to ${MAX_TRAINING_DAYS} days.`}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <NavRow
+                    title={`Training days: ${trainingDaysLabel(days)}`}
+                    chevron={false}
+                    trailing={lock}
+                    onPress={() => openPaywallFrom("settings_training")}
+                  />
+                )}
+                {isPro ? (
+                  <ChoiceRow
+                    title={`Equipment: ${equipment}`}
+                    options={asOptions(EQUIPMENT_OPTIONS)}
+                    selected={equipment}
+                    onChoose={(value) => {
+                      setPlanNote(null);
+                      setDraft((current) => ({ ...current, equipment: value }));
+                    }}
+                  />
+                ) : (
+                  <NavRow
+                    title={`Equipment: ${equipment}`}
+                    chevron={false}
+                    trailing={lock}
+                    onPress={() => openPaywallFrom("settings_training")}
+                  />
+                )}
+              </SettingsCard>
+            )}
           </Section>
 
-          <Section label="ACCOUNTABILITY & NUDGES">
+          <Section label="DAILY NUDGE">
             <SettingsCard
               footer={
                 <View
@@ -344,8 +510,10 @@ export default function SettingsScreen() {
                   }}
                 >
                   <Text
+                    accessibilityLiveRegion="polite"
                     style={{
-                      color: reminderNote || blocked ? theme.colors.warning : theme.colors.textMuted,
+                      color:
+                        reminderNote || blocked ? theme.colors.warning : theme.colors.textMuted,
                       fontSize: theme.font.size.caption,
                     }}
                   >
@@ -391,70 +559,113 @@ export default function SettingsScreen() {
           </Section>
 
           <Section label="VISUAL THEME">
-            <View
-              accessibilityRole="radiogroup"
-              style={{ flexDirection: "row", gap: theme.spacing.xs }}
-            >
-              {themes.map((pack) => {
-                // The pack on screen, which is the light or dark partner when the phone asks for it.
-                const selected = pack.id === theme.id;
-                return (
-                  <View
-                    key={pack.id}
+            <View accessibilityRole="radiogroup" style={{ gap: theme.spacing.sm }}>
+              {/* The default: no pick is saved and the app follows the phone's light or dark mode. */}
+              <PressScale
+                onPress={chooseMatchPhone}
+                scaleTo={0.98}
+                accessibilityRole="radio"
+                accessibilityLabel="Match my phone's light and dark mode"
+                accessibilityState={{ checked: pickedPack === null }}
+                aria-checked={pickedPack === null}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.md,
+                  minHeight: 56,
+                  paddingHorizontal: theme.spacing.lg,
+                  paddingVertical: theme.spacing.sm,
+                  borderRadius: theme.radius.md,
+                  borderWidth: 2,
+                  borderColor: pickedPack === null ? theme.colors.text : theme.colors.border,
+                  backgroundColor: theme.colors.surface,
+                }}
+              >
+                <Ionicons name="phone-portrait-outline" size={20} color={theme.colors.primary} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text
                     style={{
-                      flex: 1,
-                      padding: 2,
-                      borderRadius: theme.radius.sm + 4,
-                      borderWidth: 2,
-                      borderColor: selected ? theme.colors.text : theme.colors.background,
+                      color: theme.colors.text,
+                      fontSize: theme.font.size.body,
+                      fontWeight: theme.font.weight.medium,
                     }}
                   >
-                    <PressScale
-                      onPress={() => chooseTheme(pack.id)}
-                      scaleTo={0.94}
-                      accessibilityRole="radio"
-                      accessibilityLabel={`${pack.name}, ${pack.dark ? "dark" : "light"} theme`}
-                      accessibilityState={{ selected }}
+                    Match my phone
+                  </Text>
+                  <Text
+                    style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
+                  >
+                    {`${defaultPack?.name ?? "The app's theme"} in dark mode, its light partner in light mode`}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={pickedPack === null ? "radio-button-on" : "radio-button-off"}
+                  size={22}
+                  color={pickedPack === null ? theme.colors.primary : theme.colors.textMuted}
+                />
+              </PressScale>
+              <View style={{ flexDirection: "row", gap: theme.spacing.xs }}>
+                {themes.map((pack) => {
+                  const selected = pack.id === pickedPack;
+                  return (
+                    <View
+                      key={pack.id}
                       style={{
-                        height: 76,
-                        borderRadius: theme.radius.sm,
-                        backgroundColor: pack.colors.primary,
-                        alignItems: "center",
-                        justifyContent: "flex-end",
-                        paddingHorizontal: 2,
-                        paddingBottom: theme.spacing.sm,
+                        flex: 1,
+                        padding: 2,
+                        borderRadius: theme.radius.sm + 4,
+                        borderWidth: 2,
+                        borderColor: selected ? theme.colors.text : theme.colors.background,
                       }}
                     >
-                      <Ionicons
-                        name={pack.dark ? "moon" : "sunny"}
-                        size={14}
-                        color={pack.colors.onPrimary}
-                        style={{ position: "absolute", top: 6, left: 6 }}
-                      />
-                      {selected ? (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={18}
-                          color={pack.colors.onPrimary}
-                          style={{ position: "absolute", top: 4, right: 4 }}
-                        />
-                      ) : null}
-                      <Text
-                        numberOfLines={2}
+                      <PressScale
+                        onPress={() => chooseTheme(pack.id)}
+                        scaleTo={0.94}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`${pack.name}, ${pack.dark ? "dark" : "light"} theme`}
+                        accessibilityState={{ checked: selected }}
+                        aria-checked={selected}
                         style={{
-                          color: pack.colors.onPrimary,
-                          fontSize: theme.font.size.caption,
-                          lineHeight: 16,
-                          fontWeight: theme.font.weight.bold,
-                          textAlign: "center",
+                          height: 76,
+                          borderRadius: theme.radius.sm,
+                          backgroundColor: pack.colors.primary,
+                          alignItems: "center",
+                          justifyContent: "flex-end",
+                          paddingHorizontal: 2,
+                          paddingBottom: theme.spacing.sm,
                         }}
                       >
-                        {pack.name}
-                      </Text>
-                    </PressScale>
-                  </View>
-                );
-              })}
+                        <Ionicons
+                          name={pack.dark ? "moon" : "sunny"}
+                          size={14}
+                          color={pack.colors.onPrimary}
+                          style={{ position: "absolute", top: 6, left: 6 }}
+                        />
+                        {selected ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={18}
+                            color={pack.colors.onPrimary}
+                            style={{ position: "absolute", top: 4, right: 4 }}
+                          />
+                        ) : null}
+                        <Text
+                          numberOfLines={2}
+                          style={{
+                            color: pack.colors.onPrimary,
+                            fontSize: theme.font.size.caption,
+                            lineHeight: 16,
+                            fontWeight: theme.font.weight.bold,
+                            textAlign: "center",
+                          }}
+                        >
+                          {pack.name}
+                        </Text>
+                      </PressScale>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
           </Section>
 
@@ -469,6 +680,7 @@ export default function SettingsScreen() {
                     }}
                   >
                     <Text
+                      accessibilityLiveRegion="polite"
                       style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
                     >
                       {restoreNote}
@@ -478,8 +690,8 @@ export default function SettingsScreen() {
               }
             >
               <NavRow
-                title={purchases.isPremium ? "Manage Spotter Pair Pro" : "Get Spotter Pair Pro"}
-                onPress={purchases.openPaywall}
+                title={isPro ? "Your Spotter Pair Pro plan" : "Get Spotter Pair Pro"}
+                onPress={() => openPaywallFrom("settings")}
                 trailing={
                   <View
                     style={{
@@ -512,10 +724,12 @@ export default function SettingsScreen() {
               />
               {appInfo.privacyUrl ? (
                 <NavRow
-                  title="Privacy policy and weights vault guarantee"
+                  title="Privacy policy"
                   chevron={false}
                   onPress={() => openLink(appInfo.privacyUrl)}
-                  trailing={<Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />}
+                  trailing={
+                    <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+                  }
                 />
               ) : null}
               {support.available ? (

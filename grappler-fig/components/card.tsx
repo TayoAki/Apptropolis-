@@ -19,11 +19,11 @@ export function Card({
   const theme = useTheme();
   const look: StyleProp<ViewStyle> = {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
   };
   if (!onPress) return <View style={[look, style]}>{children}</View>;
   return (
@@ -56,13 +56,16 @@ export function SectionHeader({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
+        gap: theme.spacing.md,
+        minHeight: 32,
       }}
     >
       <Text
         accessibilityRole="header"
         style={{
+          flex: 1,
           color: theme.colors.text,
-          fontSize: theme.font.size.headline,
+          fontSize: theme.font.size.title,
           fontWeight: theme.font.weight.bold,
         }}
       >
@@ -84,7 +87,7 @@ export function SectionHeader({
             style={{
               color: theme.colors.primary,
               fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.medium,
+              fontWeight: theme.font.weight.bold,
             }}
           >
             {actionLabel}

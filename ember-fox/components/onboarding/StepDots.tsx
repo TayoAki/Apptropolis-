@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
 
-/** Onboarding's progress: equal round dots, the current one in the primary color. */
+/** Onboarding's progress: round dots, the current one a longer pill in the primary color. */
 export function StepDots({ count, index }: { count: number; index: number }) {
   const theme = useTheme();
   return (
@@ -19,10 +19,10 @@ export function StepDots({ count, index }: { count: number; index: number }) {
         <View
           key={i}
           style={{
-            width: 8,
+            width: i === index ? 24 : 8,
             height: 8,
             borderRadius: 4,
-            backgroundColor: i === index ? theme.colors.primary : theme.colors.border,
+            backgroundColor: i === index ? theme.colors.primary : theme.colors.textMuted + "66",
           }}
         />
       ))}

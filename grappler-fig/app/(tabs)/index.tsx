@@ -1,10 +1,8 @@
 // Train: the round timer with its punch callouts, today's challenge, and scouted plans to run.
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
-import type { ComponentProps } from "react";
+import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
@@ -19,21 +17,22 @@ import {
   type WorkoutMode,
   type WorkoutSession,
 } from "../../data/schema";
+import { PrimaryButton } from "../../components/button";
+import { Card, SectionHeader } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
-import { SectionHeader } from "../../components/card";
-import { FlipClock } from "../../components/index/Clock";
+import { RoundClock, clockSizeFor } from "../../components/index/Clock";
 import { ComboPanel } from "../../components/index/Combo";
-import { Frame, GlowButton, Stencil } from "../../components/index/Frame";
 import { Lottie, Celebrate } from "../../components/lottie";
+import { CountUp, PressScale, Skeleton, Stagger, haptic } from "../../components/motion";
 import {
-  CountUp,
-  PressScale,
-  Skeleton,
-  Stagger,
-  haptic,
-} from "../../components/motion";
+  AppSwitch,
+  Monogram,
+  ScreenHeader,
+  SecondaryButton,
+  StreakBadge,
+  displayFace,
+} from "../../components/ui";
 
-type IconName = ComponentProps<typeof Ionicons>["name"];
 interface Setup {
   rounds: number;
   roundSeconds: number;
@@ -55,7 +54,6 @@ interface Run {
 
 /** How often the next punch is called out during a round. */
 const CALLOUT_MS = 3000;
-const CLOCK_SIZE = 100;
 const ROUND_OPTIONS = [3, 5, 6, 8, 10];
 const LENGTH_OPTIONS = [120, 180, 240, 300];
 const REST_OPTIONS = [30, 60, 90];
@@ -137,14 +135,8 @@ const PROGRAMS: Program[] = [
   },
 ];
 
-/** "02:41": minutes and seconds, always two digits. */
-function clockText(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-}
-
 function restLabel(seconds: number): string {
-  return seconds < 60 ? `${seconds} sec rest` : `${formatRoundLength(seconds)} rest`;
+  return seconds < 60 ? `${seconds} sec` : formatRoundLength(seconds);
 }
 
 /** Day of the year, so the challenge changes once a day. */
@@ -174,104 +166,64 @@ function comboPlan(index: number): Plan {
   return { name: `${combo.name} combo`, steps: combo.steps, mode: "callout" };
 }
 
-/** A setup chip: outlined, equal width in its row, cycles its option on press. */
-function Chip({
+/** One setup value: its name above the value, and a press moves to the next option. */
+function SetupChip({
   label,
-  disabled = false,
+  value,
   onPress,
   accessibilityLabel,
 }: {
   label: string;
-  disabled?: boolean;
+  value: string;
   onPress: () => void;
-  accessibilityLabel?: string;
+  accessibilityLabel: string;
 }) {
   const theme = useTheme();
   return (
     <PressScale
       onPress={onPress}
-      disabled={disabled}
       haptic="selection"
-      scaleTo={0.94}
+      scaleTo={0.96}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled }}
+      accessibilityLabel={accessibilityLabel}
       style={{
-        flex: 1,
-        minHeight: 44,
-        alignItems: "center",
+        minHeight: 56,
         justifyContent: "center",
-        paddingHorizontal: 6,
-        borderRadius: theme.radius.pill,
+        paddingHorizontal: theme.spacing.md,
+        paddingVertical: theme.spacing.sm,
+        borderRadius: theme.radius.sm,
         borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surfaceAlt,
-        opacity: disabled ? 0.5 : 1,
+        borderColor: theme.colors.textMuted,
       }}
     >
       <Text
         numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.7}
-        style={{
-          color: theme.colors.textMuted,
-          fontSize: 13,
-          fontWeight: theme.font.weight.medium,
-        }}
+        style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
       >
         {label}
       </Text>
-    </PressScale>
-  );
-}
-
-function SecondaryButton({
-  label,
-  icon,
-  onPress,
-}: {
-  label: string;
-  icon: IconName;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <PressScale
-      onPress={onPress}
-      haptic="light"
-      scaleTo={0.94}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        minHeight: 52,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: theme.spacing.sm,
-        paddingHorizontal: theme.spacing.lg,
-        borderRadius: theme.radius.pill,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surfaceAlt,
-      }}
-    >
-      <Ionicons name={icon} size={18} color={theme.colors.text} />
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontSize: theme.font.size.body,
-          fontWeight: theme.font.weight.bold,
-        }}
-      >
-        {label}
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+        <Text
+          numberOfLines={1}
+          style={{
+            flex: 1,
+            color: theme.colors.text,
+            fontSize: theme.font.size.body,
+            fontWeight: theme.font.weight.bold,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {value}
+        </Text>
+        <Ionicons name="swap-vertical" size={14} color={theme.colors.textMuted} />
+      </View>
     </PressScale>
   );
 }
 
 export default function TrainScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { isPremium, openPaywall } = usePurchases();
   const { answers } = useAppState();
   const sessions = useCollection<WorkoutSession>("workout_sessions");
@@ -283,7 +235,6 @@ export default function TrainScreen() {
     : "beginner";
 
   const [setup, setSetup] = useState<Setup>({ rounds: 5, roundSeconds: 180, restSeconds: 60 });
-  const [stance, setStance] = useState<"orthodox" | "southpaw">("orthodox");
   const [combo, setCombo] = useState(0);
   const [plan, setPlan] = useState<Plan>(CLASSIC);
   const [cues, setCues] = useState(true);
@@ -417,95 +368,15 @@ export default function TrainScreen() {
   const displayRound = run.phase === "idle" ? 1 : run.round;
   const xp = xpForSession({ rounds, roundSeconds });
 
-  const heroCard = (
-    <Frame>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-        <View
-          style={{
-            flex: 1,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: theme.spacing.xs,
-            paddingVertical: theme.spacing.xs,
-            paddingHorizontal: theme.spacing.sm,
-            borderRadius: theme.radius.md,
-            backgroundColor: theme.colors.surfaceAlt,
-          }}
-        >
-          <Stencil size={theme.font.size.headline} color={theme.colors.primary}>
-            ROUND
-          </Stencil>
-          <View
-            style={{
-              minWidth: 44,
-              alignItems: "center",
-              paddingHorizontal: theme.spacing.xs,
-              borderRadius: theme.radius.sm,
-              backgroundColor: theme.colors.primary,
-              shadowColor: theme.colors.primary,
-              shadowOpacity: 0.7,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 0 },
-            }}
-          >
-            <Stencil size={theme.font.size.headline} color={theme.colors.onPrimary}>
-              {String(displayRound)}
-            </Stencil>
-          </View>
-          <Stencil size={theme.font.size.headline} color={theme.colors.textMuted}>
-            /
-          </Stencil>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${rounds} rounds. Change the number of rounds`}
-            disabled={active}
-            onPress={() => {
-              haptic("selection");
-              setSetup({ ...setup, rounds: cycle(ROUND_OPTIONS, rounds) });
-            }}
-            hitSlop={12}
-            style={({ pressed }) => ({
-              minWidth: 44,
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Stencil size={theme.font.size.headline} color={theme.colors.text}>
-              {String(rounds)}
-            </Stencil>
-          </Pressable>
-        </View>
-        <PressScale
-          onPress={active ? stopRound : () => startRound(setup, plan)}
-          haptic="light"
-          scaleTo={0.9}
-          accessibilityRole="button"
-          accessibilityLabel={active ? "Stop round" : "Start this setup"}
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: theme.colors.primary,
-            shadowColor: theme.colors.primary,
-            shadowOpacity: active ? 0 : 0.7,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 0 },
-            elevation: active ? 0 : 6,
-          }}
-        >
-          <Ionicons
-            name={active ? "stop" : "play"}
-            size={18}
-            color={theme.colors.onPrimary}
-          />
-        </PressScale>
-      </View>
+  // The clock is as large as the card allows: the screen less its padding, the card's and a border.
+  const clockSize = clockSizeFor(width - 2 * (theme.spacing.lg * 2 + 1));
+  const roundLabel =
+    run.phase === "rest"
+      ? `Round ${run.round} of ${rounds} done`
+      : `Round ${displayRound} of ${rounds}`;
 
+  const heroCard = (
+    <Card style={{ gap: theme.spacing.md }}>
       {run.phase === "done" ? (
         <View style={{ alignItems: "center", gap: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
           <Lottie name="success" size={96} />
@@ -517,25 +388,25 @@ export default function TrainScreen() {
               fontWeight: theme.font.weight.bold,
             }}
           >
-            Round logged
+            Session logged
           </Text>
           <CountUp
             value={xp}
             format={(n) => `+${Math.round(n)} XP`}
-            style={{
-              color: theme.colors.primary,
-              fontSize: theme.font.size.headline,
-              fontWeight: theme.font.weight.bold,
-            }}
+            style={[
+              displayFace,
+              { color: theme.colors.primary, fontSize: theme.font.size.headline },
+            ]}
           />
           <Text
             style={{
               color: theme.colors.textMuted,
               fontSize: theme.font.size.body,
+              lineHeight: 24,
               textAlign: "center",
             }}
           >
-            {`${rounds} rounds saved to Progress. Keep the streak going tomorrow.`}
+            {`${rounds} ${rounds === 1 ? "round" : "rounds"} saved to Progress. Keep the streak going tomorrow.`}
           </Text>
           <SecondaryButton
             label="Back to setup"
@@ -545,76 +416,110 @@ export default function TrainScreen() {
         </View>
       ) : (
         <>
-          <View style={{ alignItems: "center" }}>
-            <FlipClock value={clockText(clock)} size={CLOCK_SIZE} />
-          </View>
+          <Text
+            accessibilityRole="header"
+            style={[
+              displayFace,
+              {
+                color: run.phase === "work" ? theme.colors.primary : theme.colors.textMuted,
+                fontSize: theme.font.size.title,
+                letterSpacing: 0.5,
+                textAlign: "center",
+                textTransform: "uppercase",
+                fontVariant: ["tabular-nums"],
+              },
+            ]}
+          >
+            {roundLabel}
+          </Text>
+
+          <RoundClock seconds={clock} size={clockSize} dim={run.phase === "rest"} />
 
           <ComboPanel
+            name={plan.name}
             steps={steps}
+            phase={run.phase === "work" ? "work" : run.phase === "rest" ? "rest" : "idle"}
             current={liveIndex}
-            muted={run.phase === "rest"}
+            restNote={`Round ${run.round + 1} of ${rounds} is next`}
             locked={!isPremium}
-            disabled={active}
             onPress={cycleCombo}
-            accessibilityLabel={`${plan.name}. ${isPremium ? "Change the combo" : "Custom combos are premium"}`}
           />
 
-          <Pressable
-            onPress={() => {
-              haptic("selection");
-              setCues((value) => !value);
-            }}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: cues }}
-            accessibilityLabel="Haptic callouts"
-            hitSlop={8}
-            style={({ pressed }) => ({
-              minHeight: 44,
+          {active ? (
+            <SecondaryButton label="Stop" icon="stop" onPress={stopRound} accessibilityLabel="Stop round" />
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <SetupChip
+                    label="Rounds"
+                    value={String(rounds)}
+                    onPress={() => setSetup({ ...setup, rounds: cycle(ROUND_OPTIONS, rounds) })}
+                    accessibilityLabel={`${rounds} rounds. Change the number of rounds`}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <SetupChip
+                    label="Round"
+                    value={formatRoundLength(roundSeconds)}
+                    onPress={() =>
+                      setSetup({ ...setup, roundSeconds: cycle(LENGTH_OPTIONS, roundSeconds) })
+                    }
+                    accessibilityLabel={`${formatRoundLength(roundSeconds)} rounds. Change the round length`}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <SetupChip
+                    label="Rest"
+                    value={restLabel(restSeconds)}
+                    onPress={() =>
+                      setSetup({ ...setup, restSeconds: cycle(REST_OPTIONS, restSeconds) })
+                    }
+                    accessibilityLabel={`${restLabel(restSeconds)} rest. Change the rest`}
+                  />
+                </View>
+              </View>
+              <PrimaryButton
+                label="Start round"
+                icon="play"
+                onPress={() => startRound(setup, plan)}
+              />
+            </>
+          )}
+
+          <View
+            style={{
               flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
-              gap: theme.spacing.xs,
-              opacity: pressed ? 0.6 : 1,
-            })}
+              justifyContent: "space-between",
+              gap: theme.spacing.md,
+              minHeight: 44,
+            }}
           >
-            <Ionicons
-              name="pulse-outline"
-              size={18}
-              color={cues ? theme.colors.primary : theme.colors.textMuted}
-            />
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
-              {`Haptic callouts: ${cues ? "Active" : "Off"}`}
-            </Text>
-          </Pressable>
-
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-            <Chip
-              label={`${formatRoundLength(roundSeconds)} round`}
-              disabled={active}
-              onPress={() => setSetup({ ...setup, roundSeconds: cycle(LENGTH_OPTIONS, roundSeconds) })}
-              accessibilityLabel={`${formatRoundLength(roundSeconds)} rounds. Change the length`}
-            />
-            <Chip
-              label={restLabel(restSeconds)}
-              disabled={active}
-              onPress={() => setSetup({ ...setup, restSeconds: cycle(REST_OPTIONS, restSeconds) })}
-              accessibilityLabel={`${restLabel(restSeconds)}. Change the rest`}
-            />
-            <Chip
-              label={`${stance === "orthodox" ? "Orthodox" : "Southpaw"} stance`}
-              disabled={active}
-              onPress={() => setStance((value) => (value === "orthodox" ? "southpaw" : "orthodox"))}
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+              <Ionicons name="pulse-outline" size={20} color={theme.colors.textMuted} />
+              <Text style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body }}>
+                Haptic callouts
+              </Text>
+            </View>
+            <AppSwitch
+              label="Haptic callouts"
+              value={cues}
+              onValueChange={(next) => {
+                haptic("selection");
+                setCues(next);
+              }}
             />
           </View>
         </>
       )}
-    </Frame>
+    </Card>
   );
 
   const challengeCard = (
-    <Frame corners>
-      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.sm }}>
-        <Ionicons name="flash" size={24} color={theme.colors.warning} />
+    <Card>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+        <Ionicons name="flash" size={22} color={theme.colors.primary} />
         <Text
           accessibilityRole="header"
           style={{
@@ -622,14 +527,53 @@ export default function TrainScreen() {
             color: theme.colors.text,
             fontSize: theme.font.size.title,
             fontWeight: theme.font.weight.bold,
-            lineHeight: theme.font.size.title * 1.3,
           }}
         >
-          {`Today's Challenge: ${program.name} (${program.rounds} Rounds)`}
+          Today's challenge
+        </Text>
+        {doneToday ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+            <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
+            <Text
+              style={{
+                color: theme.colors.success,
+                fontSize: theme.font.size.caption + 2,
+                fontWeight: theme.font.weight.bold,
+              }}
+            >
+              Done
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={{ gap: theme.spacing.xs }}>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontSize: theme.font.size.body,
+            fontWeight: theme.font.weight.bold,
+          }}
+        >
+          {program.name}
+        </Text>
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontSize: theme.font.size.caption + 2,
+            lineHeight: 20,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {`${program.rounds} rounds · ${formatRoundLength(program.roundSeconds)} each · ${restLabel(program.restSeconds)} rest`}
+        </Text>
+        <Text
+          style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2, lineHeight: 20 }}
+        >
+          {program.steps.join(" · ")}
         </Text>
       </View>
-      <GlowButton
-        label={doneToday ? "Run it again" : "Start Round"}
+      <SecondaryButton
+        label={doneToday ? "Run it again" : "Start challenge"}
         icon={doneToday ? "refresh" : "play"}
         disabled={active}
         accessibilityLabel={`Start ${program.name}, ${program.rounds} rounds`}
@@ -644,47 +588,62 @@ export default function TrainScreen() {
           )
         }
       />
-    </Frame>
+    </Card>
   );
 
   const scoutSection = (
     <View style={{ gap: theme.spacing.sm }}>
       <SectionHeader title="Run a scouted plan" />
       {scouts.loading ? (
-        <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-          <Skeleton width={220} height={96} radius={theme.radius.lg} />
-          <Skeleton width={220} height={96} radius={theme.radius.lg} />
+        <View style={{ gap: theme.spacing.sm }}>
+          <Skeleton height={72} radius={theme.radius.md} />
+          <Skeleton height={72} radius={theme.radius.md} />
         </View>
       ) : scouts.items.length ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-            {scouts.items.slice(0, 6).map((scout) => {
-              const scoutPlan = planFromScout(scout);
-              return (
+        <View
+          style={{
+            borderRadius: theme.radius.md,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            overflow: "hidden",
+          }}
+        >
+          {scouts.items.slice(0, 6).map((scout, index) => {
+            const scoutPlan = planFromScout(scout);
+            return (
+              <View key={scout.id}>
+                {index > 0 ? (
+                  <View
+                    style={{
+                      height: 1,
+                      marginLeft: theme.spacing.lg + 40 + theme.spacing.md,
+                      backgroundColor: theme.colors.border,
+                    }}
+                  />
+                ) : null}
                 <PressScale
-                  key={scout.id}
                   onPress={() => startRound(setup, scoutPlan)}
                   disabled={active}
                   haptic="light"
-                  scaleTo={0.96}
+                  scaleTo={0.98}
                   accessibilityRole="button"
-                  accessibilityLabel={`Run the plan against ${scout.name}`}
+                  accessibilityLabel={`Run the plan against ${scout.name}: ${scoutPlan.steps.join(", ")}`}
+                  accessibilityState={{ disabled: active }}
                   style={{
-                    width: 220,
-                    gap: theme.spacing.xs,
-                    padding: theme.spacing.md,
-                    borderRadius: theme.radius.lg,
-                    borderWidth: 1,
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.surface,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.md,
+                    minHeight: 72,
+                    paddingVertical: theme.spacing.md,
+                    paddingHorizontal: theme.spacing.lg,
                   }}
                 >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
-                    <Ionicons name="eye-outline" size={16} color={theme.colors.primary} />
+                  <Monogram name={scout.name} size={40} />
+                  <View style={{ flex: 1, gap: 2 }}>
                     <Text
-                      numberOfLines={1}
+                      numberOfLines={2}
                       style={{
-                        flex: 1,
                         color: theme.colors.text,
                         fontSize: theme.font.size.body,
                         fontWeight: theme.font.weight.bold,
@@ -692,18 +651,27 @@ export default function TrainScreen() {
                     >
                       {scout.name}
                     </Text>
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontSize: theme.font.size.caption + 2,
+                        lineHeight: 20,
+                      }}
+                    >
+                      {scoutPlan.steps.join(" · ")}
+                    </Text>
                   </View>
-                  <Text
-                    numberOfLines={2}
-                    style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
-                  >
-                    {scoutPlan.steps.join(" · ")}
-                  </Text>
+                  <Ionicons
+                    name="play-circle-outline"
+                    size={28}
+                    color={active ? theme.colors.border : theme.colors.primary}
+                  />
                 </PressScale>
-              );
-            })}
-          </View>
-        </ScrollView>
+              </View>
+            );
+          })}
+        </View>
       ) : (
         <EmptyState
           icon="eye-outline"
@@ -718,63 +686,10 @@ export default function TrainScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingTop: insets.top + theme.spacing.sm,
-          paddingBottom: theme.spacing.md,
-          paddingHorizontal: theme.spacing.lg,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-          backgroundColor: theme.colors.surface,
-        }}
-      >
-        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
-          {sessions.loading ? (
-            <Skeleton width={96} height={18} />
-          ) : (
-            <>
-              <Ionicons name="flame" size={22} color={theme.colors.primary} />
-              <CountUp
-                value={streak}
-                format={(n) => {
-                  const days = Math.round(n);
-                  return `${days} ${days === 1 ? "DAY" : "DAYS"}`;
-                }}
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.title,
-                  fontWeight: theme.font.weight.bold,
-                  letterSpacing: 1,
-                  transform: [{ scaleX: 0.86 }],
-                }}
-              />
-            </>
-          )}
-        </View>
-        <Stencil size={theme.font.size.title + 4} color={theme.colors.text} accessibilityRole="header">
-          TRAIN
-        </Stencil>
-        <View style={{ flex: 1, alignItems: "flex-end" }}>
-          <Link href="/settings" asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              hitSlop={12}
-              style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-            </Pressable>
-          </Link>
-        </View>
-      </View>
+      <ScreenHeader
+        title="Train"
+        right={sessions.loading ? <Skeleton width={72} height={32} radius={16} /> : <StreakBadge days={streak} />}
+      />
 
       <ScrollView
         contentContainerStyle={{
