@@ -50,6 +50,12 @@ function sentences(text: string): string[] {
     .filter(Boolean);
 }
 
+/** "today", "yesterday" or "on Wed 11 Nov", to follow "Scouted". */
+function scoutedWhen(iso: string): string {
+  const day = formatDay(iso);
+  return day === "Today" || day === "Yesterday" ? day.toLowerCase() : `on ${day}`;
+}
+
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
@@ -224,6 +230,23 @@ function OpponentReportScreen({ onRetry }: { onRetry: () => void }) {
     else router.replace("/scout");
   }
 
+  // A long name is cut with an ellipsis before it can run under the back and Edit buttons.
+  const headerTitle = () =>
+    scout ? (
+      <Text
+        accessibilityRole="header"
+        numberOfLines={1}
+        style={{
+          maxWidth: screenWidth - 176,
+          color: colors.text,
+          fontSize: font.size.body + 1,
+          fontWeight: "600",
+        }}
+      >
+        {scout.name}
+      </Text>
+    ) : null;
+
   const headerRight = () => (
     <TextButton
       label={editing ? "Cancel" : "Edit"}
@@ -326,7 +349,7 @@ function OpponentReportScreen({ onRetry }: { onRetry: () => void }) {
           >
             {scout.example
               ? "Shows what a read looks like. Your first real read replaces it."
-              : `Scouted ${formatDay(scout.createdAt).toLowerCase()}${
+              : `Scouted ${scoutedWhen(scout.createdAt)}${
                   scout.confidence !== undefined
                     ? ` \u00B7 ${Math.round(scout.confidence)}% read confidence`
                     : ""
@@ -631,7 +654,7 @@ function OpponentReportScreen({ onRetry }: { onRetry: () => void }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Stack.Screen options={{ title: scout.name, headerRight }} />
+      <Stack.Screen options={{ title: scout.name, headerTitle, headerRight }} />
       <ScrollView
         ref={scroller}
         keyboardShouldPersistTaps="handled"

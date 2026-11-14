@@ -17,7 +17,7 @@ export const seed = {
   opponent_scouts: [
     {
       id: SAMPLE_SCOUT_ID,
-      name: "Sample: a southpaw sparring partner",
+      name: "Sample: southpaw partner",
       photoUri: null,
       stance: "southpaw",
       tendencies:

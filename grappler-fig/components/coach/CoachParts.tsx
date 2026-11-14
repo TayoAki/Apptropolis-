@@ -157,7 +157,12 @@ export function DrillTile({ drill, onRun }: { drill: Drill; onRun: () => void })
   const reduced = useReducedMotion();
   const spring = useRef(new Animated.Value(reduced ? 1 : 0)).current;
   useEffect(() => {
-    if (reduced) return;
+    // Reduce Motion is only known after the first render: show the row at once, don't leave it
+    // at the start of an animation that never runs.
+    if (reduced) {
+      spring.setValue(1);
+      return;
+    }
     const animation = Animated.spring(spring, {
       toValue: 1,
       useNativeDriver: true,

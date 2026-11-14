@@ -133,6 +133,7 @@ export default function SettingsScreen() {
   const support = useSupport();
   const [open, setOpen] = useState<Panel | null>(null);
   const [restored, setRestored] = useState<"idle" | "restored" | "none">("idle");
+  const [reminderRefused, setReminderRefused] = useState(false);
 
   const loading = !app.ready || !purchases.ready || !reminder.ready;
   const toggle = (name: Panel) => setOpen((current) => (current === name ? null : name));
@@ -157,10 +158,13 @@ export default function SettingsScreen() {
   async function setReminderOn(on: boolean) {
     haptic("selection");
     if (!on) {
+      setReminderRefused(false);
       await reminder.disable();
       return;
     }
-    const ok = await reminder.enable(REMINDER_COPY);
+    const ok = await reminder.enable(REMINDER_COPY).catch(() => false);
+    // Say so when the phone wouldn't allow it, instead of the switch quietly staying off.
+    setReminderRefused(!ok);
     if (ok) haptic("success");
   }
 
@@ -414,7 +418,7 @@ export default function SettingsScreen() {
                           accessibilityLabel="Reminder time"
                         />
                       ) : null}
-                      {reminder.permission === "denied" ? (
+                      {reminder.permission === "denied" || reminderRefused ? (
                         <>
                           <SettingsNote>
                             {`Notifications are off for ${appInfo.name}, so the reminder can't ring. Allow them in your phone's settings.`}

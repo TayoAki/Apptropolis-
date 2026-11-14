@@ -403,7 +403,7 @@ function CoachScreen({ onRetry }: { onRetry: () => void }) {
       <Skeleton width="70%" height={64} radius={theme.radius.md} style={{ alignSelf: "flex-end" }} />
       <Skeleton width="88%" height={120} radius={theme.radius.md} />
     </View>
-  ) : pending ? null : (
+  ) : pending || unsaved ? null : (
     <View style={{ gap: theme.spacing.lg }}>
       <EmptyState
         icon="chatbubbles-outline"
@@ -425,7 +425,7 @@ function CoachScreen({ onRetry }: { onRetry: () => void }) {
     <View
       style={{
         gap: theme.spacing.md,
-        marginTop: pending || error || unsaved ? theme.spacing.md : 0,
+        marginTop: pending || unsaved ? theme.spacing.md : 0,
       }}
     >
       {unsaved && !pending ? (
@@ -480,40 +480,43 @@ function CoachScreen({ onRetry }: { onRetry: () => void }) {
           </Appear>
         </>
       ) : null}
-      {error && !pending ? (
-        <View
-          accessibilityLiveRegion="polite"
-          style={{
-            flexDirection: "row",
-            gap: theme.spacing.md,
-            padding: theme.spacing.md,
-            borderRadius: theme.radius.md,
-            borderWidth: 1,
-            borderColor: theme.colors.danger,
-            backgroundColor: theme.colors.surface,
-          }}
-        >
-          <Ionicons name="alert-circle" size={22} color={theme.colors.danger} />
-          <View style={{ flex: 1, gap: theme.spacing.xs }}>
-            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
-              {error}
-            </Text>
-            <Text
-              style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2, lineHeight: 20 }}
-            >
-              Nothing was sent or counted. Your question is back in the box.
-            </Text>
-            <TextButton
-              label="Try again"
-              icon="refresh"
-              onPress={() => void send(draft, frame)}
-              style={{ alignSelf: "flex-start" }}
-            />
-          </View>
-        </View>
-      ) : null}
     </View>
   );
+
+  // Shown above the box the question went back into, so it is never off screen.
+  const problem =
+    error && !pending ? (
+      <View
+        accessibilityLiveRegion="polite"
+        style={{
+          flexDirection: "row",
+          gap: theme.spacing.md,
+          padding: theme.spacing.md,
+          borderRadius: theme.radius.md,
+          borderWidth: 1,
+          borderColor: theme.colors.danger,
+          backgroundColor: theme.colors.surface,
+        }}
+      >
+        <Ionicons name="alert-circle" size={22} color={theme.colors.danger} />
+        <View style={{ flex: 1, gap: theme.spacing.xs }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
+            {error}
+          </Text>
+          <Text
+            style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2, lineHeight: 20 }}
+          >
+            Nothing was sent or counted. Your question is back in the box.
+          </Text>
+          <TextButton
+            label="Try again"
+            icon="refresh"
+            onPress={() => void send(draft, frame)}
+            style={{ alignSelf: "flex-start" }}
+          />
+        </View>
+      </View>
+    ) : null;
 
   const quota = isPremium ? null : (
     <View
@@ -556,6 +559,7 @@ function CoachScreen({ onRetry }: { onRetry: () => void }) {
         backgroundColor: theme.colors.background,
       }}
     >
+      {problem}
       {quota}
       {choosing ? (
         <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>

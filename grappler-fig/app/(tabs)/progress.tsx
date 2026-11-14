@@ -161,7 +161,9 @@ function ProgressScreen({ onRetry }: { onRetry: () => void }) {
         title="Progress"
         right={
           sessions.loading ? (
-            <Skeleton width={72} height={32} radius={16} />
+            stalled ? null : (
+              <Skeleton width={72} height={32} radius={16} />
+            )
           ) : (
             <StreakBadge days={streak} />
           )

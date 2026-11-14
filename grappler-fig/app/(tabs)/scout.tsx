@@ -309,13 +309,15 @@ function ScoutScreen({ onRetry }: { onRetry: () => void }) {
             icon={freeUsed ? "lock-closed" : "add"}
             onPress={freeUsed ? openPaywall : () => choose("library")}
           />
-          <TextButton
-            label="Take a photo"
-            icon="camera-outline"
-            tone="plain"
-            onPress={() => choose("camera")}
-            accessibilityLabel="Take a photo of an opponent"
-          />
+          {freeUsed ? null : (
+            <TextButton
+              label="Take a photo"
+              icon="camera-outline"
+              tone="plain"
+              onPress={() => choose("camera")}
+              accessibilityLabel="Take a photo of an opponent"
+            />
+          )}
           {!isPremium ? (
             <Text
               style={{
