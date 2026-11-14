@@ -26,12 +26,11 @@ import { useCollection } from "../../data/repo";
 import {
   addDays,
   count,
-  dayKey,
+  sharedWeek,
   startOfWeek,
   timeAgo,
-  weekDays,
-  weekStats,
   type PartnerUpdate,
+  type SharedWeek,
   type Workout,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -72,37 +71,6 @@ const CHEERS: Array<{ label: string; icon: IconName }> = [
   { label: "Locked in", icon: "barbell-outline" },
 ];
 
-interface Summary {
-  due: number;
-  yours: number;
-  partnerDone: number;
-  percent: number;
-}
-
-/**
- * A week's shared score as of `asOf`. The partner's completions come from their updates, capped
- * at the sessions due (the two partners share one schedule). A past week is scored as of its Sunday.
- */
-function summarize(workouts: Workout[], updates: PartnerUpdate[], asOf: Date): Summary {
-  const mine = weekStats(workouts, asOf);
-  const days = new Set(weekDays(asOf));
-  const partnerDone = Math.min(
-    updates.filter(
-      (u) =>
-        u.from === "partner" && u.type === "completion" && days.has(dayKey(new Date(u.createdAt))),
-    ).length,
-    mine.due,
-  );
-  return {
-    due: mine.due,
-    yours: mine.completed,
-    partnerDone,
-    percent: mine.due
-      ? Math.round(((mine.completed + partnerDone) / (2 * mine.due)) * 100)
-      : 0,
-  };
-}
-
 function weekNumber(date: Date): number {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const day = d.getUTCDay() || 7;
@@ -116,7 +84,7 @@ function weekRange(monday: Date): string {
   return `${MONTHS[monday.getMonth()]} ${monday.getDate()} – ${MONTHS[sunday.getMonth()]} ${sunday.getDate()}`;
 }
 
-function headline(s: Summary): string {
+function headline(s: SharedWeek): string {
   if (!s.due) return "Nothing due yet";
   if (s.percent >= 100) return "Both showed up";
   if (s.percent >= 75) return "On track together";
@@ -124,7 +92,7 @@ function headline(s: Summary): string {
   return "Time to show up";
 }
 
-function owedLine(s: Summary): string {
+function owedLine(s: SharedWeek): string {
   if (!s.due) return "Nothing is owed until a session is due.";
   const you = s.yours < s.due;
   const them = s.partnerDone < s.due;
@@ -418,7 +386,7 @@ export default function PartnerScreen() {
 
   const loading = workouts.loading || updates.loading;
   const now = new Date();
-  const today = summarize(workouts.items, updates.items, now);
+  const today = sharedWeek(workouts.items, updates.items, now);
   const { due, yours, partnerDone, percent } = today;
   const shared = yours + partnerDone;
   if (!loading && baseline.current === null) baseline.current = shared;
@@ -453,7 +421,7 @@ export default function PartnerScreen() {
       const monday = addDays(startOfWeek(now), -7 * weeksAgo);
       return {
         monday,
-        summary: summarize(workouts.items, updates.items, addDays(monday, 6)),
+        summary: sharedWeek(workouts.items, updates.items, addDays(monday, 6)),
       };
     })
     .filter((row) => row.summary.due > 0);
@@ -813,7 +781,7 @@ export default function PartnerScreen() {
             ) : null}
           </View>
 
-          {/* Change the stake: preset bets, plus a custom one with Premium. */}
+          {/* Change the stake: preset bets, plus a custom one with Pro. */}
           <View style={{ gap: theme.spacing.sm }}>
             <SectionLabel>{stake ? "CHANGE THE STAKE" : "PICK A STAKE"}</SectionLabel>
             <ScrollView
@@ -954,7 +922,7 @@ export default function PartnerScreen() {
             )}
           </View>
 
-          {/* Score history: this week for everyone, past weeks with Premium. */}
+          {/* Score history: this week for everyone, past weeks with Pro. */}
           <View style={{ gap: theme.spacing.sm }}>
             <View
               style={{

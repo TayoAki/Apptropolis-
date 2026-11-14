@@ -29,6 +29,7 @@ import {
   count,
   dayKey,
   formatTime,
+  sharedWeek,
   todaysWorkout,
   weekDays,
   weekdayShort,
@@ -90,6 +91,8 @@ export default function TodayScreen() {
   const workout = todaysWorkout(workouts, now);
   const completed = Boolean(workout?.completed);
   const week = weekStats(workouts, now);
+  // "Team" is the shared score, the same number the Partner tab draws as its ring.
+  const teamPercent = sharedWeek(workouts, updates, now).percent;
   const sessionsTarget = Math.max(1, Number(answers.daysperweek) || week.planned);
 
   const exerciseById = useMemo(
@@ -439,10 +442,10 @@ export default function TodayScreen() {
                 Team:
               </Text>
               <CountUp
-                value={week.percent}
+                value={teamPercent}
                 format={(n) => `${Math.round(n)}%`}
                 style={{
-                  color: week.percent >= 70 ? theme.colors.success : theme.colors.warning,
+                  color: teamPercent >= 70 ? theme.colors.success : theme.colors.warning,
                   fontSize: theme.font.size.body,
                   fontWeight: theme.font.weight.bold,
                 }}
@@ -519,7 +522,9 @@ export default function TodayScreen() {
 
           <GrowBar progress={week.percent / 100} color={theme.colors.success} height={6} />
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-            {`${week.completed} of ${count(sessionsTarget, "session")} done this week`}
+            {week.planned
+              ? `${week.completed} of ${count(sessionsTarget, "session")} done this week`
+              : "No sessions planned this week"}
           </Text>
         </View>
       </Appear>

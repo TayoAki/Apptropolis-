@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router } from "expo-router";
 import { useState, type ReactNode } from "react";
-import { Linking, Pressable, ScrollView, Share, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar, PARTNER_PHOTO } from "../components/Avatar";
 import { Button } from "../components/Button";
@@ -90,7 +90,12 @@ function Header() {
           opacity: pressed ? 0.6 : 1,
         })}
       >
-        <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
+        {/* The back mark each platform uses: a chevron on iOS, an arrow on Android. */}
+        <Ionicons
+          name={Platform.OS === "android" ? "arrow-back" : "chevron-back"}
+          size={Platform.OS === "android" ? 24 : 28}
+          color={theme.colors.text}
+        />
       </Pressable>
       <Text
         accessibilityRole="header"

@@ -49,7 +49,7 @@ const TIMES = [
 ];
 const DEMO_TITLE = "Bench Press (Barbell)";
 const DEMO_EXERCISE = "bench-press";
-const DEMO_SUBTITLE = "3 Sets, Target 8–10 reps";
+const DEMO_SUBTITLE = "3 sets, target 8–10 reps";
 const DEMO_SETS = 3;
 const DEMO_TARGET = "8–10";
 const DEMO_LOG_REPS = 8;

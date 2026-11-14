@@ -218,6 +218,42 @@ export function weekStats(workouts: Workout[], now: Date = new Date()): WeekStat
   };
 }
 
+export interface SharedWeek {
+  /** Sessions due so far this week (the two partners share one schedule). */
+  due: number;
+  yours: number;
+  partnerDone: number;
+  /** Both partners' completions over twice the sessions due, as 0 to 100. */
+  percent: number;
+}
+
+/**
+ * A week's shared score as of `asOf`: the number Today calls "Team" and the Partner tab draws as
+ * a ring. The partner's completions come from their updates, capped at the sessions due. A past
+ * week is scored as of its Sunday.
+ */
+export function sharedWeek(
+  workouts: Workout[],
+  updates: PartnerUpdate[],
+  asOf: Date = new Date(),
+): SharedWeek {
+  const mine = weekStats(workouts, asOf);
+  const days = new Set(weekDays(asOf));
+  const partnerDone = Math.min(
+    updates.filter(
+      (u) =>
+        u.from === "partner" && u.type === "completion" && days.has(dayKey(new Date(u.createdAt))),
+    ).length,
+    mine.due,
+  );
+  return {
+    due: mine.due,
+    yours: mine.completed,
+    partnerDone,
+    percent: mine.due ? Math.round(((mine.completed + partnerDone) / (2 * mine.due)) * 100) : 0,
+  };
+}
+
 /** The live workout dated today, if there is one. */
 export function todaysWorkout(workouts: Workout[], now: Date = new Date()): Workout | undefined {
   const today = dayKey(now);
