@@ -26,19 +26,18 @@ import {
   SkeletonList,
   useReducedMotion,
 } from "../../components/motion";
+import { useBookmarks } from "../../components/bookmarks";
+import { openPaywallFrom } from "../../components/paywall/source";
 import { useAppState } from "../../data/app-state";
-import { openPaywall, usePurchases } from "../../data/purchases";
+import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import {
+  FREE_KEYWORD_RESULTS,
   formatReference,
   isSameVerse,
   noteFor,
   parseReference,
-  READING_POSITION,
-  readingPosition,
-  savedBookmarks,
   sortCanonical,
-  type Bookmark,
   type StudyNote,
   type Verse,
   type VerseRef,
@@ -56,20 +55,28 @@ const MODES: Array<{ id: Mode; label: string; placeholder: string }> = [
 // Passages people look up most. Only the ones in the library are shown, so every chip opens.
 const QUICK_JUMP = ["John 3:16", "Psalm 23:1", "Romans 8:38", "Matthew 6:33", "Philippians 4:6"];
 const QUICK_JUMP_COUNT = 5;
-const FREE_KEYWORD_RESULTS = 3;
 const MAX_RECENT = 3;
 
-interface RecentEntry {
-  ref: VerseRef;
-  text: string;
-}
+/** The passages last opened from this screen, newest first. Saved on the phone. */
+const RECENT_KEY = "search.recent";
 
-/** Searches and jumps from this session, newest first (kept while the app is open). */
-const sessionRecent: RecentEntry[] = [];
-
-function rememberSession(entry: RecentEntry) {
-  const rest = sessionRecent.filter((r) => !isSameVerse(r.ref, entry.ref));
-  sessionRecent.splice(0, sessionRecent.length, entry, ...rest.slice(0, MAX_RECENT - 1));
+function readRecent(raw: string | undefined): VerseRef[] {
+  try {
+    const value = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter(
+        (r): r is VerseRef =>
+          typeof r === "object" &&
+          r !== null &&
+          typeof (r as VerseRef).book === "string" &&
+          Number.isInteger((r as VerseRef).chapter) &&
+          Number.isInteger((r as VerseRef).verse),
+      )
+      .slice(0, MAX_RECENT);
+  } catch {
+    return [];
+  }
 }
 
 function findVerse(items: Verse[], books: string[], text: string): Verse | undefined {
@@ -84,11 +91,11 @@ export default function SearchScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
-  const { answers } = useAppState();
+  const { answers, setAnswer } = useAppState();
   const { isPremium } = usePurchases();
   const verses = useCollection<Verse>("verses");
   const notes = useCollection<StudyNote>("study_notes");
-  const saved = useCollection<Bookmark>("bookmarks");
+  const marks = useBookmarks();
 
   const [mode, setMode] = useState<Mode>("reference");
   const [query, setQuery] = useState("");
@@ -170,33 +177,37 @@ export default function SearchScreen() {
     return picks;
   }, [startingBook, books, verses.items]);
 
-  const recent = useMemo(() => {
-    const picked: Array<{ key: string; ref: VerseRef; text: string; topic: string }> = [];
-    const pick = (ref: VerseRef, text: string, topic: string) => {
-      if (picked.length < MAX_RECENT && !picked.some((p) => isSameVerse(p.ref, ref)))
-        picked.push({ key: formatReference(ref), ref, text, topic });
-    };
-    for (const entry of sessionRecent)
-      pick(entry.ref, entry.text, noteFor(notes.items, entry.ref)?.title ?? "");
-    for (const bookmark of savedBookmarks(saved.items))
-      pick(
-        bookmark,
-        bookmark.text,
-        noteFor(notes.items, bookmark)?.title ?? (bookmark.folder || ""),
-      );
-    return picked;
-  }, [notes.items, saved.items]);
+  // Only passages this person opened from Search, and only those still in the library.
+  const recentRaw = answers[RECENT_KEY];
+  const recent = useMemo(
+    () =>
+      readRecent(recentRaw).flatMap((ref) => {
+        const verse = verses.items.find((v) => isSameVerse(v, ref));
+        return verse
+          ? [
+              {
+                key: formatReference(verse),
+                ref: verse,
+                text: verse.text,
+                topic: noteFor(notes.items, verse)?.title ?? "",
+              },
+            ]
+          : [];
+      }),
+    [recentRaw, verses.items, notes.items],
+  );
 
   /** Jump into the reader at a verse: the reader resumes there. */
   async function openVerse(ref: VerseRef, text: string) {
     setJumpError(null);
     const next = { book: ref.book, chapter: ref.chapter, verse: ref.verse, text };
-    rememberSession({ ref: { book: next.book, chapter: next.chapter, verse: next.verse }, text });
+    const place = { book: next.book, chapter: next.chapter, verse: next.verse };
+    const earlier = readRecent(recentRaw).filter((r) => !isSameVerse(r, place));
+    void setAnswer(RECENT_KEY, JSON.stringify([place, ...earlier].slice(0, MAX_RECENT))).catch(
+      () => undefined,
+    );
     try {
-      const position = readingPosition(saved.items);
-      if (position) await saved.update(position.id, next);
-      else
-        await saved.add({ ...next, folder: READING_POSITION, createdAt: new Date().toISOString() });
+      await marks.keepPlace(next);
       router.navigate({
         pathname: "/",
         params: {
@@ -216,7 +227,12 @@ export default function SearchScreen() {
 
   const loadingLibrary = verses.loading;
 
-  // What to say when a search finds nothing (or the reference isn't understood).
+  // What to say when a search finds nothing (or the reference isn't understood). A reference
+  // to a book the library doesn't hold is told so, not asked to retype what was typed.
+  const tryThese = quickJump.slice(0, 2).map(formatReference).join(" or ") || "John 3:16";
+  const bookList =
+    books.length > 1 ? `${books.slice(0, -1).join(", ")} and ${books[books.length - 1]}` : books[0];
+  const looksLikeReference = /^\S.*?\s*\d+(?::\d+)?$/.test(trimmed);
   const emptyCopy: { icon: IconName; title: string; body: string } | null = !trimmed
     ? null
     : mode === "reference"
@@ -224,19 +240,23 @@ export default function SearchScreen() {
         ? {
             icon: "book-outline",
             title: `${trimmed} isn't in the library yet`,
-            body: `This library holds a starter set of passages. Try ${
-              quickJump.slice(0, 2).map(formatReference).join(" or ") || "John 3:16"
-            }, or search by keyword.`,
+            body: `This library holds a starter set of passages. Try ${tryThese}, or search by keyword.`,
           }
-        : {
-            icon: "compass-outline",
-            title: "Try a book and chapter",
-            body: "Type a reference like John 3:16 or Psalm 23. To search the words of the text, switch to Keywords.",
-          }
+        : looksLikeReference && bookList
+          ? {
+              icon: "book-outline",
+              title: `${trimmed} isn't in the library yet`,
+              body: `The library holds passages from ${bookList}. Try ${tryThese}, or search by keyword.`,
+            }
+          : {
+              icon: "compass-outline",
+              title: "Try a book and chapter",
+              body: "Type a reference like John 3:16 or Psalm 23. To search the words of the text, switch to Keywords.",
+            }
       : {
           icon: "text-outline",
           title: `No verse says “${trimmed}”`,
-          body: "Check the spelling, or try a shorter word. Keyword search looks through the full text of every verse.",
+          body: "Check the spelling, or try a shorter word. Keyword search looks through every verse in the library.",
         };
 
   const emptyView = loadingLibrary ? (
@@ -491,9 +511,9 @@ export default function SearchScreen() {
                 fontWeight: theme.font.weight.bold,
               }}
             >
-              Recent searches
+              Recently opened
             </Text>
-            {loadingLibrary || saved.loading ? (
+            {loadingLibrary ? (
               <SkeletonList rows={3} />
             ) : recent.length === 0 ? (
               <Text
@@ -503,7 +523,7 @@ export default function SearchScreen() {
                   lineHeight: theme.font.size.body * 1.4,
                 }}
               >
-                Verses you open and save will appear here.
+                Passages you open from Search will appear here.
               </Text>
             ) : (
               <View>
@@ -564,7 +584,7 @@ export default function SearchScreen() {
     keywordLimited && results.length > visible.length ? (
       <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
         <PressScale
-          onPress={openPaywall}
+          onPress={() => openPaywallFrom("search_all_matches")}
           accessibilityRole="button"
           accessibilityLabel={`Show all ${results.length} matches with Premium`}
           style={{
@@ -611,7 +631,7 @@ export default function SearchScreen() {
     ) : !trimmed && !isPremium ? (
       <View style={{ marginTop: theme.spacing.sm }}>
         <PressScale
-          onPress={openPaywall}
+          onPress={() => openPaywallFrom("search_promo")}
           accessibilityRole="button"
           accessibilityLabel="See what Premium adds"
           style={{
@@ -640,11 +660,11 @@ export default function SearchScreen() {
               lineHeight: theme.font.size.body * 1.4,
             }}
           >
-            {"Find every mention of “peace” or “grace” across all 66 books with "}
+            {`Keyword search shows the first ${FREE_KEYWORD_RESULTS} matches. See every match, with the words highlighted, with `}
             <Text style={{ color: theme.colors.accent, fontWeight: theme.font.weight.bold }}>
               Premium
             </Text>
-            {" access"}
+            {"."}
           </Text>
           <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
         </PressScale>

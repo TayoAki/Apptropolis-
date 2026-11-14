@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -14,12 +14,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AiImage } from "../components/AiImage";
 import { Emblem, hasArt } from "../components/Art";
 import { PrimaryButton } from "../components/PrimaryButton";
-import { Lottie } from "../components/lottie";
-import { Appear, Float, Pulse, PressScale, Skeleton, Stagger, haptic } from "../components/motion";
-import { OfferCard, priceLabel } from "../components/paywall/OfferCard";
+import { Appear, Float, PressScale, Skeleton, Stagger, haptic } from "../components/motion";
+import {
+  OfferCard,
+  buyLabel,
+  priceLabel,
+  termsSentence,
+} from "../components/paywall/OfferCard";
+import { takePaywallSource } from "../components/paywall/source";
 import { useSavedTheme } from "../components/reading";
+import { track } from "../data/analytics";
 import { appInfo } from "../data/app-info";
 import { usePurchases } from "../data/purchases";
+import { useCollection } from "../data/repo";
+import { FREE_KEYWORD_RESULTS, type StudyNote, type Verse } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
 const BANNER_PROMPT =
@@ -33,6 +41,14 @@ type FooterLinkItem = {
   disabled?: boolean;
 };
 
+/** "3 verses", "1 book". */
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The paywall. Someone on the free plan sees what stays free, what premium adds, each plan with
+ * the price that renews, and the terms of the chosen plan in a plain sentence above the button.
+ * A subscriber sees their plan instead of the offer.
+ */
 export default function PaywallScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -42,6 +58,7 @@ export default function PaywallScreen() {
     ready,
     isPremium,
     activeOffer,
+    entitlement,
     offers,
     defaultOfferId,
     premiumFeatures,
@@ -52,18 +69,35 @@ export default function PaywallScreen() {
     restorePurchases,
     dismissPaywall,
   } = usePurchases();
+  const verses = useCollection<Verse>("verses");
+  const notes = useCollection<StudyNote>("study_notes");
 
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
+  // Where this paywall was opened from, for the owner's analytics.
+  const [source] = useState(takePaywallSource);
+
+  useEffect(() => {
+    track("paywall_shown", { source });
+    return () => track("paywall_closed", { source });
+  }, [source]);
 
   const selected = offers.find((o) => o.id === (chosenId ?? defaultOfferId)) ?? offers[0] ?? null;
   const busy = status !== "idle";
   const canBuy = ready && !isPremium && offers.length > 0;
   const store = Platform.OS === "ios" ? "App Store" : "Google Play";
-  const ctaLabel =
-    selected && selected.trialDays > 0
-      ? `Start ${selected.trialDays}-day free trial`
-      : "Continue";
+
+  // What is free, counted from the library on this phone rather than promised.
+  const books = new Set(verses.items.map((v) => v.book)).size;
+  const library =
+    verses.items.length > 0
+      ? `Every passage in the library (${count(verses.items.length, "verse", "verses")} from ${count(books, "book", "books")})`
+      : "Every passage in the library";
+  const studyNotes =
+    notes.items.length > 0
+      ? `all ${count(notes.items.length, "study note", "study notes")}`
+      : "the study notes";
+  const freeLine = `${library}, ${studyNotes}, bookmarks, sharing, the daily reminder and search by reference. Keyword search shows the first ${FREE_KEYWORD_RESULTS} matches.`;
 
   function choose(id: string) {
     if (busy || id === selected?.id) return;
@@ -85,7 +119,7 @@ export default function PaywallScreen() {
   }
 
   const links: FooterLinkItem[] = [];
-  if (canBuy)
+  if (ready && !isPremium)
     links.push({
       key: "restore",
       label: status === "restoring" ? "Restoring…" : "Restore purchases",
@@ -108,12 +142,69 @@ export default function PaywallScreen() {
       role: "link",
     });
 
-  // The purchase button stays pinned under the plans, so it is on screen without scrolling.
+  // The purchase button stays pinned under the plans, with the chosen plan's terms above it.
   const showCta = canBuy && selected !== null;
+
+  const sectionHeading = {
+    ...serif,
+    color: theme.colors.text,
+    fontSize: theme.font.size.title,
+    fontWeight: theme.font.weight.bold,
+  } as const;
+  const bodyText = {
+    color: theme.colors.text,
+    fontSize: theme.font.size.body,
+    lineHeight: 24,
+  } as const;
+  const finePrint = {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.size.caption,
+    lineHeight: theme.font.size.caption * 1.4,
+    textAlign: "center",
+  } as const;
+
+  const featureList = (
+    <View style={{ gap: theme.spacing.sm }}>
+      {premiumFeatures.map((feature) => (
+        <View
+          key={feature}
+          style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}
+        >
+          <Ionicons name="checkmark" size={22} color={theme.colors.primary} />
+          <Text style={{ ...bodyText, flex: 1 }}>{feature}</Text>
+        </View>
+      ))}
+    </View>
+  );
+
+  const errorLine = error ? (
+    <View
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: theme.spacing.sm,
+      }}
+    >
+      <Ionicons name="alert-circle-outline" size={18} color={theme.colors.danger} />
+      <Text
+        style={{
+          flexShrink: 1,
+          color: theme.colors.danger,
+          fontSize: theme.font.size.caption,
+          lineHeight: theme.font.size.caption * 1.4,
+        }}
+      >
+        {error}
+      </Text>
+    </View>
+  ) : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Stack.Screen options={{ title: "Go Premium", headerShown: false }} />
+      <Stack.Screen options={{ title: "Premium", headerShown: false }} />
 
       <View
         style={{
@@ -150,70 +241,47 @@ export default function PaywallScreen() {
           gap: theme.spacing.lg,
         }}
       >
-        {/* The ribbon banner is drawn with its text inside the artwork and floats gently. Until
-            that artwork exists, the patron emblem stands in for it. */}
-        {hasArt(BANNER_PROMPT) ? (
-          <Float amplitude={4} duration={3200}>
-            <AiImage
-              prompt={BANNER_PROMPT}
-              fit="contain"
-              style={{ alignSelf: "center", width: 260, height: 150 }}
-            />
-          </Float>
-        ) : (
-          <Emblem icon="ribbon-outline" size={72} style={{ alignSelf: "center" }} />
-        )}
-
-        <Appear delay={80}>
-          <View style={{ gap: theme.spacing.sm }}>
-            <Text
-              accessibilityRole="header"
-              style={{
-                ...serif,
-                color: theme.colors.text,
-                fontSize: theme.font.size.headline,
-                fontWeight: theme.font.weight.bold,
-                lineHeight: theme.font.size.headline * 1.2,
-                textAlign: "center",
-              }}
-            >
-              {"Deeper reflection.\nZero clutter."}
-            </Text>
-            <Text
-              style={{
-                ...serif,
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.body,
-                lineHeight: theme.font.size.body * 1.4,
-                textAlign: "center",
-              }}
-            >
-              Reading Scripture is always free. Support thoughtful craftsmanship and unlock deep
-              study tools.
-            </Text>
-          </View>
-        </Appear>
-
-        <Stagger step={50} delay={160} style={{ gap: theme.spacing.md }}>
-          {premiumFeatures.map((feature) => (
-            <View
-              key={feature}
-              style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}
-            >
-              <Ionicons name="checkmark" size={22} color={theme.colors.primary} />
-              <Text
-                style={{
-                  flex: 1,
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.body,
-                  lineHeight: 24,
-                }}
-              >
-                {feature}
-              </Text>
-            </View>
-          ))}
-        </Stagger>
+        <View style={{ gap: theme.spacing.sm }}>
+          {/* The ribbon banner is drawn with its text inside the artwork and floats gently.
+              Until that artwork exists, the patron emblem stands in for it. */}
+          {hasArt(BANNER_PROMPT) ? (
+            <Float amplitude={4} duration={3200}>
+              <AiImage
+                prompt={BANNER_PROMPT}
+                fit="contain"
+                style={{ alignSelf: "center", width: 260, height: 150 }}
+              />
+            </Float>
+          ) : (
+            <Emblem icon="ribbon-outline" size={56} style={{ alignSelf: "center" }} />
+          )}
+          <Text
+            accessibilityRole="header"
+            style={{
+              ...serif,
+              color: theme.colors.text,
+              fontSize: theme.font.size.headline,
+              fontWeight: theme.font.weight.bold,
+              lineHeight: theme.font.size.headline * 1.2,
+              textAlign: "center",
+            }}
+          >
+            {isPremium ? "You're a Patron" : "Become a Patron"}
+          </Text>
+          <Text
+            style={{
+              ...serif,
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.body,
+              lineHeight: theme.font.size.body * 1.4,
+              textAlign: "center",
+            }}
+          >
+            {isPremium
+              ? "Thank you for supporting the craft. Every study tool is open to you."
+              : "Reading stays free. Premium supports the app and adds the study tools below."}
+          </Text>
+        </View>
 
         {!ready ? (
           <View
@@ -221,136 +289,142 @@ export default function PaywallScreen() {
             accessibilityLabel="Loading plans"
             style={{ gap: theme.spacing.md }}
           >
-            <Skeleton height={96} radius={theme.radius.md} />
-            <Skeleton height={96} radius={theme.radius.md} />
-            <Skeleton height={96} radius={theme.radius.md} />
-            <Skeleton height={56} radius={theme.radius.pill} />
+            <Skeleton height={84} radius={theme.radius.md} />
+            <Skeleton height={84} radius={theme.radius.md} />
+            <Skeleton height={84} radius={theme.radius.md} />
           </View>
         ) : isPremium ? (
           <Appear>
-            <View
-              style={{
-                alignItems: "center",
-                gap: theme.spacing.sm,
-                padding: theme.spacing.lg,
-                borderRadius: theme.radius.md,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.surface,
-              }}
-            >
-              {/* A fixed box, so the card keeps its shape while the animation loads. */}
-              <View style={{ width: 96, height: 96, overflow: "hidden" }}>
-                <Lottie name="success" size={96} />
+            <View style={{ gap: theme.spacing.xl }}>
+              <View
+                style={{
+                  gap: theme.spacing.xs,
+                  padding: theme.spacing.lg,
+                  borderRadius: theme.radius.md,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.surface,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+                  <Ionicons name="checkmark-circle" size={22} color={theme.colors.success} />
+                  <Text
+                    style={{
+                      flex: 1,
+                      color: theme.colors.text,
+                      fontSize: theme.font.size.body,
+                      fontWeight: theme.font.weight.bold,
+                    }}
+                  >
+                    {activeOffer ? `${activeOffer.label} plan` : "Premium is active"}
+                  </Text>
+                </View>
+                {activeOffer ? (
+                  <Text style={{ ...bodyText, fontVariant: ["tabular-nums"] }}>
+                    {priceLabel(activeOffer)}
+                  </Text>
+                ) : null}
+                {entitlement ? (
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontSize: theme.font.size.caption,
+                      lineHeight: theme.font.size.caption * 1.4,
+                    }}
+                  >
+                    {`Started ${new Date(entitlement.since).toLocaleDateString(undefined, {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}. ${
+                      activeOffer?.period === "lifetime"
+                        ? "A one-time purchase: nothing renews."
+                        : `Manage or cancel it in ${store} subscription settings.`
+                    }`}
+                  </Text>
+                ) : null}
               </View>
-              <Text
-                accessibilityRole="header"
-                style={{
-                  ...serif,
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.title,
-                  fontWeight: theme.font.weight.bold,
-                  textAlign: "center",
-                }}
-              >
-                You're a Patron
-              </Text>
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontSize: theme.font.size.body,
-                  textAlign: "center",
-                }}
-              >
-                {activeOffer
-                  ? `${activeOffer.label} plan, ${priceLabel(activeOffer)}`
-                  : "Premium is active on this phone."}
-              </Text>
-              <Text
-                style={{
-                  ...serif,
-                  color: theme.colors.textMuted,
-                  fontSize: theme.font.size.body,
-                  lineHeight: theme.font.size.body * 1.4,
-                  textAlign: "center",
-                }}
-              >
-                Thank you for supporting the craft. Every study tool is open to you.
-              </Text>
-              <View style={{ alignSelf: "stretch", marginTop: theme.spacing.sm }}>
-                <PrimaryButton label="Back to reading" onPress={dismissPaywall} />
+
+              <View style={{ gap: theme.spacing.md }}>
+                <Text accessibilityRole="header" style={sectionHeading}>
+                  Included in your plan
+                </Text>
+                {featureList}
               </View>
-            </View>
-          </Appear>
-        ) : offers.length === 0 ? (
-          <Appear>
-            <View
-              style={{
-                alignItems: "center",
-                gap: theme.spacing.md,
-                padding: theme.spacing.lg,
-                borderRadius: theme.radius.md,
-                backgroundColor: theme.colors.surface,
-              }}
-            >
-              <Ionicons name="cloud-offline-outline" size={32} color={theme.colors.textMuted} />
-              <Text
-                style={{
-                  ...serif,
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.title,
-                  fontWeight: theme.font.weight.bold,
-                  textAlign: "center",
-                }}
-              >
-                Plans aren't loaded yet
-              </Text>
-              <Text
-                style={{
-                  ...serif,
-                  color: theme.colors.textMuted,
-                  fontSize: theme.font.size.body,
-                  lineHeight: theme.font.size.body * 1.4,
-                  textAlign: "center",
-                }}
-              >
-                The store didn't return plans. Reading the Bible stays free while you wait.
-              </Text>
-              <PrimaryButton label="Keep reading" variant="quiet" onPress={dismissPaywall} />
+
+              <PrimaryButton label="Back to reading" onPress={dismissPaywall} />
             </View>
           </Appear>
         ) : (
           <>
-            <Appear delay={280}>
-              <View
-                accessibilityRole="radiogroup"
-                accessibilityLabel="Plans"
-                style={{ gap: theme.spacing.md, paddingTop: theme.spacing.md }}
-              >
-                {offers.map((offer) => (
-                  <OfferCard
-                    key={offer.id}
-                    offer={offer}
-                    selected={offer.id === selected?.id}
-                    onSelect={() => choose(offer.id)}
-                  />
-                ))}
+            <Stagger step={50} delay={80} style={{ gap: theme.spacing.lg }}>
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text accessibilityRole="header" style={sectionHeading}>
+                  Free, always
+                </Text>
+                <Text style={bodyText}>{freeLine}</Text>
               </View>
-            </Appear>
+              <View style={{ gap: theme.spacing.md }}>
+                <Text accessibilityRole="header" style={sectionHeading}>
+                  Premium adds
+                </Text>
+                {featureList}
+              </View>
+            </Stagger>
 
-            {error ? (
-              <Text
-                accessibilityLiveRegion="polite"
-                style={{
-                  color: theme.colors.danger,
-                  fontSize: theme.font.size.caption,
-                  textAlign: "center",
-                }}
-              >
-                {error}
-              </Text>
-            ) : null}
-
+            {offers.length === 0 ? (
+              <Appear>
+                <View
+                  style={{
+                    alignItems: "center",
+                    gap: theme.spacing.md,
+                    padding: theme.spacing.lg,
+                    borderRadius: theme.radius.md,
+                    backgroundColor: theme.colors.surface,
+                  }}
+                >
+                  <Ionicons
+                    name="cloud-offline-outline"
+                    size={32}
+                    color={theme.colors.textMuted}
+                  />
+                  <Text style={{ ...sectionHeading, textAlign: "center" }}>
+                    Plans aren't loaded yet
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontSize: theme.font.size.body,
+                      lineHeight: theme.font.size.body * 1.4,
+                      textAlign: "center",
+                    }}
+                  >
+                    The store didn't return plans. Reading the Bible stays free while you wait.
+                  </Text>
+                  {errorLine}
+                  <PrimaryButton label="Keep reading" variant="quiet" onPress={dismissPaywall} />
+                </View>
+              </Appear>
+            ) : (
+              <Appear delay={200}>
+                <View
+                  accessibilityRole="radiogroup"
+                  accessibilityLabel="Plans"
+                  style={{ gap: theme.spacing.md, paddingTop: theme.spacing.sm }}
+                >
+                  {offers.map((offer) => (
+                    <OfferCard
+                      key={offer.id}
+                      offer={offer}
+                      offers={offers}
+                      selected={offer.id === selected?.id}
+                      disabled={busy}
+                      onSelect={() => choose(offer.id)}
+                    />
+                  ))}
+                </View>
+              </Appear>
+            )}
           </>
         )}
 
@@ -374,6 +448,7 @@ export default function PaywallScreen() {
                   <Pressable
                     accessibilityRole={link.role}
                     accessibilityLabel={link.label}
+                    accessibilityState={{ disabled: link.disabled }}
                     disabled={link.disabled}
                     onPress={link.onPress}
                     hitSlop={10}
@@ -398,53 +473,23 @@ export default function PaywallScreen() {
             </View>
           ) : null}
 
-          {restored ? (
+          {restored && isPremium ? (
             <Text
               accessibilityLiveRegion="polite"
-              style={{
-                color: theme.colors.success,
-                fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.medium,
-                textAlign: "center",
-              }}
+              style={{ ...finePrint, color: theme.colors.success }}
             >
               Your purchases are restored.
             </Text>
           ) : null}
 
           {testMode && ready ? (
-            <Text
-              style={{
-                color: theme.colors.warning,
-                fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.medium,
-                textAlign: "center",
-              }}
-            >
+            <Text style={{ ...finePrint, color: theme.colors.warning }}>
               Test mode: purchases are simulated, nothing is charged.
             </Text>
           ) : null}
 
-          {isPremium ? (
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
-                textAlign: "center",
-              }}
-            >
-              {`Manage your plan in ${store} settings.`}
-            </Text>
-          ) : null}
-
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
-              textAlign: "center",
-            }}
-          >
-            Public domain WEB translation remains 100% free forever.
+          <Text style={finePrint}>
+            The World English Bible is in the public domain. Reading it here stays free.
           </Text>
         </View>
       </ScrollView>
@@ -461,51 +506,51 @@ export default function PaywallScreen() {
             backgroundColor: theme.colors.background,
           }}
         >
-          <Pulse every={3200} scale={1.015}>
-            <PressScale
-              onPress={buy}
-              disabled={busy}
-              scaleTo={0.97}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel={ctaLabel}
-              accessibilityState={{ disabled: busy, busy }}
-              style={{
-                minHeight: 56,
-                borderRadius: theme.radius.pill,
-                backgroundColor: theme.colors.primary,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: theme.spacing.sm,
-                paddingHorizontal: theme.spacing.lg,
-              }}
-            >
-              {status === "purchasing" ? (
-                <ActivityIndicator color={theme.colors.onPrimary} />
-              ) : null}
-              <Text
-                style={{
-                  color: theme.colors.onPrimary,
-                  fontSize: theme.font.size.body,
-                  fontWeight: theme.font.weight.bold,
-                }}
-              >
-                {status === "purchasing" ? "Confirming…" : ctaLabel}
-              </Text>
-            </PressScale>
-          </Pulse>
-          {selected.period !== "lifetime" ? (
+          {/* The whole deal for the chosen plan, in words, before the button. */}
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{
+              color: theme.colors.text,
+              fontSize: theme.font.size.caption,
+              lineHeight: theme.font.size.caption * 1.4,
+              textAlign: "center",
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {termsSentence(selected, store)}
+          </Text>
+          {errorLine}
+          <PressScale
+            onPress={buy}
+            disabled={busy}
+            scaleTo={0.97}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel={status === "purchasing" ? "Confirming purchase" : buyLabel(selected)}
+            accessibilityState={{ disabled: busy, busy }}
+            style={{
+              minHeight: 56,
+              borderRadius: theme.radius.pill,
+              backgroundColor: busy ? theme.colors.surfaceAlt : theme.colors.primary,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.spacing.sm,
+              paddingHorizontal: theme.spacing.lg,
+            }}
+          >
+            {status === "purchasing" ? <ActivityIndicator color={theme.colors.textMuted} /> : null}
             <Text
               style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
+                color: busy ? theme.colors.textMuted : theme.colors.onPrimary,
+                fontSize: theme.font.size.body,
+                fontWeight: theme.font.weight.bold,
                 textAlign: "center",
               }}
             >
-              {`Cancel anytime in ${store} settings.`}
+              {status === "purchasing" ? "Confirming…" : buyLabel(selected)}
             </Text>
-          ) : null}
+          </PressScale>
         </View>
       ) : null}
     </View>

@@ -6,6 +6,9 @@ export const DAY_MS = 86_400_000;
 /** Stored in a bookmark's folder to mark where the reader left off. Hidden from lists. */
 export const READING_POSITION = "__reading_position";
 
+/** How many keyword matches the free search shows. Premium shows them all, highlighted. */
+export const FREE_KEYWORD_RESULTS = 3;
+
 export interface Verse {
   id: string;
   /** Book name as shown, e.g. "John". */
@@ -134,11 +137,16 @@ export function isoDaysAgo(days: number, from: number = Date.now()): string {
   return new Date(from - days * DAY_MS).toISOString();
 }
 
+/** Whole calendar days from a date to now, by the phone's clock: 0 today, 1 yesterday. */
+export function daysSince(iso: string, now: Date = new Date()): number {
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.round((midnight(now) - midnight(new Date(iso))) / DAY_MS);
+}
+
 /** "Today", "Yesterday", or a short date ("Mar 4", or "Mar 4, 2024" from another year). */
 export function formatDay(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
-  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((midnight(now) - midnight(date)) / DAY_MS);
+  const days = daysSince(iso, now);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   const sameYear = date.getFullYear() === now.getFullYear();

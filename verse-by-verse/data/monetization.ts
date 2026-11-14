@@ -2,11 +2,11 @@
 import type { Monetization } from "./purchases";
 
 export const monetization: Monetization = {
+  // Only what premium unlocks in the app today. Keep each line true to a gate in the code:
+  // folders are gated in app/(tabs)/saved.tsx, full keyword results in app/(tabs)/search.tsx.
   "premiumFeatures": [
-    "Study notes beyond the 20 free selected verses",
-    "Bookmark folders and tags to organize saved verses",
-    "Verse card themes and fonts for sharing",
-    "Keyword search with highlighted matches across all books"
+    "Folders to organize your saved verses",
+    "Every keyword match, with the words highlighted"
   ],
   "offers": [
     {
@@ -15,7 +15,7 @@ export const monetization: Monetization = {
       "price": "$19.99",
       "period": "year",
       "trialDays": 7,
-      "badge": "Save 45%"
+      "badge": "Save 44%"
     },
     {
       "id": "monthly",

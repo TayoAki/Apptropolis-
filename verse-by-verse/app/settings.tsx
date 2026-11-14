@@ -6,60 +6,51 @@ import { Flourish } from "../components/Flourish";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SettingsCard, SettingsRow, SettingsSection } from "../components/settings/SettingsGroup";
 import { TextSizeSlider } from "../components/settings/TextSizeSlider";
-import { ThemeSwatches } from "../components/settings/ThemeSwatches";
+import { AUTOMATIC, ThemeSwatches } from "../components/settings/ThemeSwatches";
 import { SupportButton, useSupport } from "../components/support";
 import { SkeletonList, Stagger, haptic } from "../components/motion";
+import { openPaywallFrom } from "../components/paywall/source";
 import {
   LINE_SPACING,
   LINE_SPACING_KEY,
   TEXT_SIZE_KEY,
   THEME_KEY,
+  followPhoneTheme,
   useReadingPrefs,
   useSavedTheme,
 } from "../components/reading";
+import { REMINDER_COPY, REMINDER_TIMES, clockTime } from "../components/reminder";
 import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
 import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
 import { setActiveThemeId } from "../theme/active";
 import { useTheme } from "../theme/ThemeProvider";
-
-/** Suggested times the daily reminder cycles through when tapped. */
-const REMINDER_TIMES: ReadonlyArray<readonly [number, number]> = [
-  [7, 0],
-  [7, 15],
-  [8, 0],
-  [9, 0],
-  [12, 30],
-  [18, 0],
-  [20, 0],
-  [21, 0],
-];
+import { themes } from "../theme/tokens";
 
 const LEGAL = [
   { label: "Privacy policy", url: appInfo.privacyUrl },
   { label: "Terms of use", url: appInfo.termsUrl },
 ].filter((link) => link.url);
 
-const REMINDER_BODY = "Your last verse is waiting. Take one quiet minute with it.";
-
-function formatTime(hour: number, minute: number): string {
-  const h12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${h12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
-}
 
 export default function SettingsScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { ready, setAnswer } = useAppState();
+  const { ready, answers, setAnswer } = useAppState();
   const { textSize, lineSpacing } = useReadingPrefs();
   useSavedTheme();
   const reminder = useReminder();
-  const { isPremium, activeOffer, status, error, restorePurchases, openPaywall } =
-    usePurchases();
+  const { isPremium, activeOffer, status, error, restorePurchases } = usePurchases();
   const support = useSupport();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [reminderProblem, setReminderProblem] = useState<string | null>(null);
+  const [restoredNow, setRestoredNow] = useState(false);
+
+  // A pinned theme is one the person picked here; with none saved the app follows the phone.
+  const pinned = themes.find((t) => t.id === answers[THEME_KEY]);
+  const themeChoice = pinned ? pinned.id : AUTOMATIC;
 
   const loaded = ready && reminder.ready;
 
@@ -71,6 +62,11 @@ export default function SettingsScreen() {
 
   function pickTheme(id: string) {
     haptic("selection");
+    if (id === AUTOMATIC) {
+      followPhoneTheme();
+      void setAnswer(THEME_KEY, "");
+      return;
+    }
     setActiveThemeId(id);
     void setAnswer(THEME_KEY, id);
   }
@@ -81,30 +77,43 @@ export default function SettingsScreen() {
 
   async function toggleReminder(on: boolean) {
     haptic("selection");
-    if (on) {
-      const ok = await reminder.enable({
-        title: appInfo.name,
-        body: REMINDER_BODY,
-        hour: reminder.hour,
-        minute: reminder.minute,
-      });
-      if (ok) haptic("success");
-    } else {
-      await reminder.disable();
+    setReminderProblem(null);
+    try {
+      if (on) {
+        const ok = await reminder.enable({
+          ...REMINDER_COPY,
+          hour: reminder.hour,
+          minute: reminder.minute,
+        });
+        if (ok) haptic("success");
+      } else {
+        await reminder.disable();
+      }
+    } catch {
+      setReminderProblem(
+        on ? "The reminder couldn't be set. Try again." : "The reminder couldn't be turned off. Try again.",
+      );
     }
   }
 
+  /** Step to the next suggested time after the current one, wrapping round at the end. */
   function nextReminderTime() {
     haptic("selection");
-    const index = REMINDER_TIMES.findIndex(
-      ([h, m]) => h === reminder.hour && m === reminder.minute,
-    );
-    const [hour, minute] = REMINDER_TIMES[(index + 1) % REMINDER_TIMES.length]!;
-    void reminder.setTime(hour, minute);
+    setReminderProblem(null);
+    const now = reminder.hour * 60 + reminder.minute;
+    const [hour, minute] =
+      REMINDER_TIMES.find(([h, m]) => h * 60 + m > now) ?? REMINDER_TIMES[0]!;
+    reminder
+      .setTime(hour, minute)
+      .catch(() => setReminderProblem("The reminder time couldn't be changed. Try again."));
   }
 
   async function restore() {
-    if (await restorePurchases()) haptic("success");
+    setRestoredNow(false);
+    if (await restorePurchases()) {
+      haptic("success");
+      setRestoredNow(true);
+    }
   }
 
   function reveal(open: boolean, set: (value: boolean) => void) {
@@ -118,7 +127,7 @@ export default function SettingsScreen() {
         color: theme.colors.success,
       }
     : { text: "Inactive", color: theme.colors.warning };
-  const reminderTime = formatTime(reminder.hour, reminder.minute);
+  const reminderTime = clockTime(reminder.hour, reminder.minute);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -146,9 +155,10 @@ export default function SettingsScreen() {
                 <SettingsRow
                   icon="color-palette-outline"
                   label="Theme"
-                  wide
-                  control={<ThemeSwatches selected={theme.id} onSelect={pickTheme} />}
-                />
+                  value={pinned ? pinned.name : "Automatic"}
+                >
+                  <ThemeSwatches selected={themeChoice} onSelect={pickTheme} />
+                </SettingsRow>
                 <SettingsRow
                   icon="reorder-three-outline"
                   label="Line spacing"
@@ -163,9 +173,12 @@ export default function SettingsScreen() {
             <SettingsSection
               title="Daily habit"
               note={
-                reminder.permission === "denied"
+                reminderProblem ??
+                (reminder.permission === "denied"
                   ? "Notifications are off for this app. Allow them in your phone's Settings, then turn this on."
-                  : "One notification daily with your last verse. No streaks, no guilt."
+                  : reminder.enabled
+                    ? `One notification a day at ${reminderTime} to pick up where you left off. No streaks, no guilt.`
+                    : "One notification a day to pick up where you left off. No streaks, no guilt.")
               }
             >
               <SettingsCard>
@@ -261,7 +274,9 @@ export default function SettingsScreen() {
                   subtitle={
                     status === "restoring"
                       ? "Checking your purchases…"
-                      : (error ?? "Use this if you bought premium on another device.")
+                      : restoredNow
+                        ? "Your purchases are restored."
+                        : (error ?? "Use this if you bought premium on another device.")
                   }
                   onPress={() => void restore()}
                   accessibilityHint="Restores purchases made with this store account"
@@ -271,9 +286,9 @@ export default function SettingsScreen() {
                   label="Patron status"
                   subtitle={isPremium ? undefined : "Go Premium"}
                   chevron
-                  onPress={openPaywall}
+                  onPress={() => openPaywallFrom("settings")}
                   accessibilityLabel={`Patron status, ${badge.text}`}
-                  accessibilityHint="Opens the premium plans"
+                  accessibilityHint={isPremium ? "Shows your plan" : "Opens the premium plans"}
                   accessory={
                     <View
                       style={{

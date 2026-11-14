@@ -1,738 +1,421 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  FlatList,
-  PanResponder,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
-import { hasArt } from "../components/Art";
-import { Lottie } from "../components/lottie";
-import {
-  DrawCheck,
-  PANEL_WIDTH,
-  PreviewTabBar,
-  SideActions,
-  VerseStartCard,
-} from "../components/onboarding/Parts";
+import { useBookmarks } from "../components/bookmarks";
+import { Reader } from "../components/index/Reader";
+import { SkeletonList, StepTransition, haptic } from "../components/motion";
+import { ChoiceCard, StatusNote, StepProgress, TimeChoice } from "../components/onboarding/Parts";
+import { notePaywallSource } from "../components/paywall/source";
 import { PrimaryButton } from "../components/PrimaryButton";
 import {
-  Appear,
-  GrowBar,
-  PressScale,
-  Skeleton,
-  StepTransition,
-  haptic,
-} from "../components/motion";
+  DEFAULT_SETUP_TIME,
+  REMINDER_COPY,
+  SETUP_TIMES,
+  clockTime,
+} from "../components/reminder";
+import { track } from "../data/analytics";
 import { useAppState } from "../data/app-state";
+import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
 import { useCollection } from "../data/repo";
-import { findBookmark, type Bookmark } from "../data/schema";
+import { formatReference, sortCanonical, type Verse } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
-const STEPS = 3;
+// Setup has three steps, and the progress line counts exactly these:
+// 1. choose where to start reading (sets where the reader opens and which book Search lists first);
+// 2. read that first verse in the real reader (the first success: the place is kept from here on);
+// 3. an optional daily reminder.
+const STEP_NAMES = ["start_passage", "first_verse", "reminder"] as const;
+const STEPS = STEP_NAMES.length;
 
-const BADGER =
-  "Badger mascot: a small grey-and-white badger with a brown muzzle peeking over the top-right corner of the first verse card";
+/** The step someone had reached, saved so that leaving the app mid-setup resumes there. */
+const STEP_KEY = "onboarding.step";
+/** The reminder time they had picked, saved for the same reason. */
+const TIME_KEY = "onboarding.reminderTime";
 
-// Five verses of John 1 (World English Bible, public domain): the starting list and the swipe practice.
-const DEMO: Array<{ verse: number; text: string; note: boolean }> = [
-  {
-    verse: 1,
-    text: "In the beginning was the Word, and the Word was with God, and the Word was God.",
-    note: true,
-  },
-  { verse: 2, text: "He was in the beginning with God.", note: false },
-  {
-    verse: 3,
-    text: "All things were made through him. Without him, nothing was made that has been made.",
-    note: false,
-  },
-  { verse: 4, text: "In him was life, and the life was the light of men.", note: false },
-  {
-    verse: 5,
-    text: "The light shines in the darkness, and the darkness didn't overcome it.",
-    note: false,
-  },
-];
-
-// Daily reminder times. The evening one is the default.
-const TIMES = [
-  { hour: 7, minute: 30, label: "Morning" },
-  { hour: 12, minute: 30, label: "Midday" },
-  { hour: 20, minute: 30, label: "Evening" },
-];
-
-function clock(hour: number, minute: number): string {
-  const h = hour % 12 === 0 ? 12 : hour % 12;
-  return `${h}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
-}
-
-function Heading({ title, body }: { title: string; body: string }) {
-  const theme = useTheme();
-  return (
-    <View style={{ gap: theme.spacing.sm }}>
-      <Text
-        accessibilityRole="header"
-        style={{
-          color: theme.colors.text,
-          fontFamily: theme.font.family,
-          fontSize: theme.font.size.headline,
-          fontWeight: theme.font.weight.regular,
-          lineHeight: theme.font.size.headline * 1.2,
-        }}
-      >
-        {title}
-      </Text>
-      <Text
-        style={{
-          color: theme.colors.textMuted,
-          fontFamily: theme.font.family,
-          fontSize: theme.font.size.body,
-          lineHeight: theme.font.size.body * 1.45,
-        }}
-      >
-        {body}
-      </Text>
-    </View>
-  );
+function savedIndex(raw: string | undefined, count: number, fallback: number): number {
+  const value = Number(raw);
+  return raw !== undefined && Number.isInteger(value) && value >= 0 && value < count
+    ? value
+    : fallback;
 }
 
 export default function OnboardingScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const { setAnswer, completeOnboarding } = useAppState();
+  const { answers, setAnswer, completeOnboarding } = useAppState();
+  const { isPremium } = usePurchases();
   const reminder = useReminder();
-  const bookmarks = useCollection<Bookmark>("bookmarks");
-  const serif = { fontFamily: theme.font.family };
-  // The mascot peeks over the first card only once its picture exists; until then the card
-  // sits in the list without the gap left for it.
-  const hasBadger = hasArt(BADGER);
+  const verses = useCollection<Verse>("verses");
+  const marks = useBookmarks();
 
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() => savedIndex(answers[STEP_KEY], STEPS, 0));
   const [direction, setDirection] = useState<1 | -1>(1);
-  const [verse, setVerse] = useState(0);
-  const [timeIndex, setTimeIndex] = useState(2);
-  const [enabling, setEnabling] = useState(false);
-  const [declined, setDeclined] = useState(false);
-  const [turnedOn, setTurnedOn] = useState(false);
-
-  const verseRef = useRef(0);
-  const drag = useRef(new Animated.Value(0)).current;
-  const finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (finishTimer.current) clearTimeout(finishTimer.current);
-    },
-    [],
+  const [book, setBook] = useState<string | null>(answers.startingbook ?? null);
+  const [timeIndex, setTimeIndex] = useState(() =>
+    savedIndex(answers[TIME_KEY], SETUP_TIMES.length, DEFAULT_SETUP_TIME),
   );
+  const [working, setWorking] = useState(false);
+  const [declined, setDeclined] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const succeeded = useRef(false);
 
-  const barWidth = Math.min(300, width - theme.spacing.xl * 2);
-  const time = TIMES[timeIndex] ?? TIMES[2]!;
-  const current = DEMO[verse] ?? DEMO[0]!;
-  const savedMark = bookmarks.loading
-    ? undefined
-    : findBookmark(bookmarks.items, { book: "John", chapter: 1, verse: current.verse });
+  // One starting passage for each book in the library: the first verse it holds.
+  const starts = useMemo(() => {
+    const seen = new Set<string>();
+    return sortCanonical(verses.items).filter((v) => !seen.has(v.book) && seen.add(v.book));
+  }, [verses.items]);
+  const start = starts.find((v) => v.book === book);
+  const time = SETUP_TIMES[timeIndex] ?? SETUP_TIMES[DEFAULT_SETUP_TIME]!;
+  const timeLabel = clockTime(time.hour, time.minute);
 
   function go(next: number) {
     setDirection(next > step ? 1 : -1);
+    setProblem(null);
     setStep(next);
+    void setAnswer(STEP_KEY, String(next));
   }
 
-  /** Tapping a verse starts the reader there: saves the starting book and moves on. */
-  function startAt(index: number) {
-    haptic("selection");
-    verseRef.current = index;
-    setVerse(index);
-    void setAnswer("startingbook", "John");
-    go(1);
+  /** Step 1: keep the chosen start, open the reader there, and move on to reading it. */
+  async function begin() {
+    if (!start || working) return;
+    setWorking(true);
+    setProblem(null);
+    try {
+      // Going back and continuing with the same book keeps the place already reached in it.
+      const sameChoice = answers.startingbook === start.book && marks.place !== undefined;
+      await setAnswer("startingbook", start.book);
+      if (!sameChoice) await marks.keepPlace(start);
+      track("onboarding_step_completed", { step: STEP_NAMES[0] });
+      go(1);
+    } catch {
+      setProblem("Couldn't save where to start. Check the phone's storage and try again.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  /** The first success: the person reads on from their first verse, or saves it. */
+  function onRead(action: "read_on" | "save") {
+    if (succeeded.current) return;
+    succeeded.current = true;
+    track("onboarding_first_success", { action });
   }
 
   function chooseTime(index: number) {
-    if (index === timeIndex || turnedOn) return;
+    if (index === timeIndex) return;
     haptic("selection");
     setTimeIndex(index);
+    void setAnswer(TIME_KEY, String(index));
+    const next = SETUP_TIMES[index];
+    // Already on: move the reminder to the new time.
+    if (next && reminder.enabled) void reminder.setTime(next.hour, next.minute).catch(() => undefined);
   }
 
-  function turnVerse(dir: 1 | -1) {
-    const target = verseRef.current + dir;
-    if (target < 0 || target >= DEMO.length) {
-      Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
-      return;
-    }
-    haptic("selection");
-    Animated.timing(drag, {
-      toValue: dir * -460,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      verseRef.current = target;
-      setVerse(target);
-      drag.setValue(dir * 60);
-      Animated.spring(drag, {
-        toValue: 0,
-        useNativeDriver: true,
-        speed: 14,
-        bounciness: 4,
-      }).start();
-    });
-  }
-
-  const pan = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dy) > 8 && Math.abs(g.dy) > Math.abs(g.dx),
-      onPanResponderMove: (_, g) => {
-        const atEdge =
-          (g.dy < 0 && verseRef.current === DEMO.length - 1) ||
-          (g.dy > 0 && verseRef.current === 0);
-        drag.setValue(atEdge ? g.dy * 0.3 : g.dy < 0 ? g.dy : g.dy * 0.35);
-      },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy < -60 || g.vy < -0.6) turnVerse(1);
-        else if (g.dy > 60 || g.vy > 0.6) turnVerse(-1);
-        else Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
-      },
-      onPanResponderTerminate: () =>
-        Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start(),
-    }),
-  ).current;
-
-  function toggleBookmark() {
-    if (bookmarks.loading) return;
-    if (savedMark) {
-      haptic("light");
-      void bookmarks.remove(savedMark.id);
-      return;
-    }
-    haptic("success");
-    void bookmarks.add({
-      book: "John",
-      chapter: 1,
-      verse: current.verse,
-      text: current.text,
-      folder: "",
-      createdAt: new Date().toISOString(),
-    });
-  }
-
-  async function turnOnReminders() {
-    if (enabling || turnedOn) return;
-    setEnabling(true);
-    let ok = false;
+  async function turnOnReminder() {
+    if (working) return;
+    setWorking(true);
+    setProblem(null);
     try {
-      ok = await reminder.enable({
-        title: "Pick up where you left off",
-        body: "Your verse is waiting, right where you stopped.",
+      const allowed = await reminder.enable({
+        ...REMINDER_COPY,
         hour: time.hour,
         minute: time.minute,
       });
+      if (allowed) haptic("success");
+      setDeclined(!allowed);
     } catch {
-      ok = false;
-    }
-    setEnabling(false);
-    if (ok) {
-      haptic("success");
-      setTurnedOn(true);
-      finishTimer.current = setTimeout(() => void completeOnboarding(), 1200);
-    } else {
-      setDeclined(true);
+      setProblem("The reminder couldn't be set. You can turn it on later in Settings.");
+    } finally {
+      setWorking(false);
     }
   }
 
-  // There is nothing to go back to on the first step, so the button only appears after it.
-  const backPill =
-    step === 0 ? null : (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        hitSlop={8}
-        onPress={() => go(step - 1)}
-        style={({ pressed }) => ({
-          flexDirection: "row",
-          alignItems: "center",
-          minHeight: 44,
-          paddingRight: theme.spacing.sm,
-          marginLeft: -theme.spacing.sm,
-          opacity: pressed ? 0.6 : 1,
-        })}
-      >
-        <Ionicons name="chevron-back" size={24} color={theme.colors.primary} />
-        <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body }}>Back</Text>
-      </Pressable>
-    );
+  /** Leave setup for the reader. The app then shows the paywall once, over the reader. */
+  function finish(completedStep?: (typeof STEP_NAMES)[number]) {
+    if (completedStep) track("onboarding_step_completed", { step: completedStep });
+    notePaywallSource("onboarding");
+    void setAnswer(STEP_KEY, "0");
+    void completeOnboarding();
+  }
+
+  const heading = {
+    color: theme.colors.text,
+    fontFamily: theme.font.family,
+    fontSize: theme.font.size.headline,
+    fontWeight: theme.font.weight.bold,
+    lineHeight: theme.font.size.headline * 1.2,
+  } as const;
+  const prose = {
+    color: theme.colors.textMuted,
+    fontFamily: theme.font.family,
+    fontSize: theme.font.size.body,
+    lineHeight: theme.font.size.body * 1.45,
+  } as const;
+  const caption = {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.size.caption,
+    lineHeight: theme.font.size.caption * 1.4,
+  } as const;
+
+  const footer = {
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    paddingBottom: Math.max(insets.bottom, theme.spacing.md),
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  } as const;
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: theme.colors.background,
-        paddingTop: insets.top,
-      }}
-    >
-      <Stack.Screen options={{ title: "Welcome" }} />
+    <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
+      <Stack.Screen options={{ title: "Getting started" }} />
 
       <View
         style={{
           paddingHorizontal: theme.spacing.lg,
-          paddingTop: theme.spacing.sm,
-          gap: theme.spacing.sm,
+          paddingTop: theme.spacing.xs,
+          paddingBottom: theme.spacing.md,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", minHeight: 48 }}>
-          <View style={{ width: 104, alignItems: "flex-start" }}>{backPill}</View>
-          <View style={{ flex: 1, alignItems: "center" }}>
-            <Ionicons name="book-outline" size={32} color={theme.colors.primary} />
-          </View>
-          <View style={{ width: 104 }} />
+        {/* Back is there from the second step on, and keeps every earlier answer. */}
+        <View style={{ minHeight: 44, justifyContent: "center" }}>
+          {step > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to the previous step"
+              hitSlop={8}
+              onPress={() => go(step - 1)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                alignSelf: "flex-start",
+                minHeight: 44,
+                paddingRight: theme.spacing.sm,
+                marginLeft: -theme.spacing.sm,
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Ionicons name="chevron-back" size={24} color={theme.colors.primary} />
+              <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body }}>
+                Back
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
-        <Appear style={{ alignItems: "center", gap: theme.spacing.xs }}>
-          <Text
-            accessibilityRole="header"
-            style={{
-              ...serif,
-              color: theme.colors.text,
-              fontSize: theme.font.size.headline,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            Verse by Verse
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            Step {step + 1} of {STEPS}
-          </Text>
-          <GrowBar
-            progress={(step + 1) / STEPS}
-            height={6}
-            style={{ width: barWidth, marginTop: theme.spacing.xs }}
-          />
-        </Appear>
+        <StepProgress step={step + 1} total={STEPS} />
       </View>
 
       <StepTransition step={step} direction={direction} style={{ flex: 1 }}>
         {step === 0 ? (
-          <FlatList
-            data={DEMO}
-            keyExtractor={(item) => String(item.verse)}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingHorizontal: theme.spacing.lg,
-              paddingTop: theme.spacing.lg,
-              paddingBottom: theme.spacing.xl,
-              gap: theme.spacing.lg,
-            }}
-            ListHeaderComponent={
-              <View style={{ alignItems: "center", gap: theme.spacing.sm }}>
-                <Text
-                  accessibilityRole="header"
-                  style={{
-                    ...serif,
-                    color: theme.colors.text,
-                    fontSize: theme.font.size.headline,
-                    fontWeight: theme.font.weight.regular,
-                    textAlign: "center",
-                  }}
-                >
-                  Verse of the day
+          <>
+            <ScrollView
+              contentContainerStyle={{
+                paddingHorizontal: theme.spacing.lg,
+                paddingTop: theme.spacing.sm,
+                paddingBottom: theme.spacing.xl,
+                gap: theme.spacing.xl,
+              }}
+            >
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text accessibilityRole="header" style={heading}>
+                  Read the Bible one verse at a time
                 </Text>
-                <Text
-                  style={{
-                    ...serif,
-                    color: theme.colors.textMuted,
-                    fontSize: theme.font.size.body,
-                    lineHeight: theme.font.size.body * 1.45,
-                    textAlign: "center",
-                  }}
-                >
-                  Pick a starting book. You can switch anywhere at any time.
+                <Text style={prose}>
+                  Verse by Verse opens on a single verse and keeps your place when you leave.
                 </Text>
               </View>
-            }
-            ListFooterComponent={
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Skip setup"
-                hitSlop={12}
-                onPress={() => void completeOnboarding()}
-                style={({ pressed }) => ({
-                  alignSelf: "center",
-                  minHeight: 44,
-                  justifyContent: "center",
-                  opacity: pressed ? 0.6 : 1,
-                })}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.primary,
-                    fontSize: theme.font.size.body,
-                    fontWeight: theme.font.weight.bold,
-                  }}
-                >
-                  Skip setup
-                </Text>
-              </Pressable>
-            }
-            renderItem={({ item, index }) => {
-              const featured = index === 0;
-              return (
-                <Appear delay={Math.min(index, 8) * 50}>
-                  <View style={{ marginTop: featured && hasBadger ? theme.spacing.xl * 2 : 0 }}>
-                    <VerseStartCard
-                      label={`John 1:${item.verse}`}
-                      text={item.text}
-                      featured={featured}
-                      inset={featured ? PANEL_WIDTH + theme.spacing.md : undefined}
-                      onPress={() => startAt(index)}
-                    />
-                    {featured ? <SideActions hasNote={item.note} /> : null}
-                    {featured && hasBadger ? (
-                      <View
-                        pointerEvents="none"
-                        style={{
-                          position: "absolute",
-                          top: -64,
-                          right: theme.spacing.md,
-                          zIndex: 2,
-                        }}
-                      >
-                        <AiImage
-                          prompt={BADGER}
-                          fit="contain"
-                          style={{ width: 96, height: 96 }}
-                        />
-                      </View>
-                    ) : null}
-                  </View>
-                </Appear>
-              );
-            }}
-          />
-        ) : (
-          <ScrollView
-            scrollEnabled={step !== 1}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{
-              flexGrow: 1,
-              paddingHorizontal: theme.spacing.lg,
-              paddingTop: theme.spacing.xl,
-              paddingBottom: theme.spacing.lg,
-              gap: theme.spacing.lg,
-            }}
-          >
-            {step === 1 ? (
-              <View style={{ gap: theme.spacing.lg }}>
-                <Heading
-                  title="Swipe to read"
-                  body="Swipe up to move to the next verse. Tap the bookmark to save it. Try it on five verses."
-                />
-                <Appear>
-                  <Animated.View
-                    {...pan.panHandlers}
-                    accessibilityRole="adjustable"
-                    accessibilityLabel={`John 1:${current.verse}. ${current.text}`}
-                    accessibilityActions={[
-                      { name: "increment", label: "Next verse" },
-                      { name: "decrement", label: "Previous verse" },
-                    ]}
-                    onAccessibilityAction={(event) =>
-                      turnVerse(event.nativeEvent.actionName === "decrement" ? -1 : 1)
-                    }
-                    style={{
-                      transform: [{ translateY: drag }],
-                      flexDirection: "row",
-                      gap: theme.spacing.md,
-                      padding: theme.spacing.lg,
-                      minHeight: 240,
-                      borderRadius: theme.radius.md,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      backgroundColor: theme.colors.surface,
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: theme.spacing.sm }}>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          minHeight: 40,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            ...serif,
-                            color: theme.colors.text,
-                            fontSize: theme.font.size.title,
-                            fontWeight: theme.font.weight.bold,
-                          }}
-                        >
-                          John 1:{current.verse}
-                        </Text>
-                        {savedMark ? (
-                          <View style={{ width: 40, height: 40, overflow: "hidden" }}>
-                            <Lottie name="heart" size={40} />
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text
-                        style={{
-                          ...serif,
-                          color: theme.colors.text,
-                          fontSize: theme.font.size.body,
-                          lineHeight: theme.font.size.body * 1.5,
-                        }}
-                      >
-                        {current.text}
-                      </Text>
-                    </View>
-                    <View style={{ width: 76, alignItems: "center", gap: theme.spacing.md }}>
-                      {bookmarks.loading ? (
-                        <Skeleton width={44} height={44} radius={22} />
-                      ) : (
-                        <Pressable
-                          onPress={toggleBookmark}
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            savedMark
-                              ? `Remove bookmark for John 1:${current.verse}`
-                              : `Bookmark John 1:${current.verse}`
-                          }
-                          accessibilityState={{ selected: Boolean(savedMark) }}
-                          hitSlop={10}
-                          style={({ pressed }) => ({
-                            width: 44,
-                            height: 44,
-                            borderRadius: 22,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: savedMark ? theme.colors.surfaceAlt : undefined,
-                            opacity: pressed ? 0.7 : 1,
-                          })}
-                        >
-                          <Ionicons
-                            name={savedMark ? "bookmark" : "bookmark-outline"}
-                            size={24}
-                            color={savedMark ? theme.colors.primary : theme.colors.textMuted}
-                          />
-                        </Pressable>
-                      )}
-                      <View style={{ alignItems: "center", gap: 2 }}>
-                        <Ionicons name="reader-outline" size={22} color={theme.colors.textMuted} />
-                        <Text
-                          style={{
-                            color: theme.colors.textMuted,
-                            fontSize: theme.font.size.caption,
-                            textAlign: "center",
-                          }}
-                        >
-                          Full context
-                        </Text>
-                      </View>
-                      {current.note ? (
-                        <View style={{ alignItems: "center", gap: 2 }}>
-                          <Ionicons
-                            name="document-text-outline"
-                            size={22}
-                            color={theme.colors.textMuted}
-                          />
-                          <Text
-                            style={{
-                              color: theme.colors.textMuted,
-                              fontSize: theme.font.size.caption,
-                              textAlign: "center",
-                            }}
-                          >
-                            Study note
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </Animated.View>
-                </Appear>
-                <View style={{ gap: theme.spacing.sm }}>
-                  <GrowBar progress={(verse + 1) / DEMO.length} />
+
+              <View style={{ gap: theme.spacing.md }}>
+                <View style={{ gap: theme.spacing.xs }}>
                   <Text
+                    accessibilityRole="header"
                     style={{
-                      alignSelf: "center",
-                      color: theme.colors.textMuted,
-                      fontSize: theme.font.size.caption,
-                      fontVariant: ["tabular-nums"],
+                      color: theme.colors.text,
+                      fontFamily: theme.font.family,
+                      fontSize: theme.font.size.title,
+                      fontWeight: theme.font.weight.bold,
                     }}
                   >
-                    Verse {verse + 1} of {DEMO.length}
+                    Where would you like to start?
+                  </Text>
+                  <Text style={caption}>
+                    The reader opens at the passage you pick, and its book comes first in Search.
+                    You can move to any passage later.
                   </Text>
                 </View>
-              </View>
-            ) : null}
 
-            {step === 2 ? (
-              <View style={{ gap: theme.spacing.lg }}>
-                <Heading
-                  title="A gentle daily reminder?"
-                  body="Choose a time and we will send one quiet reminder with a verse to pick up where you left off. No streaks, no pressure."
-                />
-                {turnedOn ? (
-                  <View style={{ alignItems: "center" }}>
-                    <View style={{ width: 96, height: 96, overflow: "hidden" }}>
-                      <Lottie name="success" size={96} />
-                    </View>
+                {verses.loading ? (
+                  <SkeletonList rows={4} />
+                ) : starts.length === 0 ? (
+                  <Text style={caption}>
+                    The library has no passages yet. Skip setup to open the app.
+                  </Text>
+                ) : (
+                  <View
+                    accessibilityRole="radiogroup"
+                    accessibilityLabel="Starting passage"
+                    style={{ gap: theme.spacing.md }}
+                  >
+                    {starts.map((verse) => (
+                      <ChoiceCard
+                        key={verse.id}
+                        title={formatReference(verse)}
+                        text={verse.text}
+                        selected={verse.book === book}
+                        onPress={() => {
+                          haptic("selection");
+                          setProblem(null);
+                          setBook(verse.book);
+                        }}
+                      />
+                    ))}
                   </View>
-                ) : null}
-                <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-                  {TIMES.map((option, index) => {
-                    const selected = index === timeIndex;
-                    return (
-                      <View key={option.label} style={{ flex: 1 }}>
-                        <PressScale
-                          onPress={() => chooseTime(index)}
-                          scaleTo={0.94}
-                          disabled={turnedOn}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${option.label}, ${clock(option.hour, option.minute)}`}
-                          accessibilityState={{ selected, disabled: turnedOn }}
-                          style={{
-                            minHeight: 60,
-                            borderRadius: theme.radius.sm,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: 2,
-                            backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
-                            borderWidth: 1,
-                            borderColor: selected ? theme.colors.primary : theme.colors.border,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: selected ? theme.colors.onPrimary : theme.colors.text,
-                              fontSize: theme.font.size.body,
-                              fontWeight: theme.font.weight.bold,
-                              fontVariant: ["tabular-nums"],
-                            }}
-                          >
-                            {clock(option.hour, option.minute)}
-                          </Text>
-                          <View
-                            style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
-                          >
-                            {selected ? (
-                              <Ionicons
-                                name="checkmark"
-                                size={14}
-                                color={theme.colors.onPrimary}
-                              />
-                            ) : null}
-                            <Text
-                              style={{
-                                color: selected ? theme.colors.onPrimary : theme.colors.textMuted,
-                                fontSize: theme.font.size.caption,
-                              }}
-                            >
-                              {option.label}
-                            </Text>
-                          </View>
-                        </PressScale>
-                      </View>
-                    );
-                  })}
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: theme.spacing.md,
-                    padding: theme.spacing.lg,
-                    borderRadius: theme.radius.md,
-                    borderWidth: 1,
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.surface,
-                  }}
-                >
-                  <DrawCheck key={`${time.hour}:${time.minute}`} size={52} />
-                  <View style={{ flex: 1, gap: theme.spacing.xs }}>
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontSize: theme.font.size.body,
-                        fontWeight: theme.font.weight.bold,
-                        fontVariant: ["tabular-nums"],
-                      }}
-                    >
-                      Every day at {clock(time.hour, time.minute)}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontSize: theme.font.size.caption,
-                        lineHeight: theme.font.size.caption * 1.4,
-                      }}
-                    >
-                      {declined
-                        ? "Notifications are off for this app. Allow them later in your phone's Settings to get the reminder."
-                        : "You can change the time or turn this off in Settings."}
-                    </Text>
-                  </View>
-                </View>
+                )}
               </View>
-            ) : null}
-          </ScrollView>
-        )}
-      </StepTransition>
+            </ScrollView>
 
-      {step === 1 || step === 2 ? (
-        <View
-          style={{
-            paddingHorizontal: theme.spacing.lg,
-            paddingTop: theme.spacing.md,
-            paddingBottom: theme.spacing.md,
-            gap: theme.spacing.sm,
-          }}
-        >
-          {step === 1 ? (
-            <>
-              <PrimaryButton label="Continue" onPress={() => go(2)} />
+            <View style={footer}>
+              {problem ? <StatusNote tone="problem" title={problem} /> : null}
               <PrimaryButton
-                label="Skip for now"
+                label={
+                  working
+                    ? "Opening the reader…"
+                    : start
+                      ? `Start at ${formatReference(start)}`
+                      : "Pick a passage to start"
+                }
+                disabled={!start || working}
+                onPress={() => void begin()}
+              />
+              <PrimaryButton
+                label="Skip setup"
                 variant="quiet"
-                onPress={() => void completeOnboarding()}
+                onPress={() => finish()}
+                accessibilityHint="Opens the app at the first passage in the library"
               />
-            </>
-          ) : null}
-          {step === 2 ? (
-            <>
-              <PrimaryButton
-                label={declined ? "Start reading" : enabling ? "Turning on…" : "Turn on reminders"}
-                disabled={enabling || turnedOn}
-                onPress={() => (declined ? void completeOnboarding() : void turnOnReminders())}
-                accessibilityHint="Sets one daily reminder at the time you chose"
-              />
-              {!declined && !turnedOn ? (
-                <PrimaryButton
-                  label="Not now"
-                  variant="quiet"
-                  onPress={() => void completeOnboarding()}
-                />
-              ) : null}
-            </>
-          ) : null}
-        </View>
-      ) : null}
+            </View>
+          </>
+        ) : null}
 
-      <PreviewTabBar bottomInset={insets.bottom} />
+        {step === 1 ? (
+          <>
+            <Reader
+              paddingTop={theme.spacing.sm}
+              hint="Tap a verse to read on. Your place is kept for next time."
+              onAct={onRead}
+              renderTop={() => (
+                <View style={{ gap: theme.spacing.sm }}>
+                  <Text accessibilityRole="header" style={heading}>
+                    Your first verse
+                  </Text>
+                  <Text style={prose}>
+                    This is the reader itself, not a demo. What you read, save or open here stays
+                    in the app.
+                  </Text>
+                </View>
+              )}
+            />
+            <View style={footer}>
+              <PrimaryButton
+                label="Continue"
+                onPress={() => {
+                  track("onboarding_step_completed", { step: STEP_NAMES[1] });
+                  go(2);
+                }}
+              />
+            </View>
+          </>
+        ) : null}
+
+        {step === 2 ? (
+          <>
+            <ScrollView
+              contentContainerStyle={{
+                paddingHorizontal: theme.spacing.lg,
+                paddingTop: theme.spacing.sm,
+                paddingBottom: theme.spacing.xl,
+                gap: theme.spacing.lg,
+              }}
+            >
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text accessibilityRole="header" style={heading}>
+                  Want a daily reminder?
+                </Text>
+                <Text style={prose}>
+                  {`One notification a day, at the time you pick, to come back to where you left off${
+                    marks.place ? ` (${formatReference(marks.place)} right now)` : ""
+                  }. No streaks, no pressure.`}
+                </Text>
+              </View>
+
+              <View
+                accessibilityRole="radiogroup"
+                accessibilityLabel="Reminder time"
+                style={{ flexDirection: "row", gap: theme.spacing.sm }}
+              >
+                {SETUP_TIMES.map((option, index) => (
+                  <TimeChoice
+                    key={option.label}
+                    time={clockTime(option.hour, option.minute)}
+                    label={option.label}
+                    selected={index === timeIndex}
+                    onPress={() => chooseTime(index)}
+                  />
+                ))}
+              </View>
+
+              {reminder.enabled ? (
+                <StatusNote
+                  tone="done"
+                  title={`Reminder set for ${clockTime(reminder.hour, reminder.minute)} every day`}
+                  text="You can change the time or turn it off in Settings."
+                />
+              ) : declined ? (
+                <StatusNote
+                  tone="off"
+                  title="Notifications are off for this app"
+                  text="Nothing was scheduled. To get the reminder, allow notifications in your phone's Settings, then turn it on in the app's Settings."
+                />
+              ) : (
+                <Text style={caption}>
+                  Your phone will ask to allow notifications. You can change the time or turn the
+                  reminder off in Settings.
+                </Text>
+              )}
+              {problem ? <StatusNote tone="problem" title={problem} /> : null}
+            </ScrollView>
+
+            <View style={footer}>
+              {reminder.enabled || declined ? (
+                <PrimaryButton label="Finish setup" onPress={() => finish(STEP_NAMES[2])} />
+              ) : (
+                <>
+                  <PrimaryButton
+                    label={working ? "Turning on…" : `Turn on the ${timeLabel} reminder`}
+                    disabled={working}
+                    onPress={() => void turnOnReminder()}
+                  />
+                  <PrimaryButton
+                    label="Not now"
+                    variant="quiet"
+                    onPress={() => finish(STEP_NAMES[2])}
+                    accessibilityHint="Finishes setup without a reminder"
+                  />
+                </>
+              )}
+              {isPremium ? null : (
+                <Text style={{ ...caption, textAlign: "center" }}>
+                  Next you'll see what Premium adds. It's optional, and reading stays free.
+                </Text>
+              )}
+            </View>
+          </>
+        ) : null}
+      </StepTransition>
     </View>
   );
 }

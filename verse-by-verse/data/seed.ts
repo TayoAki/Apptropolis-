@@ -1,6 +1,6 @@
 // Starter content. Scripture is the World English Bible (public domain).
 // Verses are stored in canonical order. Study notes are commentary, shown labelled as such.
-import { isoDaysAgo, type Bookmark, type Collections, type StudyNote, type Verse } from "./schema";
+import { type Bookmark, type Collections, type StudyNote, type Verse } from "./schema";
 
 const ORDER: Record<string, number> = { Genesis: 1, Psalms: 19, Proverbs: 20, John: 43 };
 
@@ -405,29 +405,9 @@ const study_notes: StudyNote[] = NOTES.map(([book, chapter, verse, title, body],
   body,
 }));
 
-const textOf = (book: string, chapter: number, verse: number): string =>
-  verses.find((v) => v.book === book && v.chapter === chapter && v.verse === verse)?.text ?? "";
-
-// [book, chapter, verse, folder, days ago saved]
-const SAVED: Array<[string, number, number, string, number]> = [
-  ["John", 3, 16, "", 0],
-  ["Psalms", 23, 1, "Hard days", 2],
-  ["Proverbs", 3, 5, "", 5],
-  ["Psalms", 46, 10, "Hard days", 9],
-  ["Genesis", 1, 31, "", 14],
-  ["John", 14, 27, "", 21],
-  ["Proverbs", 16, 3, "", 33],
-];
-
-const bookmarks: Bookmark[] = SAVED.map(([book, chapter, verse, folder, days], index) => ({
-  id: `b${index + 1}`,
-  book,
-  chapter,
-  verse,
-  text: textOf(book, chapter, verse),
-  folder,
-  createdAt: isoDaysAgo(days),
-}));
+// A new install has saved nothing: the Saved tab starts empty and fills as the reader saves
+// verses. (An earlier version shipped seven sample bookmarks with invented "saved" dates.)
+const bookmarks: Bookmark[] = [];
 
 export const seed = {
   verses,

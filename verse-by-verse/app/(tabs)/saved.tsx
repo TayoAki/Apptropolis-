@@ -16,8 +16,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Line } from "react-native-svg";
+import { useBookmarks } from "../../components/bookmarks";
 import { EmptyState } from "../../components/EmptyState";
-import { Lottie } from "../../components/lottie";
 import {
   Appear,
   CountUp,
@@ -27,17 +27,15 @@ import {
   haptic,
   useReducedMotion,
 } from "../../components/motion";
+import { openPaywallFrom } from "../../components/paywall/source";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { useShareImage } from "../../components/share";
 import { SavedRow } from "../../components/saved/SavedRow";
 import { usePurchases } from "../../data/purchases";
-import { useCollection } from "../../data/repo";
 import {
-  DAY_MS,
-  READING_POSITION,
+  daysSince,
   formatDay,
   formatReference,
-  readingPosition,
   savedBookmarks,
   type Bookmark,
 } from "../../data/schema";
@@ -51,11 +49,21 @@ const WEB_NO_FOCUS_RING = Platform.OS === "web" ? ({ outlineStyle: "none" } as o
 // Folders the reader can file verses into. Shown even before anything is filed in them.
 const SUGGESTED_FOLDERS = ["Comfort", "Morning light", "Promises", "Wisdom"];
 
-type SheetState = { title: string; ids: string[]; name: string; token: number };
+type SheetState = {
+  title: string;
+  ids: string[];
+  name: string;
+  /** The one verse being moved, when the sheet was opened from its row and it is in a folder. */
+  filed?: Bookmark;
+  token: number;
+};
 
-/** "Saved today", "Saved 2 days ago", "Saved Mar 4". */
+/** A short message under the header, with Undo when it reports a removal. */
+type Notice = { text: string; tone: "done" | "problem"; undo?: Bookmark };
+
+/** "Saved today", "Saved 2 days ago", "Saved Mar 4". Days are calendar days on this phone. */
 function savedAgo(iso: string): string {
-  const days = Math.floor((Date.now() - Date.parse(iso)) / DAY_MS);
+  const days = daysSince(iso);
   if (days <= 0) return "Saved today";
   if (days === 1) return "Saved yesterday";
   if (days < 7) return `Saved ${days} days ago`;
@@ -125,7 +133,9 @@ function FolderSheet({
   folders,
   initialIds,
   initialName,
+  filed,
   onSave,
+  onTakeOut,
   onClose,
 }: {
   title: string;
@@ -133,7 +143,10 @@ function FolderSheet({
   folders: string[];
   initialIds: string[];
   initialName: string;
+  /** The verse being moved, when it is in a folder: the sheet then offers to take it out. */
+  filed?: Bookmark;
   onSave: (name: string, ids: string[]) => void;
+  onTakeOut: (bookmark: Bookmark) => void;
   onClose: () => void;
 }) {
   const theme = useTheme();
@@ -277,6 +290,18 @@ function FolderSheet({
           </View>
         ) : null}
 
+        {saved.length === 0 ? (
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.body,
+              lineHeight: theme.font.size.body * 1.4,
+            }}
+          >
+            A folder holds saved verses. Save a verse in the reader first, then move it into a
+            folder here.
+          </Text>
+        ) : null}
         <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ gap: theme.spacing.xs }}>
           {saved.map((b) => {
             const checked = picked.includes(b.id);
@@ -329,6 +354,14 @@ function FolderSheet({
           onPress={() => onSave(trimmed, picked)}
           disabled={!canSave}
         />
+        {filed ? (
+          <PrimaryButton
+            label={`Take out of ${filed.folder}`}
+            variant="quiet"
+            onPress={() => onTakeOut(filed)}
+            accessibilityHint="Keeps the verse saved, in no folder"
+          />
+        ) : null}
         <PrimaryButton label="Cancel" variant="quiet" onPress={onClose} />
       </Animated.View>
     </KeyboardAvoidingView>
@@ -339,15 +372,17 @@ export default function SavedScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
-  const { items, loading, add, update, remove } = useCollection<Bookmark>("bookmarks");
-  const { isPremium, openPaywall } = usePurchases();
+  const marks = useBookmarks();
+  const { items, loading } = marks;
+  const { isPremium } = usePurchases();
   const { ref, share, sharing } = useShareImage();
 
   const [filter, setFilter] = useState(ALL);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
   const [preview, setPreview] = useState<Bookmark | null>(null);
   const [sheet, setSheet] = useState<SheetState | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [shareProblem, setShareProblem] = useState(false);
   const [layoutTick, setLayoutTick] = useState(0);
 
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -421,9 +456,10 @@ export default function SavedScreen() {
     ]).start();
   }, [preview, reduced, cardScale, cardFade]);
 
+  // Messages clear themselves; one that offers Undo stays longer.
   useEffect(() => {
     if (!notice) return;
-    const id = setTimeout(() => setNotice(null), 2800);
+    const id = setTimeout(() => setNotice(null), notice.undo ? 7000 : 3200);
     return () => clearTimeout(id);
   }, [notice]);
 
@@ -437,27 +473,21 @@ export default function SavedScreen() {
 
   function choose(key: string) {
     if (key !== ALL && !isPremium) {
-      openPaywall();
+      openPaywallFrom("saved_folder_filter");
       return;
     }
     haptic("selection");
     setFilter(key);
   }
 
-  function openFolder(title: string, ids: string[], name: string) {
-    setSheet({ title, ids, name, token: Date.now() });
+  function openFolder(title: string, ids: string[], name: string, filed?: Bookmark) {
+    setSheet({ title, ids, name, filed, token: Date.now() });
   }
 
   /** Open a saved verse on the Read tab, and make it the place the reader resumes from. */
   async function openInReader(b: Bookmark) {
-    const place = { book: b.book, chapter: b.chapter, verse: b.verse, text: b.text };
-    try {
-      const position = readingPosition(items);
-      if (position) await update(position.id, place);
-      else await add({ ...place, folder: READING_POSITION, createdAt: new Date().toISOString() });
-    } catch {
-      // The verse still opens; only the resume point is left where it was.
-    }
+    // If the place can't be stored the verse still opens; only the resume point stays behind.
+    await marks.keepPlace(b).catch(() => undefined);
     router.navigate({
       pathname: "/",
       params: {
@@ -469,10 +499,36 @@ export default function SavedScreen() {
     });
   }
 
-  function removeBookmark(id: string) {
+  /** Remove a saved verse. It leaves the list at once, and the message offers Undo. */
+  function removeBookmark(b: Bookmark) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setRemovedIds((ids) => [...ids, id]);
-    void remove(id);
+    setRemovedIds((ids) => [...ids, b.id]);
+    marks
+      .remove(b.id)
+      .then(() => setNotice({ text: `Removed ${formatReference(b)}`, tone: "done", undo: b }))
+      .catch(() => {
+        setRemovedIds((ids) => ids.filter((id) => id !== b.id));
+        setNotice({ text: `Couldn't remove ${formatReference(b)}. Try again.`, tone: "problem" });
+      });
+  }
+
+  /** Put a removed verse back as it was: same folder, same saved date. */
+  function undoRemove(b: Bookmark) {
+    setNotice(null);
+    marks
+      .restore(b)
+      .then(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setRemovedIds((ids) => ids.filter((id) => id !== b.id));
+        haptic("success");
+      })
+      .catch(() =>
+        setNotice({
+          text: `Couldn't put ${formatReference(b)} back. Try again.`,
+          tone: "problem",
+          undo: b,
+        }),
+      );
   }
 
   async function saveToFolder(name: string, ids: string[]) {
@@ -482,27 +538,47 @@ export default function SavedScreen() {
     // Only the ticked verses move. Verses already in the folder stay there: the sheet doesn't
     // show which ones those are, so leaving them unticked must not take them out.
     const changes = saved.filter((b) => picked.has(b.id) && b.folder !== label);
-    // One at a time: each save rewrites the stored list, so they must not overlap.
-    for (const b of changes) {
-      await update(b.id, { folder: label });
+    try {
+      await Promise.all(changes.map((b) => marks.setFolder(b.id, label)));
+    } catch {
+      setNotice({ text: `Couldn't move the verses to ${label}. Try again.`, tone: "problem" });
+      return;
     }
     haptic("success");
     setFilter(label);
-    setNotice(
-      changes.length === 0
-        ? `${label} already has these verses`
-        : `Moved ${changes.length} ${changes.length === 1 ? "verse" : "verses"} to ${label}`,
-    );
+    setNotice({
+      text:
+        changes.length === 0
+          ? `${label} already has these verses`
+          : `Moved ${changes.length} ${changes.length === 1 ? "verse" : "verses"} to ${label}`,
+      tone: "done",
+    });
+  }
+
+  /** Take a verse out of its folder. It stays saved. */
+  async function takeOutOfFolder(b: Bookmark) {
+    try {
+      await marks.setFolder(b.id, "");
+      haptic("success");
+      setNotice({ text: `Took ${formatReference(b)} out of ${b.folder}`, tone: "done" });
+    } catch {
+      setNotice({
+        text: `Couldn't take ${formatReference(b)} out of ${b.folder}. Try again.`,
+        tone: "problem",
+      });
+    }
   }
 
   async function shareCard() {
     if (!preview) return;
     const reference = formatReference(preview);
+    setShareProblem(false);
     const done = await share({
       message: `${reference}\n\n\u201C${preview.text}\u201D\n\nWorld English Bible`,
       title: reference,
     });
     if (done) setPreview(null);
+    else setShareProblem(true);
   }
 
   const header = (
@@ -533,7 +609,9 @@ export default function SavedScreen() {
               Saved verses
             </Text>
             <PressScale
-              onPress={() => (isPremium ? openFolder("New folder", [], "") : openPaywall())}
+              onPress={() =>
+                isPremium ? openFolder("New folder", [], "") : openPaywallFrom("saved_new_folder")
+              }
               accessibilityRole="button"
               accessibilityLabel="New folder"
               accessibilityHint={isPremium ? undefined : "Folders are a premium feature"}
@@ -583,7 +661,7 @@ export default function SavedScreen() {
               />
             )}
             <Pressable
-              onPress={() => openPaywall()}
+              onPress={() => openPaywallFrom("saved_patron_key")}
               // 44pt tall with the slop; it reaches down into the gap below, not up into
               // the New folder button.
               hitSlop={{ bottom: 12, left: 8, right: 8 }}
@@ -654,28 +732,67 @@ export default function SavedScreen() {
       )}
 
       {notice ? (
-        <Appear key={notice}>
+        <Appear key={notice.text}>
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
               gap: theme.spacing.md,
               marginHorizontal: theme.spacing.lg,
-              padding: theme.spacing.md,
+              paddingVertical: theme.spacing.xs,
+              paddingLeft: theme.spacing.md,
+              paddingRight: notice.undo ? theme.spacing.xs : theme.spacing.md,
+              minHeight: 52,
               borderRadius: theme.radius.md,
               backgroundColor: theme.colors.surfaceAlt,
             }}
           >
-            {/* A fixed box, so the message keeps its width while the animation loads. */}
-            <View style={{ width: 40, height: 40, overflow: "hidden" }}>
-              <Lottie name="success" size={40} />
-            </View>
+            <Ionicons
+              name={notice.tone === "problem" ? "alert-circle-outline" : "checkmark-circle"}
+              size={22}
+              color={notice.tone === "problem" ? theme.colors.danger : theme.colors.success}
+            />
             <Text
+              accessibilityRole={notice.tone === "problem" ? "alert" : undefined}
               accessibilityLiveRegion="polite"
-              style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.caption }}
+              style={{
+                flex: 1,
+                color: theme.colors.text,
+                fontSize: theme.font.size.body,
+                lineHeight: theme.font.size.body * 1.3,
+              }}
             >
-              {notice}
+              {notice.text}
             </Text>
+            {notice.undo ? (
+              <Pressable
+                onPress={() => notice.undo && undoRemove(notice.undo)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  notice.tone === "problem"
+                    ? `Try again to put ${formatReference(notice.undo)} back`
+                    : `Undo: put ${formatReference(notice.undo)} back`
+                }
+                style={({ pressed }) => ({
+                  minHeight: 44,
+                  minWidth: 44,
+                  paddingHorizontal: theme.spacing.md,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                >
+                  {notice.tone === "problem" ? "Retry" : "Undo"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </Appear>
       ) : null}
@@ -709,7 +826,7 @@ export default function SavedScreen() {
         <EmptyState
           icon="folder-open-outline"
           title={`Nothing in ${activeFilter} yet`}
-          body="Use the bookmark button on a saved verse to file it in this folder, or show every saved verse."
+          body="Use the folder button on a saved verse to move it here, or show every saved verse."
           actionLabel="Show all verses"
           onAction={() => choose(ALL)}
         />
@@ -730,11 +847,21 @@ export default function SavedScreen() {
               bookmark={item}
               savedLabel={`${savedAgo(item.createdAt)}${item.folder ? ` · ${item.folder}` : ""}`}
               onOpen={() => void openInReader(item)}
-              onShare={() => setPreview(item)}
+              onShare={() => {
+                setShareProblem(false);
+                setPreview(item);
+              }}
               onFolder={() =>
-                isPremium ? openFolder("Move to folder", [item.id], item.folder) : openPaywall()
+                isPremium
+                  ? openFolder(
+                      "Move to folder",
+                      [item.id],
+                      item.folder,
+                      item.folder ? item : undefined,
+                    )
+                  : openPaywallFrom("saved_move_to_folder")
               }
-              onRemove={() => removeBookmark(item.id)}
+              onRemove={() => removeBookmark(item)}
             />
           </Appear>
         )}
@@ -821,6 +948,20 @@ export default function SavedScreen() {
               </View>
             </View>
 
+            {shareProblem ? (
+              <Text
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                style={{
+                  color: theme.colors.danger,
+                  fontSize: theme.font.size.caption,
+                  lineHeight: theme.font.size.caption * 1.4,
+                  textAlign: "center",
+                }}
+              >
+                Sharing isn't available on this device.
+              </Text>
+            ) : null}
             <PrimaryButton
               label={sharing ? "Preparing card" : "Share card"}
               icon="share-outline"
@@ -841,6 +982,11 @@ export default function SavedScreen() {
           folders={folders}
           initialIds={sheet.ids}
           initialName={sheet.name}
+          filed={sheet.filed}
+          onTakeOut={(bookmark) => {
+            setSheet(null);
+            void takeOutOfFolder(bookmark);
+          }}
           onClose={() => setSheet(null)}
           onSave={(name, ids) => {
             setSheet(null);

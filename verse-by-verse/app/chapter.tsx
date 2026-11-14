@@ -6,19 +6,13 @@ import { EmptyState } from "../components/EmptyState";
 import { Flourish } from "../components/Flourish";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { HeaderAction, ScreenHeader } from "../components/ScreenHeader";
+import { useBookmarks } from "../components/bookmarks";
 import { VerseLine } from "../components/chapter/VerseLine";
 import { Appear, Skeleton, Stagger, haptic } from "../components/motion";
 import { useSavedTheme } from "../components/reading";
 import { useAppState } from "../data/app-state";
 import { useCollection } from "../data/repo";
-import {
-  READING_POSITION,
-  chapterVerses,
-  formatReference,
-  readingPosition,
-  type Bookmark,
-  type Verse,
-} from "../data/schema";
+import { chapterVerses, formatReference, type Verse } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
 function wait(ms: number) {
@@ -72,13 +66,13 @@ export default function ChapterScreen() {
   const params = useLocalSearchParams<{ book?: string; chapter?: string; verse?: string }>();
   const { ready, onboarded, answers } = useAppState();
   const verseRows = useCollection<Verse>("verses");
-  const bookmarkRows = useCollection<Bookmark>("bookmarks");
+  const marks = useBookmarks();
   const [picked, setPicked] = useState<string | null>(null);
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrolled = useRef(false);
   useSavedTheme();
 
-  const position = readingPosition(bookmarkRows.items);
+  const position = marks.place;
   // Without a book in the link, the chapter the reader left off in (or the chosen starting book).
   const base = params.book ? null : (position ?? null);
   const book = params.book || base?.book || answers.startingbook || "John";
@@ -103,25 +97,12 @@ export default function ChapterScreen() {
     chapter.find((v) => v.verse === samePosition) ??
     chapter[0];
 
-  const loading = verseRows.loading || bookmarkRows.loading;
+  const loading = verseRows.loading || marks.loading;
 
   function onRowLayout(verse: Verse, y: number) {
     if (scrolled.current || !target || verse.id !== target.id || y <= 0) return;
     scrolled.current = true;
     scroller.current?.scrollTo({ y: Math.max(0, theme.spacing.lg + y - 96), animated: false });
-  }
-
-  async function saveReadingPosition(verse: Verse) {
-    const record = {
-      book: verse.book,
-      chapter: verse.chapter,
-      verse: verse.verse,
-      text: verse.text,
-      folder: READING_POSITION,
-      createdAt: new Date().toISOString(),
-    };
-    if (position) await bookmarkRows.update(position.id, record);
-    else await bookmarkRows.add(record);
   }
 
   // Tapping a verse moves the reader's place there, lets the line flash, then opens it in Read.
@@ -130,7 +111,7 @@ export default function ChapterScreen() {
     haptic("selection");
     setPicked(verse.id);
     void Promise.all([
-      saveReadingPosition(verse).catch(() => undefined),
+      marks.keepPlace(verse).catch(() => undefined),
       wait(340),
     ]).then(() => openInReader(verse));
   }

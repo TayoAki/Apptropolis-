@@ -4,9 +4,10 @@
 import { useEffect } from "react";
 import type { TextStyle } from "react-native";
 import { useAppState } from "../data/app-state";
-import { setActiveThemeId } from "../theme/active";
+import { setActiveThemeId, setAppearance } from "../theme/active";
 import { useTheme } from "../theme/ThemeProvider";
-import { themes } from "../theme/tokens";
+import { defaultThemeId, themes } from "../theme/tokens";
+import type { Theme } from "../theme/types";
 
 export const TEXT_SIZE_KEY = "pref.textSize";
 export const LINE_SPACING_KEY = "pref.lineSpacing";
@@ -60,11 +61,40 @@ export function useReadingType(): {
   };
 }
 
+/**
+ * The two themes the app moves between by itself, light and dark with the phone: the app's own
+ * theme and the nearest one of the other kind (the same pairing theme/active.ts uses).
+ */
+export function phoneThemes(): { light: Theme; dark: Theme } | null {
+  const index = themes.findIndex((t) => t.id === defaultThemeId);
+  const base = themes[index];
+  if (!base) return null;
+  for (let step = 1; step < themes.length; step++) {
+    for (const i of [index + step, index - step]) {
+      const other = themes[i];
+      if (other && other.dark !== base.dark)
+        return base.dark ? { light: other, dark: base } : { light: base, dark: other };
+    }
+  }
+  return null;
+}
+
+/**
+ * Stop pinning one theme: go back to the app's own pair, light or dark with the phone. This is
+ * what a fresh install does, and what Settings' "Automatic" choice restores.
+ */
+export function followPhoneTheme(): void {
+  setActiveThemeId(defaultThemeId);
+  setAppearance("system");
+}
+
 let themeRestored = false;
 
 /**
  * Bring back the theme picked in Settings the first time the app's state has loaded. Without
- * this the choice is saved but the next launch opens in the default theme again.
+ * this the choice is saved but the next launch opens in the default theme again. Someone who
+ * never picked a theme (or chose Automatic) has nothing saved, so the app keeps following the
+ * phone: its own theme in light mode and that theme's dark partner in dark mode.
  */
 export function useSavedTheme(): void {
   const { ready, answers } = useAppState();
