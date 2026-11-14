@@ -102,6 +102,16 @@ export default function WeekScreen() {
     [answers.diet, answers.exclusions, answers.excluded],
   );
 
+  // "No mushrooms" is an ingredient, not a kind of dinner, so it is filtered by pack.
+  const noMushrooms = (answers.excluded ?? "").split(",").includes("mushrooms");
+  const allowed = useMemo(
+    () =>
+      allowedRecipes(excluded).filter(
+        (r) => !noMushrooms || !r.ingredients.some(([key]) => key === "mushrooms"),
+      ),
+    [excluded, noMushrooms],
+  );
+
   const dinners = useMemo(
     () =>
       plan.items.filter((d) => d.weekStart === weekStart).sort((a, b) => a.dayIndex - b.dayIndex),
@@ -132,7 +142,7 @@ export default function WeekScreen() {
   const candidates: Candidate[] = useMemo(() => {
     if (!openDinner) return [];
     const used = new Set(dinners.map((d) => d.recipeId));
-    return allowedRecipes(excluded)
+    return allowed
       .filter((r) => !used.has(r.id) && (isPremium || !r.premium))
       .map((recipe) => {
         const next = inputs.map((i, idx) =>
@@ -142,10 +152,10 @@ export default function WeekScreen() {
       })
       .sort((a, b) => a.delta - b.delta)
       .slice(0, 6);
-  }, [openDinner, dinners, inputs, pantry, excluded, isPremium, total]);
+  }, [openDinner, dinners, inputs, pantry, allowed, isPremium, total]);
   const lockedCount = isPremium
     ? 0
-    : allowedRecipes(excluded).filter((r) => r.premium).length;
+    : allowed.filter((r) => r.premium).length;
 
   const loading = plan.loading || pantryCol.loading || checks.loading;
   const hasOlderWeeks = plan.items.some((d) => d.weekStart !== weekStart);
@@ -187,7 +197,7 @@ export default function WeekScreen() {
   async function planWeek() {
     setPlanning(true);
     try {
-      const pool = allowedRecipes(excluded).filter((r) => isPremium || !r.premium);
+      const pool = allowed.filter((r) => isPremium || !r.premium);
       const shuffled = [...pool].sort(() => Math.random() - 0.5);
       const chosen: Recipe[] = [];
       const perDiet: Record<string, number> = {};
