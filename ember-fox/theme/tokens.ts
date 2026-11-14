@@ -1,0 +1,117 @@
+import type { Theme } from "./types";
+
+// Shared shape for every pack: the card corner radius from the approved mockup (18) and the
+// same spacing and type scale, so switching packs changes only the colors and feel.
+const shape: Pick<Theme, "radius" | "spacing" | "font"> = {
+  radius: { sm: 10, md: 18, lg: 24, pill: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },
+  font: {
+    size: { caption: 13, body: 16, title: 22, headline: 28, display: 56 },
+    weight: { regular: "400", medium: "500", bold: "700" },
+  },
+};
+
+export const themes: Theme[] = [
+  {
+    id: "stadium",
+    name: "Stadium Night",
+    dark: true,
+    ...shape,
+    colors: {
+      background: "#0D0F13",
+      surface: "#171A21",
+      surfaceAlt: "#222630",
+      border: "#2E3440",
+      text: "#F5F6F8",
+      textMuted: "#9AA3B2",
+      primary: "#FFB627",
+      onPrimary: "#1A1206",
+      accent: "#4FA8E8",
+      success: "#34D17A",
+      warning: "#FF8A3D",
+      danger: "#FF5C5C",
+    },
+  },
+  {
+    id: "court",
+    name: "Court Orange",
+    dark: false,
+    ...shape,
+    colors: {
+      background: "#FFFFFF",
+      surface: "#F7F4F1",
+      surfaceAlt: "#EFEAE4",
+      border: "#DAD3CB",
+      text: "#17110C",
+      textMuted: "#5E554D",
+      primary: "#F26419",
+      onPrimary: "#1A0A02",
+      accent: "#1B7FBF",
+      success: "#1E8A4C",
+      warning: "#B26A00",
+      danger: "#C62828",
+    },
+  },
+  {
+    id: "pitch",
+    name: "Fresh Pitch",
+    dark: false,
+    ...shape,
+    colors: {
+      background: "#F7FBF8",
+      surface: "#FFFFFF",
+      surfaceAlt: "#E8F3EA",
+      border: "#C9DDCD",
+      text: "#10231A",
+      textMuted: "#4F6658",
+      primary: "#2E9E4F",
+      onPrimary: "#06170C",
+      accent: "#B5832A",
+      success: "#1F7A3A",
+      warning: "#B7791F",
+      danger: "#C53030",
+    },
+  },
+  {
+    id: "track",
+    name: "Track Cyan",
+    dark: true,
+    ...shape,
+    colors: {
+      background: "#07090D",
+      surface: "#0F141B",
+      surfaceAlt: "#18202A",
+      border: "#243041",
+      text: "#EAF6FB",
+      textMuted: "#8CA0B3",
+      primary: "#2EC4F0",
+      onPrimary: "#04161D",
+      accent: "#A78BFA",
+      success: "#3DDC97",
+      warning: "#FFB020",
+      danger: "#FF5C7A",
+    },
+  },
+  {
+    id: "jersey",
+    name: "Jersey Red",
+    dark: false,
+    ...shape,
+    colors: {
+      background: "#FBF8F6",
+      surface: "#FFFFFF",
+      surfaceAlt: "#F2ECE9",
+      border: "#DDD2CD",
+      text: "#1C1113",
+      textMuted: "#6B5A5E",
+      primary: "#D62839",
+      onPrimary: "#FFFFFF",
+      accent: "#1F3A68",
+      success: "#1E7A4A",
+      warning: "#B86E00",
+      danger: "#A4161A",
+    },
+  },
+];
+
+export const defaultThemeId = "stadium";
