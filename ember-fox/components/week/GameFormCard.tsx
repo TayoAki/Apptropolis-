@@ -3,24 +3,17 @@ import type { ComponentRef, RefObject } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Outlook } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { Mascot, PressScale } from "../motion";
-
-const TITLES: Record<Outlook["tier"], string> = {
-  sharp: "Game form: sharp",
-  steady: "Game form: steady",
-  flat: "Game form: recovering",
-};
-
-/** The mascot pose that matches each form tier. */
-const POSES: Record<Outlook["tier"], string> = {
-  sharp: "dash-game-day-sharp",
-  steady: "dash-match-ready",
-  flat: "dash-heavy-legs",
-};
+import { Dash } from "../Dash";
+import { PressScale } from "../motion";
 
 interface Props {
   form: number;
-  outlook: Outlook;
+  /** The card's title, from formMessage: the tier on a clear day, the plain state otherwise. */
+  title: string;
+  /** A line under the figures (what alcohol does, or what brings the rating back); may be null. */
+  caution: string | null;
+  /** The tier whose mascot pose to show. */
+  pose: Outlook["tier"];
   freeDays: number;
   /** The next game's day, e.g. "Saturday" or "today"; null when no game day is set. */
   nextGame: string | null;
@@ -34,10 +27,16 @@ interface Props {
   onSetGameDays: () => void;
 }
 
-/** The form card people can share: the tier, the score and the week's alcohol-free days. */
+/**
+ * The form card people can share: its title, the score and the week's alcohol-free days. The
+ * title never claims readiness when drinks are logged or the week is over its limit, and
+ * "Next game" stays a plain fact beside it.
+ */
 export function GameFormCard({
   form,
-  outlook,
+  title,
+  caution,
+  pose,
   freeDays,
   nextGame,
   cardRef,
@@ -79,7 +78,7 @@ export function GameFormCard({
               fontWeight: theme.font.weight.bold,
             }}
           >
-            {TITLES[outlook.tier]}
+            {title}
           </Text>
           <View style={{ gap: 2 }}>
             <Text style={[line, { fontVariant: ["tabular-nums"] }]}>
@@ -96,8 +95,19 @@ export function GameFormCard({
             </Text>
             {nextGame ? <Text style={line}>{`Next game: ${nextGame}`}</Text> : null}
           </View>
+          {caution ? (
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontSize: theme.font.size.caption,
+                lineHeight: 18,
+              }}
+            >
+              {caution}
+            </Text>
+          ) : null}
         </View>
-        <Mascot pose={POSES[outlook.tier]} size={112} />
+        <Dash pose={pose} size={112} />
       </View>
       {nextGame ? null : (
         <Pressable

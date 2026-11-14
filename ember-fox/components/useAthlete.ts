@@ -16,7 +16,7 @@ import {
   lighterLimitFor,
   limitFrom,
   nextGameDay,
-  outlookFor,
+  formMessage,
   parseDay,
   profileFrom,
   sportFrom,
@@ -100,8 +100,18 @@ export function useAthlete() {
   const nextGame = nextGameDay(weekdays, now) ?? gameDays.find((key) => key >= today) ?? null;
 
   const stats = athleteStats(drinks.items, checkins.items, limit, now);
-  const outlook = outlookFor(stats.form, sport);
   const bac = estimateBac(drinks.items, profile, now);
+  // What the rating may say: no readiness words with drinks in the picture or over the limit.
+  const message = formMessage({
+    form: stats.form,
+    sport,
+    nextGame,
+    now,
+    drinksToday: todayTotal,
+    bacPercent: bac.percent,
+    weekTotal,
+    limit,
+  });
 
   const loading = drinks.loading || checkins.loading || goals.loading;
   const [error, setError] = useState<string | null>(null);
@@ -252,7 +262,7 @@ export function useAthlete() {
     gameDays,
     nextGame,
     stats,
-    outlook,
+    message,
     bac,
   };
 }

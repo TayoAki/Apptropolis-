@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Ellipse } from "react-native-svg";
 import { EmptyState } from "../../components/EmptyState";
 import { GearTile, type Access } from "../../components/career/Unlocks";
-import { Appear, GrowBar, Mascot, Skeleton, Stagger } from "../../components/motion";
+import { Dash } from "../../components/Dash";
+import { Appear, GrowBar, Skeleton, Stagger } from "../../components/motion";
 import { showPaywall } from "../../components/paywallSource";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { useAthlete } from "../../components/useAthlete";
@@ -120,11 +121,12 @@ export default function CareerScreen() {
   for (let i = 0; i < gear.length; i += 2) rows.push(gear.slice(i, i + 2));
 
   // The athlete's pose follows the moment: over the limit, on a streak, or the usual stance.
-  const pose = athlete.over
-    ? "dash-heavy-legs"
-    : streak >= 2
-      ? "dash-game-day-sharp"
-      : "dash-match-ready";
+  // With a drink logged today or the estimate above zero it is always the usual stance.
+  const pose: "sharp" | "steady" | "flat" = athlete.over
+    ? "flat"
+    : streak >= 2 && !athlete.message.alcoholNow
+      ? "sharp"
+      : "steady";
 
   let hero: React.ReactNode;
   if (loading) {
@@ -165,7 +167,10 @@ export default function CareerScreen() {
             >
               {current ? `Level ${currentIndex + 1}: ${current.name}` : "No level yet"}
             </Text>
-            {current ? (
+            {/* Level lines describe the athlete ("Turns up ready to train"). They are left out
+                while a drink is logged today or the estimate is above zero, so nothing on
+                screen reads as a claim about the person right now. */}
+            {current && !athlete.message.alcoholNow ? (
               <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
                 {current.description}
               </Text>
@@ -243,7 +248,7 @@ export default function CareerScreen() {
               strokeWidth={1}
             />
           </Svg>
-          <Mascot pose={pose} size={MASCOT} />
+          <Dash pose={pose} size={MASCOT} />
         </View>
       </View>
     );

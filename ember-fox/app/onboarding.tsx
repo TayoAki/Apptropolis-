@@ -17,20 +17,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AlcoholFreeButton } from "../components/index/AlcoholFreeButton";
 import { DrinkLogRow } from "../components/index/DrinkLogRow";
 import { DrinkTiles } from "../components/index/DrinkTiles";
-import { FORM_POSE, FormHero, formHeadline } from "../components/index/FormHero";
+import { FormHero } from "../components/index/FormHero";
 import { WeekProgress } from "../components/index/WeekProgress";
 import { OptionRow } from "../components/onboarding/OptionRow";
 import { StepDots } from "../components/onboarding/StepDots";
 import { Panel } from "../components/Panel";
 import { notePaywallSource } from "../components/paywallSource";
-import {
-  Mascot,
-  PressScale,
-  Skeleton,
-  Stagger,
-  StepTransition,
-  haptic,
-} from "../components/motion";
+import { Dash } from "../components/Dash";
+import { PressScale, Skeleton, Stagger, StepTransition, haptic } from "../components/motion";
 import { useAthlete } from "../components/useAthlete";
 import { track } from "../data/analytics";
 import { useAppState } from "../data/app-state";
@@ -230,7 +224,7 @@ export default function OnboardingScreen() {
         key="head"
         title="See your form for game day"
         body="Log your drinks against a weekly limit and see what they do to your next game. Four short steps: your sport, your limit, today's log and an optional reminder."
-        aside={<Mascot pose="dash-match-ready" size={88} />}
+        aside={<Dash pose="steady" size={88} />}
       />,
       <Question
         key="question"
@@ -342,14 +336,9 @@ export default function OnboardingScreen() {
           </Text>
           <FormHero
             form={athlete.stats.form}
-            outlook={athlete.outlook}
-            pose={FORM_POSE[athlete.outlook.tier]}
-            headline={formHeadline(athlete.outlook.tier, {
-              nextGame: athlete.nextGame,
-              today: athlete.today,
-              noun: athlete.sportNoun,
-              now: athlete.now,
-            })}
+            headline={athlete.message.headline}
+            line={athlete.message.line}
+            pose={athlete.message.pose}
           />
           <WeekProgress
             total={athlete.weekTotal}

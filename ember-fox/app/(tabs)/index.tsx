@@ -5,7 +5,7 @@ import { AlcoholFreeButton } from "../../components/index/AlcoholFreeButton";
 import { BacPanel } from "../../components/index/BacPanel";
 import { DrinkLogRow } from "../../components/index/DrinkLogRow";
 import { DrinkTiles } from "../../components/index/DrinkTiles";
-import { FORM_POSE, FormHero, formHeadline } from "../../components/index/FormHero";
+import { FormHero } from "../../components/index/FormHero";
 import { WeekProgress } from "../../components/index/WeekProgress";
 import { Appear, Skeleton, SkeletonList, Stagger } from "../../components/motion";
 import { ScreenHeader } from "../../components/ScreenHeader";
@@ -41,7 +41,7 @@ export default function TonightScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const athlete = useAthlete();
-  const { drinks, now, today, outlook, stats } = athlete;
+  const { drinks, now, today, message, stats } = athlete;
 
   const todays = drinks.items
     .filter((d) => dayKey(d.logged_at) === today)
@@ -51,13 +51,6 @@ export default function TonightScreen() {
     month: "short",
     day: "numeric",
   });
-  const headline = formHeadline(outlook.tier, {
-    nextGame: athlete.nextGame,
-    today,
-    noun: athlete.sportNoun,
-    now,
-  });
-
   const header = (
     <View style={{ gap: theme.spacing.lg, paddingBottom: theme.spacing.sm }}>
       <ScreenHeader title="Tonight" subtitle={`${dateLabel} · ${athlete.sportLabel}`} />
@@ -68,9 +61,9 @@ export default function TonightScreen() {
         <Stagger step={70} style={{ gap: theme.spacing.lg }}>
           <FormHero
             form={stats.form}
-            outlook={outlook}
-            pose={FORM_POSE[outlook.tier]}
-            headline={headline}
+            headline={message.headline}
+            line={message.line}
+            pose={message.pose}
           />
 
           <WeekProgress

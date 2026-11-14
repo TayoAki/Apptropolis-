@@ -19,7 +19,8 @@ import { OfferCard } from "../components/paywall/OfferCard";
 import { Panel } from "../components/Panel";
 import { takePaywallSource } from "../components/paywallSource";
 import { Picture } from "../components/Picture";
-import { Appear, haptic, Mascot, PressScale, Skeleton } from "../components/motion";
+import { Dash } from "../components/Dash";
+import { Appear, haptic, PressScale, Skeleton } from "../components/motion";
 import { track } from "../data/analytics";
 import { appInfo } from "../data/app-info";
 import { backend } from "../data/backend";
@@ -219,7 +220,7 @@ export default function PaywallScreen() {
                 {isPremium ? "You're on ShotOClock Plus" : "Train harder. Drink smarter."}
               </Text>
             </View>
-            <Mascot pose={isPremium ? "dash-game-day-sharp" : "dash-match-ready"} size={104} />
+            <Dash pose="steady" size={104} />
           </View>
         </Appear>
 

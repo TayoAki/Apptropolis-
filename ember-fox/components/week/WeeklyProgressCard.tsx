@@ -221,7 +221,7 @@ export function WeeklyProgressCard({
               color={statusColor}
             />
             <Text style={[value, { color: statusColor, flexShrink: 1 }]}>
-              {over ? "Over limit" : "On track"}
+              {over ? "Over limit" : "In limit"}
             </Text>
           </View>
         </Stat>

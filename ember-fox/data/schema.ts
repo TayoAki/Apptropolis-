@@ -323,6 +323,13 @@ export interface BacEstimate {
 export const BAC_WINDOW_HOURS = 24;
 
 /**
+ * The estimate, in percent, from which the BAC panel adds its "this is a high estimate" line
+ * about when to call emergency services. A product decision, not a medical threshold: the
+ * owner's to tune, together with the wording in components/index/BacPanel.tsx.
+ */
+export const HIGH_BAC_PERCENT = 0.15;
+
+/**
  * A rough Widmark estimate from the drinks of the last 24 hours, body weight and body type.
  * Drinks are taken in the order they were logged: the body clears alcohol at an average rate
  * between them and never below zero, so an early drink that has already cleared can't cancel a
@@ -413,6 +420,119 @@ export function outlookFor(form: number, sport: Sport): Outlook {
     tier: "flat",
     title: "Flat",
     line: `Recovery is slow right now. Two or three alcohol-free days give your body room to bounce back before your next ${noun}.`,
+  };
+}
+
+// ---------- what the form rating is allowed to say ----------
+
+/**
+ * The words that go with the form rating. The number is the same formula in every state; the
+ * words are not. With a drink logged today, or the BAC estimate above zero, the app never calls
+ * the person fresh, sharp, solid, ready or on track for a game: it says drinks are logged and
+ * what alcohol does. With the week over its limit, the headline says so, whatever the number is.
+ * Only a clear day inside the limit gets the tier's own wording.
+ */
+export interface FormMessage {
+  state: "clear" | "drinks" | "over";
+  /** A drink is logged today, or the estimate is above zero. */
+  alcoholNow: boolean;
+  /** The tier behind the mascot's pose: never the sharp one with alcohol in the picture. */
+  pose: Outlook["tier"];
+  /** The headline on Tonight's hero. */
+  headline: string;
+  /** The line under it. */
+  line: string;
+  /** The title of the Week tab's game form card (also the shared card). */
+  cardTitle: string;
+  /** A line under that card's figures; null on a clear day. */
+  cardNote: string | null;
+  /** The tier word for the share text ("sharp"); null when it would overclaim. */
+  shareWord: string | null;
+}
+
+export interface FormContext {
+  /** The form rating, 0 to 100. */
+  form: number;
+  sport: Sport;
+  /** The next game or training day (YYYY-MM-DD), or null when none is set. */
+  nextGame: string | null;
+  now: Date;
+  /** Standard drinks logged today. */
+  drinksToday: number;
+  /** The BAC estimate, in percent. */
+  bacPercent: number;
+  weekTotal: number;
+  limit: number;
+}
+
+/** Said wherever drinks are in the picture. General on purpose: the estimate may read zero. */
+export const ALCOHOL_NOTE =
+  "Any alcohol still in your system affects coordination and reaction time.";
+
+const LEGS: Record<Outlook["tier"], string> = {
+  sharp: "Fresh legs",
+  steady: "Solid legs",
+  flat: "Heavy legs",
+};
+
+const CARD_TITLES: Record<Outlook["tier"], string> = {
+  sharp: "Game form: sharp",
+  steady: "Game form: steady",
+  flat: "Game form: recovering",
+};
+
+export function formMessage(context: FormContext): FormMessage {
+  const { form, sport, nextGame, now, drinksToday, bacPercent, weekTotal, limit } = context;
+  const alcoholNow = drinksToday > 0 || bacPercent > 0;
+  const over = weekTotal > limit;
+  const logged = drinksToday > 0 ? "Drinks are logged today" : "Recent drinks are logged";
+
+  if (over) {
+    const excess = `${formatDrinks(weekTotal - limit)} over your limit of ${formatCount(limit)}`;
+    return {
+      state: "over",
+      alcoholNow,
+      pose: "flat",
+      headline: "Over your limit this week",
+      line: alcoholNow
+        ? `${logged} and the week is ${excess}. ${ALCOHOL_NOTE}`
+        : `This rating reflects a week that is ${excess}.`,
+      cardTitle: "Game form: over your limit this week",
+      cardNote: alcoholNow ? ALCOHOL_NOTE : "Alcohol-free days from here bring the rating back up.",
+      shareWord: null,
+    };
+  }
+
+  if (alcoholNow) {
+    const headline = drinksToday > 0 ? "Drinks logged today" : "Recent drinks logged";
+    return {
+      state: "drinks",
+      alcoholNow,
+      pose: "steady",
+      headline,
+      line: `This rating reflects your week so far, not how you would play right now. ${ALCOHOL_NOTE}`,
+      cardTitle: `Game form: ${headline.toLowerCase()}`,
+      cardNote: ALCOHOL_NOTE,
+      shareWord: null,
+    };
+  }
+
+  const outlook = outlookFor(form, sport);
+  const noun = SPORTS.find((s) => s.id === sport)?.noun ?? "session";
+  const target = !nextGame
+    ? `your next ${noun}`
+    : nextGame === dayKey(now)
+      ? `today's ${noun}`
+      : comingDayName(nextGame, now);
+  return {
+    state: "clear",
+    alcoholNow,
+    pose: outlook.tier,
+    headline: `${LEGS[outlook.tier]} for ${target}`,
+    line: outlook.line,
+    cardTitle: CARD_TITLES[outlook.tier],
+    cardNote: null,
+    shareWord: outlook.title.toLowerCase(),
   };
 }
 

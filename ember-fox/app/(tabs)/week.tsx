@@ -47,7 +47,7 @@ export default function WeekScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const athlete = useAthlete();
-  const { drinks, checkins, days, now, today, stats, outlook, limit } = athlete;
+  const { drinks, checkins, days, now, today, stats, message, limit } = athlete;
   const { isPremium } = usePurchases();
   const coach = useAI();
   const share = useShareImage();
@@ -104,16 +104,17 @@ export default function WeekScreen() {
         athlete.over ? ", reflecting on the week going over the limit without blame" : ""
       }. Two short sentences.`,
       instructions:
-        "You are a practical sports coach for a recreational athlete who is cutting down on alcohol. Plain English, no medical claims, no shaming, never suggest drinking more, and never give advice on whether it is safe to drive.",
+        "You are a practical sports coach for a recreational athlete who is cutting down on alcohol. Plain English, no medical claims, no shaming, never suggest drinking more, never say they are ready or fit to play or train after drinking, and never give advice on whether it is safe to drive.",
     });
   }
 
   async function shareForm() {
     setShareNote(null);
     const shared = await share.share({
-      message: `My game form is ${stats.form} of 100 (${outlook.title.toLowerCase()}) with ${freeDays} alcohol-free ${
-        freeDays === 1 ? "day" : "days"
-      } this week.`,
+      // The tier word ("sharp") is only shared on a clear day inside the limit.
+      message: `My game form rating is ${stats.form} of 100${
+        message.shareWord ? ` (${message.shareWord})` : ""
+      }, with ${freeDays} alcohol-free ${freeDays === 1 ? "day" : "days"} this week.`,
       title: "Game form",
     });
     if (!shared) setShareNote("Sharing isn't available here. Nothing was shared.");
@@ -165,7 +166,9 @@ export default function WeekScreen() {
         {show ? (
           <GameFormCard
             form={stats.form}
-            outlook={outlook}
+            title={message.cardTitle}
+            caution={message.cardNote}
+            pose={message.pose}
             freeDays={freeDays}
             nextGame={nextGame}
             cardRef={share.ref}

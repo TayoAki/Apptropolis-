@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
-import { comingDayName, type Outlook } from "../../data/schema";
+import type { Outlook } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { CountUp, Mascot, useReducedMotion } from "../motion";
+import { Dash } from "../Dash";
+import { CountUp, useReducedMotion } from "../motion";
 
 /** A half circle (radius 86) across the top of a 200 x 112 canvas. */
 const ARC = "M 14 100 A 86 86 0 0 1 186 100";
@@ -64,53 +65,28 @@ function Gauge({ score }: { score: number }) {
   );
 }
 
-/** The mascot pose that fits each form tier. */
-export const FORM_POSE: Record<Outlook["tier"], string> = {
-  sharp: "dash-game-day-sharp",
-  steady: "dash-match-ready",
-  flat: "dash-heavy-legs",
-};
-
-const LEGS: Record<Outlook["tier"], string> = {
-  sharp: "Fresh legs",
-  steady: "Solid legs",
-  flat: "Heavy legs",
-};
-
-/**
- * The hero's headline: how the legs feel and what for. It names the next game or training day
- * when Settings has one ("Solid legs for Saturday"), and the sport's noun otherwise.
- */
-export function formHeadline(
-  tier: Outlook["tier"],
-  game: { nextGame: string | null; today: string; noun: string; now: Date },
-): string {
-  if (!game.nextGame) return `${LEGS[tier]} for your next ${game.noun}`;
-  if (game.nextGame === game.today) return `${LEGS[tier]} for today's ${game.noun}`;
-  return `${LEGS[tier]} for ${comingDayName(game.nextGame, game.now)}`;
-}
-
 /**
  * The Form Rating hero: the arc gauge and score beside the mascot, then the headline and the
- * outlook line (what the score means and what would raise it) across the card.
+ * line under it. The words come from formMessage (data/schema), which decides what the rating
+ * may say when drinks are logged or the week is over its limit.
  */
 export function FormHero({
   form,
-  outlook,
-  pose,
   headline,
+  line,
+  pose,
 }: {
   form: number;
-  outlook: Outlook;
-  /** A mascot pose name from data/images.ts. */
-  pose: string;
   headline: string;
+  line: string;
+  /** The tier whose mascot pose to show. */
+  pose: Outlook["tier"];
 }) {
   const theme = useTheme();
   return (
     <View
       accessible
-      accessibilityLabel={`Form rating ${form} out of 100. ${headline}. ${outlook.line}`}
+      accessibilityLabel={`Form rating ${form} out of 100. ${headline}. ${line}`}
       style={{
         padding: theme.spacing.lg,
         gap: theme.spacing.md,
@@ -167,7 +143,7 @@ export function FormHero({
             </View>
           </View>
         </View>
-        <Mascot pose={pose} size={116} />
+        <Dash pose={pose} size={116} />
       </View>
       <View style={{ gap: theme.spacing.xs }}>
         <Text
@@ -181,7 +157,7 @@ export function FormHero({
           {headline}
         </Text>
         <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-          {outlook.line}
+          {line}
         </Text>
       </View>
     </View>
