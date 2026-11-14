@@ -111,7 +111,8 @@ export default function SettingsScreen() {
 
   const [open, setOpen] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"reset" | "erase" | null>(null);
-  const [status_, setStatusText] = useState<string | null>(null);
+  const [dataNote, setDataNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const setStatusText = (text: string | null, ok = true) => setDataNote(text ? { text, ok } : null);
   const [nudgeNote, setNudgeNote] = useState<string | null>(null);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
@@ -155,8 +156,8 @@ export default function SettingsScreen() {
       return;
     }
     const allowed = await reminder.enable({
-      title: "Quiet pre-game check-in",
-      body: "Log tonight's drinks, or mark an alcohol-free day.",
+      title: "ShotOClock check-in",
+      body: "Log today's drinks, or mark an alcohol-free day.",
     });
     if (!allowed)
       setNudgeNote(
@@ -172,13 +173,13 @@ export default function SettingsScreen() {
 
   async function exportHistory() {
     if (drinks.items.length === 0) {
-      setStatusText("Nothing logged yet to export.");
+      setStatusText("Nothing logged yet to export.", false);
       return;
     }
     try {
       await Share.share({ title: "ShotOClock drink log", message: drinkCsv(drinks.items) });
     } catch {
-      setStatusText("Couldn't open the share sheet. Try again.");
+      setStatusText("Couldn't open the share sheet on this device. Nothing was exported.", false);
     }
   }
 
@@ -199,7 +200,7 @@ export default function SettingsScreen() {
       haptic("success");
       setStatusText("Career progress was reset. Your logged drinks are still here.");
     } catch {
-      setStatusText("The reset didn't finish. Try again.");
+      setStatusText("The reset didn't finish. Try again.", false);
     }
     setConfirm(null);
   }
@@ -216,7 +217,7 @@ export default function SettingsScreen() {
       haptic("success");
       setStatusText("All logged data was erased from this phone.");
     } catch {
-      setStatusText("The erase didn't finish. Try again.");
+      setStatusText("The erase didn't finish. Try again.", false);
     }
     setConfirm(null);
   }
@@ -495,17 +496,31 @@ export default function SettingsScreen() {
           <SettingsSection
             title="Data and privacy"
             footer={
-              status_ ? (
-                <Text
-                  accessibilityLiveRegion="polite"
+              dataNote ? (
+                <View
                   style={{
-                    color: theme.colors.success,
-                    fontSize: theme.font.size.caption,
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: theme.spacing.xs,
                     paddingHorizontal: theme.spacing.sm,
                   }}
                 >
-                  {status_}
-                </Text>
+                  <Ionicons
+                    name={dataNote.ok ? "checkmark-circle-outline" : "alert-circle-outline"}
+                    size={16}
+                    color={dataNote.ok ? theme.colors.success : theme.colors.danger}
+                  />
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={{
+                      flex: 1,
+                      color: dataNote.ok ? theme.colors.success : theme.colors.danger,
+                      fontSize: theme.font.size.caption,
+                    }}
+                  >
+                    {dataNote.text}
+                  </Text>
+                </View>
               ) : (
                 "Logged drinks, check-ins and weekly results stay on this phone until you erase them."
               )

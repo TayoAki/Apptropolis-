@@ -1,6 +1,8 @@
 import { Text, View } from "react-native";
 import {
   BAC_WINDOW_HOURS,
+  comingDayName,
+  dayKey,
   formatBac,
   formatTime,
   profileBasis,
@@ -25,7 +27,12 @@ export function BacPanel({
 }) {
   const theme = useTheme();
   const active = bac.percent > 0;
-  const zeroAt = formatTime(new Date(now.getTime() + bac.hoursToZero * 3600000).toISOString());
+  const zero = new Date(now.getTime() + bac.hoursToZero * 3600000);
+  // A time past midnight is said with its day, so "9:45 AM" isn't read as this morning.
+  const zeroDay = dayKey(zero) === dayKey(now) ? null : comingDayName(dayKey(zero), now);
+  const zeroAt = `${formatTime(zero.toISOString())}${
+    zeroDay === null ? "" : zeroDay === "tomorrow" ? " tomorrow" : ` on ${zeroDay}`
+  }`;
   const basis = `Worked out from the drinks you logged in the last ${BAC_WINDOW_HOURS} hours, ${profileBasis(profile)}${
     profile.weightSet && profile.bodyTypeSet ? "" : " (set yours in Settings)"
   }. It leaves out food, drink strength and your own metabolism, so your real level can be higher.`;
@@ -83,7 +90,7 @@ export function BacPanel({
           fontWeight: theme.font.weight.bold,
         }}
       >
-        An estimate only. Never drive after drinking.
+        An estimate only, even at zero. Never drive after drinking.
       </Text>
     </Panel>
   );

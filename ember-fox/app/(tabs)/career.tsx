@@ -16,6 +16,7 @@ import {
   alcoholFreeDays,
   dayKey,
   formatCount,
+  goalForWeek,
   parseDay,
   unlockState,
   weeksWithinLimit,
@@ -29,17 +30,15 @@ const RANK: Record<Access, number> = { unlocked: 0, locked: 1, plus: 2 };
 const MASCOT = 120;
 
 /**
- * Consecutive weeks inside the limit, counting back from this week. This week counts while it's
- * still in progress and inside the limit; a week with no saved result ends the run.
+ * Finished weeks in a row inside the limit, counting back from last week. The week in progress
+ * isn't counted until it ends, and a week with no saved result (nothing was logged) ends the run.
  */
-function streakWeeks(goals: WeeklyGoal[], thisWeek: string, thisWeekInside: boolean): number {
+function streakWeeks(goals: WeeklyGoal[], thisWeek: string): number {
   const start = parseDay(thisWeek);
   let streak = 0;
-  for (let n = 0; n < 520; n++) {
+  for (let n = 1; n < 520; n++) {
     const key = dayKey(addDays(start, -7 * n));
-    const record = goals.find((goal) => goal.week_start === key);
-    const met = record ? record.goal_met : n === 0 && thisWeekInside;
-    if (!met) break;
+    if (!goalForWeek(goals, key)?.goal_met) break;
     streak += 1;
   }
   return streak;
@@ -85,10 +84,10 @@ export default function CareerScreen() {
     alcoholFreeDays: alcoholFreeDays(checkins),
   };
   const freeDays = progress.alcoholFreeDays;
-  const streak = streakWeeks(goals, athlete.weekKey, !athlete.over);
+  const streak = streakWeeks(goals, athlete.weekKey);
   const hasHistory = goals.length + checkins.length + drinks.length > 0;
   const lastWeekKey = dayKey(addDays(parseDay(athlete.weekKey), -7));
-  const lastWeek = goals.find((goal) => goal.week_start === lastWeekKey) ?? null;
+  const lastWeek = goalForWeek(goals, lastWeekKey);
 
   // Athlete levels, lowest first. The current one is the highest earned level the person can
   // use; the next one is the level after it, which may already be earned but part of Plus.
@@ -318,8 +317,8 @@ export default function CareerScreen() {
           }}
         >
           {streak > 0
-            ? `${streak} ${streak === 1 ? "week" : "weeks"} in a row within your limit`
-            : "No streak yet"}
+            ? `${streak} finished ${streak === 1 ? "week" : "weeks"} in a row within your limit`
+            : "No streak of finished weeks yet"}
         </Text>
         <Text
           style={{

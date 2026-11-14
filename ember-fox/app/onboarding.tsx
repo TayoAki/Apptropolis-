@@ -213,7 +213,7 @@ export default function OnboardingScreen() {
     try {
       on = await reminder.enable({
         title: "ShotOClock check-in",
-        body: "Log today's drinks, or mark an alcohol-free day, before your next session.",
+        body: "Log today's drinks, or mark an alcohol-free day.",
         hour,
         minute: 0,
       });

@@ -144,7 +144,6 @@ export function useAthlete() {
         .finally(() => closing.delete(week.week_start));
     }
     // The records themselves are the trigger: a new week, a new entry or a reset re-runs this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, since, weekKey, drinks.items, checkins.items, goals.items]);
 
   /** Run a write in order; a failure is shown to the person instead of being swallowed. */

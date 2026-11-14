@@ -486,6 +486,22 @@ export function weeksToClose(
   return result;
 }
 
+/**
+ * The saved result for the week starting on `startKey`. After the first day of the week is
+ * changed in Settings, older results start a day earlier or later: the nearest one within three
+ * days is that week's.
+ */
+export function goalForWeek(goals: WeeklyGoal[], startKey: string): WeeklyGoal | null {
+  const exact = goals.find((goal) => goal.week_start === startKey);
+  if (exact) return exact;
+  const start = parseDay(startKey).getTime();
+  return (
+    goals.find(
+      (goal) => Math.abs(parseDay(goal.week_start).getTime() - start) < 3.5 * 24 * HOUR,
+    ) ?? null
+  );
+}
+
 export interface WeekTotal {
   weekStart: string;
   total: number;
