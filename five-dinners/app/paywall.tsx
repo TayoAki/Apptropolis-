@@ -129,7 +129,8 @@ export default function Paywall() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          marginTop: theme.spacing.xs,
+          // Tucks up beside the close button, which sits clear of the card in the top corner.
+          marginTop: -theme.spacing.md,
           marginBottom: theme.spacing.sm,
         }}
       >
@@ -301,7 +302,7 @@ export default function Paywall() {
 
         {renderReceipt()}
 
-        <View style={{ alignItems: "center", marginTop: theme.spacing.md }}>
+        <View style={{ alignItems: "center", marginTop: theme.spacing.sm }}>
           <Text
             accessibilityRole="header"
             style={{
@@ -327,7 +328,7 @@ export default function Paywall() {
           </Text>
         </View>
 
-        <View style={{ marginTop: theme.spacing.md }}>
+        <View style={{ marginTop: theme.spacing.sm + 4 }}>
           {premiumFeatures.map((feature, i) => {
             const { title, body } = splitFeature(feature);
             return (
@@ -336,7 +337,7 @@ export default function Paywall() {
                 style={{
                   flexDirection: "row",
                   gap: theme.spacing.sm + 4,
-                  paddingVertical: theme.spacing.sm + 2,
+                  paddingVertical: theme.spacing.sm,
                   borderTopWidth: i === 0 ? 0 : 1,
                   borderTopColor: theme.colors.border,
                 }}
@@ -357,7 +358,7 @@ export default function Paywall() {
           </View>
         ) : (
           <>
-            <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.sm }}>
+            <View style={{ marginTop: theme.spacing.sm + 4, gap: theme.spacing.sm }}>
               {offers.map((offer) => {
                 const active = offer.id === selected?.id;
                 const oneOff = isOneOff(offer);

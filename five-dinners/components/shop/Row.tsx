@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { formatPrice, formatPriceDiff } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -33,8 +33,12 @@ export function ShopRow({
 }) {
   const theme = useTheme();
   const [text, setText] = useState(paid > 0 ? formatPrice(paid) : "");
+  // The last amount handed to onPaid. Submitting and then leaving the box both commit, and the
+  // second must not save the same price again before the first has come back as `paid`.
+  const saved = useRef(paid);
 
   useEffect(() => {
+    saved.current = paid;
     setText(paid > 0 ? formatPrice(paid) : "");
   }, [paid]);
 
@@ -43,9 +47,12 @@ export function ShopRow({
     if (Number.isFinite(n) && n > 0) {
       const rounded = Math.round(n * 100) / 100;
       setText(formatPrice(rounded));
-      if (rounded !== paid) onPaid(rounded);
+      if (rounded !== saved.current) {
+        saved.current = rounded;
+        onPaid(rounded);
+      }
     } else {
-      setText(paid > 0 ? formatPrice(paid) : "");
+      setText(saved.current > 0 ? formatPrice(saved.current) : "");
     }
   }
 
@@ -119,7 +126,7 @@ export function ShopRow({
             <TextInput
               value={text}
               onChangeText={setText}
-              onEndEditing={commit}
+              onBlur={commit}
               onSubmitEditing={commit}
               keyboardType="decimal-pad"
               returnKeyType="done"

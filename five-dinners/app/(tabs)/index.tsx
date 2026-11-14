@@ -94,7 +94,7 @@ export default function WeekScreen() {
   const budget = parseBudget(answers.weeklybudget ?? "£25");
   const householdServings = parseServings(answers.servings ?? "2");
   const excluded = useMemo(
-    // "excluded" is what Settings saves ("pork,fish"); the other two are older answer keys.
+    // Settings saves the "Foods we don't eat" chips under "excluded" (e.g. "pork,fish").
     () =>
       parseExclusions(
         `${answers.diet ?? ""} ${answers.exclusions ?? ""} ${answers.excluded ?? ""}`,
@@ -370,6 +370,7 @@ export default function WeekScreen() {
                       }}
                     />
                   </View>
+                  {/* Two short lines beside the total, so a wide "over" pill never squeezes it. */}
                   <Text
                     style={{
                       ...base,
@@ -380,14 +381,11 @@ export default function WeekScreen() {
                       fontVariant: ["tabular-nums"],
                     }}
                   >
-                    of {formatPrice(budget)} budget
+                    {`of ${formatPrice(budget)}\nbudget`}
                   </Text>
                 </View>
                 <View
                   style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: theme.spacing.xs,
                     borderColor: over ? theme.colors.danger : theme.colors.accent,
                     borderWidth: 1.5,
                     borderRadius: theme.radius.pill,
@@ -396,9 +394,6 @@ export default function WeekScreen() {
                     marginBottom: 4,
                   }}
                 >
-                  {over ? (
-                    <Ionicons name="alert-circle-outline" size={16} color={theme.colors.danger} />
-                  ) : null}
                   <Text
                     style={{
                       ...base,

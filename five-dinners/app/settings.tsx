@@ -604,7 +604,7 @@ export default function SettingsScreen() {
             <Stepper
               noun="vegetarian nights"
               label="Vegetarian nights a week"
-              value={vegNights === 0 ? "None" : `${vegNights} a week`}
+              value={vegNights === 0 ? "None" : String(vegNights)}
               canDecrease={vegNights > 0}
               canIncrease={vegNights < 3}
               onDecrease={() => void setAnswer("vegnights", String(vegNights - 1))}
