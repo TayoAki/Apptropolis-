@@ -23,7 +23,15 @@ export function ThemeSwatches({
     <View
       accessibilityRole="radiogroup"
       accessibilityLabel="Theme"
-      style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}
+      // Spread across the space the row gives it, up to an 8pt gap, so the five swatches
+      // close up instead of overflowing the card on a narrow phone.
+      style={{
+        flex: 1,
+        maxWidth: themes.length * SWATCH + (themes.length - 1) * theme.spacing.sm,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
     >
       {themes.map((pack) => {
         const on = pack.id === selected;

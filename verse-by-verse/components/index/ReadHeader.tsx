@@ -7,7 +7,9 @@ import { haptic, PressScale } from "../motion";
 
 /**
  * The top row of the Read screen: the verse pill (e.g. "John 1:1" with a caret), which opens a
- * row of verses to jump to; "Chapter N", which opens the whole chapter; and Settings.
+ * row of verses to jump to; "Chapter", which opens the whole chapter; and Settings. The pill
+ * gives way first when the row is tight: a long reference shrinks a little rather than pushing
+ * the buttons off the screen.
  */
 export function ReadHeader({
   current,
@@ -28,7 +30,14 @@ export function ReadHeader({
 
   return (
     <View style={{ gap: theme.spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: theme.spacing.sm,
+        }}
+      >
         <View style={{ flexShrink: 1 }}>
           <PressScale
             onPress={() => {
@@ -44,7 +53,8 @@ export function ReadHeader({
               alignItems: "center",
               gap: theme.spacing.sm,
               minHeight: 44,
-              paddingHorizontal: theme.spacing.lg,
+              paddingLeft: theme.spacing.lg,
+              paddingRight: theme.spacing.md,
               borderRadius: theme.radius.pill,
               borderWidth: 1,
               borderColor: theme.colors.border,
@@ -73,51 +83,51 @@ export function ReadHeader({
           </PressScale>
         </View>
 
-        <View style={{ flex: 1 }} />
-
-        <PressScale
-          onPress={onReadChapter}
-          scaleTo={0.95}
-          accessibilityRole="button"
-          accessibilityLabel={`Read all of ${current.book} chapter ${current.chapter}`}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: theme.spacing.xs + 2,
-            minHeight: 44,
-            paddingHorizontal: theme.spacing.md,
-            borderRadius: theme.radius.pill,
-            backgroundColor: theme.colors.primary + "1F",
-          }}
-        >
-          <Ionicons name="book-outline" size={18} color={theme.colors.primary} />
-          <Text
+        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+          <PressScale
+            onPress={onReadChapter}
+            scaleTo={0.95}
+            accessibilityRole="button"
+            accessibilityLabel={`Read all of ${current.book} chapter ${current.chapter}`}
             style={{
-              color: theme.colors.primary,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.bold,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: theme.spacing.xs + 2,
+              minHeight: 44,
+              paddingHorizontal: theme.spacing.md,
+              borderRadius: theme.radius.pill,
+              backgroundColor: theme.colors.primary + "1F",
             }}
           >
-            {`Chapter ${current.chapter}`}
-          </Text>
-        </PressScale>
+            <Ionicons name="book-outline" size={18} color={theme.colors.primary} />
+            <Text
+              style={{
+                color: theme.colors.primary,
+                fontSize: theme.font.size.caption,
+                fontWeight: theme.font.weight.bold,
+              }}
+            >
+              Chapter
+            </Text>
+          </PressScale>
 
-        <Pressable
-          onPress={onSettings}
-          accessibilityRole="button"
-          accessibilityLabel="Settings"
-          hitSlop={4}
-          style={({ pressed }) => ({
-            width: 44,
-            height: 44,
-            alignItems: "center",
-            justifyContent: "center",
-            marginRight: -theme.spacing.sm,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Ionicons name="settings-outline" size={24} color={theme.colors.primary} />
-        </Pressable>
+          <Pressable
+            onPress={onSettings}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            hitSlop={4}
+            style={({ pressed }) => ({
+              width: 44,
+              height: 44,
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: -theme.spacing.sm,
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Ionicons name="settings-outline" size={24} color={theme.colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       {open ? (

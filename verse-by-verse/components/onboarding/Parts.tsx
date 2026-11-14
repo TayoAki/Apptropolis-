@@ -89,7 +89,7 @@ export function DrawCheck({ size = 56 }: { size?: number }) {
 /**
  * A verse as a tappable card for the starting list. The featured card has a warm gradient fill
  * and a stronger border; the others are flat. `inset` is the right padding, so text stays clear
- * of the side panel that overlaps the featured card's edge.
+ * of the action column drawn inside the featured card.
  */
 export function VerseStartCard({
   label,

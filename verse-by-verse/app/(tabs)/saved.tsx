@@ -118,7 +118,7 @@ function FilterPill({
   );
 }
 
-/** Bottom sheet to name a folder and choose the verses in it. Rises in when it opens. */
+/** Bottom sheet to name a folder and choose the verses to move into it. Rises in when it opens. */
 function FolderSheet({
   title,
   saved,
@@ -372,7 +372,8 @@ export default function SavedScreen() {
   const visible = activeFilter === ALL ? saved : saved.filter((b) => b.folder === activeFilter);
   const countFor = (key: string) =>
     key === ALL ? saved.length : saved.filter((b) => b.folder === key).length;
-  const backdrop = cardFade.interpolate({ inputRange: [0, 1], outputRange: [0, 0.94] });
+  // The card preview covers the list completely, so nothing shows through behind its buttons.
+  const backdrop = cardFade;
 
   // The highlight behind the active pill glides to it with a spring.
   useEffect(() => {
@@ -583,7 +584,9 @@ export default function SavedScreen() {
             )}
             <Pressable
               onPress={() => openPaywall()}
-              hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+              // 44pt tall with the slop; it reaches down into the gap below, not up into
+              // the New folder button.
+              hitSlop={{ bottom: 12, left: 8, right: 8 }}
               accessibilityRole="button"
               accessibilityLabel={
                 isPremium ? "Patron key, see your plan" : "Patron key, unlock premium"
