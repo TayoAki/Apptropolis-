@@ -32,14 +32,9 @@ import {
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { ProductCard } from "../../components/assistant/ProductCard";
-import {
-  Appear,
-  haptic,
-  Mascot,
-  PressScale,
-  Skeleton,
-  useReducedMotion,
-} from "../../components/motion";
+import { Appear, haptic, PressScale, Skeleton, useReducedMotion } from "../../components/motion";
+import { Pip } from "../../components/Pip";
+import { LoadProblem, ScreenTitle, useStalled, withRetry } from "../../components/ui";
 
 type ChatMessage = AssistantMessage & { productId?: string; photo?: boolean };
 
@@ -201,14 +196,10 @@ function Bubble({
         paddingVertical: theme.spacing.md,
         borderRadius: theme.radius.md,
         borderBottomRightRadius: mine ? theme.spacing.xs : theme.radius.md,
+        borderBottomLeftRadius: mine ? theme.radius.md : theme.spacing.xs,
         backgroundColor: mine ? theme.colors.primary : theme.colors.surface,
         borderWidth: mine ? 0 : 1,
         borderColor: theme.colors.border,
-        shadowColor: theme.colors.border,
-        shadowOpacity: mine ? 0 : 1,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: mine ? 0 : 2,
       }}
     >
       {text ? (
@@ -236,7 +227,7 @@ function ChatSkeleton() {
   );
 }
 
-export default function AssistantScreen() {
+function AssistantScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { answers } = useAppState();
@@ -245,10 +236,11 @@ export default function AssistantScreen() {
   const catalog = useCollection<Product>("products");
   const ai = useAI();
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const settled = useRef(false);
+  const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [failed, setFailed] = useState<{ question: string; photo: Photo | null } | null>(null);
-  const [opened] = useState(() => new Date().toISOString());
 
   const tone: "playful" | "brief" = answers.tone === "brief" ? "brief" : "playful";
   const messages = useMemo(
@@ -261,6 +253,14 @@ export default function AssistantScreen() {
   );
   const latest = recentOrders[0];
   const loading = history.loading || orders.loading;
+  const stalled = useStalled(loading);
+
+  // Open on the latest message once the conversation has loaded.
+  useEffect(() => {
+    if (loading) return;
+    const timer = setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 80);
+    return () => clearTimeout(timer);
+  }, [loading]);
   const pose =
     latest?.status === "delivered"
       ? "pip-celebrating"
@@ -365,12 +365,11 @@ export default function AssistantScreen() {
                 alignSelf: "center",
                 color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
-                letterSpacing: 1,
                 fontVariant: ["tabular-nums"],
                 marginTop: theme.spacing.sm,
               }}
             >
-              {`${relativeDay(item.createdAt).toUpperCase()}, ${formatTime(item.createdAt)}`}
+              {`${relativeDay(item.createdAt)}, ${formatTime(item.createdAt)}`}
             </Text>
           ) : null}
           <Bubble from={item.role === "user" ? "you" : "pip"} text={item.text} photo={item.photo} />
@@ -384,98 +383,16 @@ export default function AssistantScreen() {
     );
   }
 
+  // Pip's welcome opens the conversation; earlier messages follow it with their own dates.
   const header = (
-    <View>
-      <View
-        style={{
-          alignItems: "center",
-          paddingTop: insets.top + theme.spacing.xl,
-          paddingBottom: theme.spacing.lg,
-          gap: theme.spacing.xs,
-        }}
-      >
-        <Appear>
-          <View
-            style={{
-              width: 96,
-              height: 96,
-              borderRadius: 48,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: theme.colors.surface,
-              shadowColor: theme.colors.border,
-              shadowOpacity: 1,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 2,
-            }}
-          >
-            <Mascot pose={pose} size={68} />
-            <View
-              style={{
-                position: "absolute",
-                right: 8,
-                bottom: 8,
-                width: 16,
-                height: 16,
-                borderRadius: 8,
-                borderWidth: 3,
-                borderColor: theme.colors.surface,
-                backgroundColor: theme.colors.success,
-              }}
-            />
-          </View>
-        </Appear>
-        <Text
-          accessibilityRole="header"
-          style={{
-            color: theme.colors.text,
-            fontSize: theme.font.size.headline,
-            fontWeight: theme.font.weight.bold,
-            marginTop: theme.spacing.sm,
-          }}
-        >
-          Pip Concierge
-        </Text>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-          Knows your orders & catalog
-        </Text>
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
-            letterSpacing: 1,
-            fontVariant: ["tabular-nums"],
-            marginTop: theme.spacing.xs,
-          }}
-        >
-          {`${relativeDay(opened).toUpperCase()}, ${formatTime(opened)}`}
-        </Text>
-      </View>
-
-      {loading ? (
+    <View style={{ paddingTop: theme.spacing.lg, paddingBottom: theme.spacing.md }}>
+      {stalled ? (
+        <LoadProblem onRetry={onRetry} />
+      ) : loading ? (
         <ChatSkeleton />
       ) : (
         <Appear delay={120}>
-          <Bubble from="pip">
-            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 24 }}>
-              {greeting(latest)}
-            </Text>
-            <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-              <View
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: theme.colors.surfaceAlt,
-                }}
-              >
-                <Mascot pose={pose} size={26} />
-              </View>
-            </View>
-          </Bubble>
+          <Bubble from="pip" text={greeting(latest)} />
         </Appear>
       )}
     </View>
@@ -528,27 +445,62 @@ export default function AssistantScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {router.canGoBack() ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={12}
-          onPress={() => router.back()}
-          style={({ pressed }) => ({
-            position: "absolute",
-            top: insets.top + theme.spacing.sm,
-            left: theme.spacing.lg,
-            zIndex: 1,
-            width: 44,
-            height: 44,
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: theme.spacing.md,
+          paddingTop: insets.top + theme.spacing.sm,
+          paddingBottom: theme.spacing.sm,
+          paddingHorizontal: theme.spacing.lg,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
+          backgroundColor: theme.colors.background,
+        }}
+      >
+        {router.canGoBack() ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            onPress={() => router.back()}
+            style={({ pressed }) => ({
+              width: 44,
+              height: 44,
+              marginLeft: -theme.spacing.md,
+              marginRight: -theme.spacing.md,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Ionicons name="chevron-back" size={26} color={theme.colors.text} />
+          </Pressable>
+        ) : null}
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 24,
             alignItems: "center",
             justifyContent: "center",
-            opacity: pressed ? 0.6 : 1,
-          })}
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
         >
-          <Ionicons name="chevron-back" size={26} color={theme.colors.text} />
-        </Pressable>
-      ) : null}
+          <Pip pose={pose} size={38} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <ScreenTitle numberOfLines={1}>Pip Concierge</ScreenTitle>
+          <Text
+            numberOfLines={1}
+            style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
+          >
+            Knows your orders & catalog
+          </Text>
+        </View>
+      </View>
 
       <FlatList
         ref={listRef}
@@ -565,7 +517,11 @@ export default function AssistantScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() => {
+          // Open on the latest message at once; glide only when a new one arrives.
+          listRef.current?.scrollToEnd({ animated: settled.current });
+          if (!loading) settled.current = true;
+        }}
       />
 
       {!loading && !ai.loading ? (
@@ -573,6 +529,7 @@ export default function AssistantScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          style={{ flexGrow: 0 }}
           contentContainerStyle={{
             paddingHorizontal: theme.spacing.lg,
             gap: theme.spacing.sm,
@@ -602,7 +559,7 @@ export default function AssistantScreen() {
               >
                 <Text
                   style={{
-                    color: theme.colors.text,
+                    color: theme.colors.primary,
                     fontSize: theme.font.size.body,
                     fontWeight: theme.font.weight.medium,
                   }}
@@ -651,7 +608,13 @@ export default function AssistantScreen() {
               accessibilityLabel="Remove photo"
               hitSlop={12}
               onPress={() => setPhoto(null)}
-              style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+              style={({ pressed }) => ({
+                width: 44,
+                height: 44,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.6 : 1,
+              })}
             >
               <Ionicons name="close-circle" size={24} color={theme.colors.textMuted} />
             </Pressable>
@@ -667,29 +630,34 @@ export default function AssistantScreen() {
             style={({ pressed }) => ({
               width: 44,
               height: 44,
+              marginLeft: -theme.spacing.sm,
               alignItems: "center",
               justifyContent: "center",
               opacity: pressed ? 0.6 : 1,
             })}
           >
-            <Ionicons name="attach-outline" size={24} color={theme.colors.textMuted} />
+            <Ionicons name="attach-outline" size={24} color={theme.colors.text} />
           </Pressable>
           <TextInput
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={() => void send(draft, photo)}
-            placeholder="Ask Pip about orders, returns, or routines..."
+            placeholder="Ask Pip about your orders"
             placeholderTextColor={theme.colors.textMuted}
             returnKeyType="send"
             maxLength={600}
             accessibilityLabel="Message Pip"
+            onFocus={() => setComposing(true)}
+            onBlur={() => setComposing(false)}
             style={{
               flex: 1,
+              minWidth: 0,
               minHeight: 44,
               paddingHorizontal: theme.spacing.lg,
               borderRadius: theme.radius.pill,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
+              borderWidth: 1.5,
+              borderColor: composing ? theme.colors.primary : theme.colors.textMuted,
+              outlineWidth: 0,
               backgroundColor: theme.colors.surface,
               color: theme.colors.text,
               fontSize: theme.font.size.body,
@@ -709,14 +677,19 @@ export default function AssistantScreen() {
               borderRadius: 22,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: theme.colors.primary,
-              opacity: canSend ? 1 : 0.5,
+              backgroundColor: canSend ? theme.colors.primary : theme.colors.surfaceAlt,
             }}
           >
-            <Ionicons name="send" size={18} color={theme.colors.onPrimary} />
+            <Ionicons
+              name="send"
+              size={18}
+              color={canSend ? theme.colors.onPrimary : theme.colors.textMuted}
+            />
           </PressScale>
         </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+export default withRetry(AssistantScreen);

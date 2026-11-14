@@ -1,11 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import {
-  Animated,
-  PanResponder,
-  Text,
-  View,
-  type LayoutChangeEvent,
-} from "react-native";
+import { Animated, PanResponder, View, type LayoutChangeEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../theme/ThemeProvider";
 import { haptic } from "../motion";
@@ -22,7 +16,7 @@ const clamp = (value: number, low: number, high: number) =>
 /**
  * A slider that confirms something important. Drag the knob to the end (or use increase) to
  * commit. Landing snaps the knob to the end with a check and a firm tap; letting go early
- * springs it back to the start.
+ * springs it back to the start. While disabled the knob is neutral and shows a lock.
  */
 export function SlideToPay({
   label,
@@ -37,6 +31,8 @@ export function SlideToPay({
   done?: boolean;
 }) {
   const theme = useTheme();
+  // Waiting on something (an address, say): the knob turns neutral and the label stays readable.
+  const blocked = disabled && !done;
   const [width, setWidth] = useState(0);
   const travel = Math.max(0, width - TRACK);
 
@@ -116,7 +112,6 @@ export function SlideToPay({
         backgroundColor: theme.colors.surfaceAlt,
         justifyContent: "center",
         overflow: "hidden",
-        opacity: disabled && !done ? 0.5 : 1,
       }}
     >
       <Animated.View
@@ -146,7 +141,7 @@ export function SlideToPay({
         <Animated.Text
           style={{
             opacity: hintOpacity,
-            color: theme.colors.text,
+            color: blocked ? theme.colors.textMuted : theme.colors.text,
             fontSize: theme.font.size.body,
             fontWeight: theme.font.weight.medium,
             paddingLeft: TRACK - PAD,
@@ -174,28 +169,20 @@ export function SlideToPay({
           width: KNOB,
           height: KNOB,
           borderRadius: KNOB / 2,
-          backgroundColor: theme.colors.primary,
+          backgroundColor: blocked ? theme.colors.surface : theme.colors.primary,
+          borderWidth: blocked ? 1.5 : 0,
+          borderColor: theme.colors.textMuted,
           alignItems: "center",
           justifyContent: "center",
           transform: [{ translateX: x }],
         }}
       >
         <Ionicons
-          name={done ? "checkmark" : "chevron-forward"}
-          size={26}
-          color={theme.colors.onPrimary}
+          name={done ? "checkmark" : blocked ? "lock-closed-outline" : "chevron-forward"}
+          size={blocked ? 22 : 26}
+          color={blocked ? theme.colors.textMuted : theme.colors.onPrimary}
         />
       </Animated.View>
     </View>
   );
 }
-
-// Keep Text imported for consumers that compose this file's styles; the label above is animated.
-export const SlideToPayHint = ({ children }: { children: string }) => {
-  const theme = useTheme();
-  return (
-    <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, textAlign: "center" }}>
-      {children}
-    </Text>
-  );
-};

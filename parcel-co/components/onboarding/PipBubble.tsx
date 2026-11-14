@@ -3,7 +3,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { haptic, Mascot } from "../motion";
 
 /**
- * A floating chat bubble with Pip's avatar, shown above the tab bar. Tapping the avatar or the
+ * A chat bubble with Pip's avatar, shown in a strip above the tab bar. Tapping the avatar or the
  * question asks Pip that question.
  */
 export function PipBubble({ label, onPress }: { label: string; onPress: () => void }) {
@@ -25,19 +25,16 @@ export function PipBubble({ label, onPress }: { label: string; onPress: () => vo
         paddingVertical: theme.spacing.xs,
         borderRadius: theme.radius.pill,
         backgroundColor: theme.colors.surface,
-        shadowColor: theme.colors.text,
-        shadowOpacity: 0.12,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 4,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
       }}
     >
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={{ width: 56, height: 56 }}
+        style={{ width: 44, height: 44 }}
       >
-        <Mascot pose="pip-neutral" size={56} onPress={press} />
+        <Mascot pose="pip-neutral" size={44} onPress={press} />
       </View>
       <Pressable
         accessibilityRole="button"

@@ -1,12 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { useState, type ComponentProps } from "react";
-import { Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
 import { Lottie } from "../components/lottie";
-import { Float, haptic, Mascot, PressScale, Pulse, Skeleton, Stagger } from "../components/motion";
-import { EmptyState } from "../components/ui";
+import { Float, haptic, PressScale, Pulse, Skeleton, Stagger } from "../components/motion";
+import { Pip } from "../components/Pip";
+import { ProductArt, type IconName } from "../components/ProductArt";
+import {
+  DISPLAY_FONT,
+  EmptyState,
+  InlineNotice,
+  PrimaryButton,
+  ScreenTitle,
+} from "../components/ui";
 import { appInfo } from "../data/app-info";
 import { usePurchases } from "../data/purchases";
 import { useTheme } from "../theme/ThemeProvider";
@@ -27,23 +34,30 @@ const PERIOD_WORD: Record<Plan["period"], string> = {
   lifetime: "",
 };
 
+/** Where a subscription is managed on this phone. */
+const STORE = Platform.OS === "android" ? "Google Play" : "App Store";
+
 const BENEFIT_PROMPT = "a small cardboard parcel box mascot, flat illustration, soft beige";
 
-const BENEFITS: Array<{ title: string; body: string; prompt: string }> = [
+/** `icon` stands in for the picture until the project has one for `prompt`. */
+const BENEFITS: Array<{ title: string; body: string; prompt: string; icon: IconName }> = [
   {
-    title: "Unlimited AI Order Routing",
+    title: "Unlimited AI order routing",
     body: "Pip proactively alerts courier changes and reroutes with one tap",
     prompt: "a small cardboard box character holding a folded map, on a light background",
+    icon: "map-outline",
   },
   {
-    title: "Complimentary Express Courier",
+    title: "Complimentary express courier",
     body: "Next-day courier on all shop modes with zero minimums",
     prompt: "a cardboard box with motion lines, speeding to the right with a smiling face",
+    icon: "flash-outline",
   },
   {
-    title: "Extended 60-Day Studio Returns",
+    title: "Extended 60-day studio returns",
     body: "Instant QR returns with complimentary courier doorstep pickup",
     prompt: "a cardboard box with a curved return arrow and a QR code beside it",
+    icon: "qr-code-outline",
   },
 ];
 
@@ -56,34 +70,41 @@ function perMonth(price: string, period: Plan["period"]): string | null {
   return Number.isFinite(amount) ? `${match[1]}${amount.toFixed(2)}/mo` : null;
 }
 
-function Benefit({ title, body, prompt }: { title: string; body: string; prompt: string }) {
+/** One thing the Club includes: a picture or icon, its name, and a line about it. */
+function Benefit({
+  title,
+  body,
+  prompt,
+  icon,
+}: {
+  title: string;
+  body: string;
+  prompt: string;
+  icon: IconName;
+}) {
   const theme = useTheme();
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: theme.spacing.md,
-        padding: theme.spacing.md,
-        borderRadius: theme.radius.md,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surface,
-      }}
-    >
-      <AiImage prompt={prompt} fit="contain" style={{ width: 80, height: 80 }} />
-      <View style={{ flex: 1, gap: theme.spacing.xs }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+      <ProductArt
+        prompt={prompt}
+        icon={icon}
+        fit="contain"
+        label={title}
+        style={{ width: 52, height: 52, borderRadius: theme.radius.md }}
+      />
+      <View style={{ flex: 1, gap: 2 }}>
         <Text
           style={{
             color: theme.colors.text,
             fontSize: theme.font.size.body,
+            lineHeight: 21,
             fontWeight: theme.font.weight.bold,
           }}
         >
           {title}
         </Text>
         {body ? (
-          <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 21 }}>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 21 }}>
             {body}
           </Text>
         ) : null}
@@ -106,7 +127,7 @@ function PlanCard({
   const monthly = perMonth(plan.price, plan.period);
   const billing =
     plan.trialDays > 0
-      ? `${plan.trialDays} days free trial`
+      ? `${plan.trialDays}-day free trial`
       : plan.period === "lifetime"
         ? "One-time purchase"
         : plan.period === "year"
@@ -116,35 +137,32 @@ function PlanCard({
             : "Billed weekly";
 
   return (
-    <PressScale
+    <Pressable
       onPress={() => {
         if (!selected) haptic("selection");
         onSelect();
       }}
-      scaleTo={0.96}
       accessibilityRole="radio"
-      accessibilityLabel={`${plan.label}, ${plan.price}${suffix ? ` per ${PERIOD_WORD[plan.period]}` : ""}`}
-      accessibilityState={{ selected }}
-      style={{
+      accessibilityLabel={`${plan.label}, ${plan.price}${suffix ? ` per ${PERIOD_WORD[plan.period]}` : ""}, ${billing}`}
+      accessibilityState={{ checked: selected, selected }}
+      style={({ pressed }) => ({
         flex: 1,
-        minWidth: 0,
-        marginTop: plan.badge ? theme.spacing.sm : 0,
         padding: theme.spacing.md,
         gap: theme.spacing.xs,
         borderRadius: theme.radius.md,
-        borderWidth: selected ? 1.5 : 1,
-        borderStyle: selected ? "dashed" : "solid",
+        borderWidth: 2,
         borderColor: selected ? theme.colors.primary : theme.colors.border,
-        backgroundColor: theme.colors.surface,
-      }}
+        backgroundColor: selected ? theme.colors.surfaceAlt : theme.colors.surface,
+        opacity: pressed ? 0.8 : 1,
+      })}
     >
       {plan.badge ? (
         <View
           style={{
             position: "absolute",
-            top: -11,
+            top: -13,
             left: theme.spacing.md,
-            paddingHorizontal: 10,
+            paddingHorizontal: theme.spacing.sm,
             paddingVertical: 3,
             borderRadius: theme.radius.pill,
             backgroundColor: theme.colors.primary,
@@ -214,8 +232,17 @@ function PlanCard({
           ({monthly})
         </Text>
       ) : null}
-      <Text style={{ color: theme.colors.text, fontSize: theme.font.size.caption }}>{billing}</Text>
-    </PressScale>
+      <Text
+        style={{
+          marginTop: "auto",
+          color: theme.colors.text,
+          fontSize: theme.font.size.caption,
+          fontWeight: theme.font.weight.medium,
+        }}
+      >
+        {billing}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -232,7 +259,7 @@ function Footer({
 }) {
   const theme = useTheme();
   const links = [
-    { key: "restore", label: restoring ? "Restoring…" : "Restore Purchases", onPress: onRestore },
+    { key: "restore", label: restoring ? "Restoring…" : "Restore purchases", onPress: onRestore },
     ...(termsUrl
       ? [{ key: "terms", label: "Terms", onPress: () => void Linking.openURL(termsUrl) }]
       : []),
@@ -240,7 +267,7 @@ function Footer({
       ? [
           {
             key: "privacy",
-            label: "Privacy Policy",
+            label: "Privacy policy",
             onPress: () => void Linking.openURL(privacyUrl),
           },
         ]
@@ -318,7 +345,7 @@ export default function PaywallScreen() {
     : trial
       ? status === "purchasing"
         ? "Starting your trial…"
-        : `Start My ${selected.trialDays}-Day Free Trial`
+        : `Start my ${selected.trialDays}-day free trial`
       : status === "purchasing"
         ? "Processing…"
         : "Continue";
@@ -327,7 +354,7 @@ export default function PaywallScreen() {
     ? ""
     : selected.period === "lifetime"
       ? "One-time purchase. No subscription."
-      : `${trial ? "Then " : ""}${selected.price}/${PERIOD_WORD[selected.period]}. Cancel anytime in App Store settings.`;
+      : `${trial ? "Then " : ""}${selected.price}/${PERIOD_WORD[selected.period]}. Cancel anytime in ${STORE} settings.`;
 
   async function buy() {
     if (!selected || busy) return;
@@ -344,10 +371,15 @@ export default function PaywallScreen() {
   }
 
   const benefits = premiumFeatures.length
-    ? premiumFeatures.map((title) => ({ title, body: "", prompt: BENEFIT_PROMPT }))
+    ? premiumFeatures.map((title) => ({
+        title,
+        body: "",
+        prompt: BENEFIT_PROMPT,
+        icon: "sparkles-outline" as IconName,
+      }))
     : BENEFITS;
 
-  const clubName = `${appInfo.name} Club`.toUpperCase();
+  const clubName = `${appInfo.name} Club`;
   const premiumView = ready && isPremium;
 
   const headerRow = premiumView ? (
@@ -359,52 +391,31 @@ export default function PaywallScreen() {
         gap: theme.spacing.sm,
       }}
     >
-      <Lottie name="sparkle" size={56} />
-      <Text
-        accessibilityRole="header"
-        style={{
-          flexShrink: 1,
-          color: theme.colors.text,
-          fontFamily: theme.font.family ?? "Georgia",
-          fontSize: theme.font.size.display - 6,
-          fontWeight: "400",
-          textAlign: "center",
-        }}
-      >
+      <Lottie name="sparkle" size={48} />
+      <ScreenTitle align="center" style={{ flexShrink: 1 }}>
         You're in the Club
-      </Text>
+      </ScreenTitle>
     </View>
   ) : (
-    <Text
-      accessibilityRole="header"
-      style={{
-        color: theme.colors.text,
-        fontFamily: theme.font.family ?? "Georgia",
-        fontSize: theme.font.size.display - 6,
-        fontWeight: "400",
-        lineHeight: 42,
-        textAlign: "center",
-      }}
-    >
-      {"Ship free, skip queues,\nask Pip without limits"}
-    </Text>
+    <ScreenTitle align="center">{"Ship free, skip queues,\nask Pip without limits"}</ScreenTitle>
   );
 
   const benefitList = (
-    <View style={{ gap: theme.spacing.sm }}>
+    <View style={{ gap: theme.spacing.lg }}>
       {benefits.map((benefit) => (
         <Benefit
           key={benefit.title}
           title={benefit.title}
           body={benefit.body}
           prompt={benefit.prompt}
+          icon={benefit.icon}
         />
       ))}
     </View>
   );
 
   const plansSection = !ready ? (
-    <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+    <View style={{ flexDirection: "row", gap: theme.spacing.md, paddingTop: theme.spacing.md }}>
       <Skeleton height={148} radius={theme.radius.md} style={{ flex: 1 }} />
       <Skeleton height={148} radius={theme.radius.md} style={{ flex: 1 }} />
     </View>
@@ -417,14 +428,18 @@ export default function PaywallScreen() {
       onAction={restore}
     />
   ) : (
-    <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+    <View
+      accessibilityRole="radiogroup"
+      style={{ flexDirection: "row", gap: theme.spacing.md, paddingTop: theme.spacing.md }}
+    >
       {offers.map((offer) => (
-        <PlanCard
-          key={offer.id}
-          plan={offer}
-          selected={selected?.id === offer.id}
-          onSelect={() => setPicked(offer.id)}
-        />
+        <View key={offer.id} style={{ flex: 1, minWidth: 0 }}>
+          <PlanCard
+            plan={offer}
+            selected={selected?.id === offer.id}
+            onSelect={() => setPicked(offer.id)}
+          />
+        </View>
       ))}
     </View>
   );
@@ -442,24 +457,22 @@ export default function PaywallScreen() {
             accessibilityLabel={buttonLabel}
             accessibilityState={{ disabled: busy }}
             style={{
-              height: 56,
+              minHeight: 56,
               borderRadius: theme.radius.pill,
               alignItems: "center",
               justifyContent: "center",
+              paddingHorizontal: theme.spacing.lg,
               backgroundColor: theme.colors.primary,
-              opacity: busy || offers.length === 0 ? 0.6 : 1,
-              shadowColor: theme.colors.primary,
-              shadowOpacity: 0.35,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 5,
             }}
           >
             <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
               style={{
                 color: theme.colors.onPrimary,
-                fontSize: theme.font.size.body + 2,
-                fontWeight: "600",
+                fontSize: theme.font.size.body,
+                fontWeight: theme.font.weight.bold,
               }}
             >
               {buttonLabel}
@@ -470,6 +483,7 @@ export default function PaywallScreen() {
           style={{
             color: theme.colors.textMuted,
             fontSize: theme.font.size.caption,
+            lineHeight: 17,
             textAlign: "center",
           }}
         >
@@ -501,32 +515,10 @@ export default function PaywallScreen() {
           textAlign: "center",
         }}
       >
-        Change or cancel in App Store or Google Play settings.
+        {`Change or cancel in ${STORE} settings.`}
       </Text>
       <View style={{ alignSelf: "stretch" }}>
-        <PressScale
-          onPress={dismissPaywall}
-          scaleTo={0.94}
-          accessibilityRole="button"
-          accessibilityLabel="Back to the app"
-          style={{
-            minHeight: 50,
-            borderRadius: theme.radius.pill,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: theme.colors.primary,
-          }}
-        >
-          <Text
-            style={{
-              color: theme.colors.onPrimary,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            Back to the app
-          </Text>
-        </PressScale>
+        <PrimaryButton label="Back to the app" onPress={dismissPaywall} />
       </View>
     </View>
   );
@@ -540,9 +532,10 @@ export default function PaywallScreen() {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: theme.spacing.sm,
           paddingTop: insets.top + theme.spacing.xs,
           paddingHorizontal: theme.spacing.lg,
-          paddingBottom: theme.spacing.sm,
+          paddingBottom: theme.spacing.xs,
         }}
       >
         <Pressable
@@ -553,66 +546,48 @@ export default function PaywallScreen() {
           style={({ pressed }) => ({
             width: 44,
             height: 44,
+            marginLeft: -theme.spacing.sm,
             borderRadius: 22,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: theme.colors.text,
-            opacity: pressed ? 0.75 : 1,
+            opacity: pressed ? 0.6 : 1,
           })}
         >
-          <Ionicons name="close" size={22} color={theme.colors.background} />
+          <Ionicons name="close" size={26} color={theme.colors.text} />
         </Pressable>
-        <View
+        <Text
+          numberOfLines={1}
           style={{
-            paddingHorizontal: 14,
-            paddingVertical: 6,
-            borderRadius: theme.radius.pill,
-            backgroundColor: theme.colors.warning,
+            flexShrink: 1,
+            color: theme.colors.text,
+            fontFamily: DISPLAY_FONT,
+            fontSize: theme.font.size.title,
+            lineHeight: 28,
+            textAlign: "center",
           }}
         >
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.bold,
-              letterSpacing: 1.2,
-            }}
-          >
-            {clubName}
-          </Text>
-        </View>
-        <View style={{ width: 44 }} />
+          {clubName}
+        </Text>
+        <View style={{ width: 44 - theme.spacing.sm }} />
       </View>
 
       <ScrollView
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
-          paddingBottom: insets.bottom + theme.spacing.xl,
+          paddingBottom: theme.spacing.xl,
         }}
       >
-        <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-          <View style={{ alignItems: "center" }}>
+        <Stagger step={70} style={{ gap: theme.spacing.xl }}>
+          <View style={{ alignItems: "center", gap: theme.spacing.sm }}>
             <Float amplitude={6}>
-              <Mascot pose={ready ? "pip-celebrating" : "pip-neutral"} size={260} />
+              <Pip pose={ready ? "pip-celebrating" : "pip-neutral"} size={148} />
             </Float>
+            {headerRow}
           </View>
-          {headerRow}
           {premiumView ? premiumSection : benefitList}
           {premiumView ? null : plansSection}
-          {premiumView ? null : purchaseSection}
-          {error ? (
-            <Text
-              accessibilityLiveRegion="polite"
-              style={{
-                color: theme.colors.danger,
-                fontSize: theme.font.size.body,
-                textAlign: "center",
-              }}
-            >
-              {error}
-            </Text>
-          ) : null}
           <Footer
             onRestore={restore}
             restoring={status === "restoring"}
@@ -621,6 +596,37 @@ export default function PaywallScreen() {
           />
         </Stagger>
       </ScrollView>
+
+      {/* The offer's button stays in reach under the scrolling content. */}
+      {premiumView ? null : (
+        <View
+          style={{
+            gap: theme.spacing.sm,
+            paddingTop: theme.spacing.md,
+            paddingHorizontal: theme.spacing.lg,
+            paddingBottom: insets.bottom + theme.spacing.md,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.background,
+          }}
+        >
+          {error ? (
+            <InlineNotice tone="danger" live>
+              {error}
+            </InlineNotice>
+          ) : null}
+          {purchaseSection}
+        </View>
+      )}
+      {premiumView && error ? (
+        <InlineNotice
+          tone="danger"
+          live
+          style={{ padding: theme.spacing.lg, paddingBottom: insets.bottom + theme.spacing.lg }}
+        >
+          {error}
+        </InlineNotice>
+      ) : null}
     </View>
   );
 }

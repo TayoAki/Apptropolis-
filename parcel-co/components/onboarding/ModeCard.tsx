@@ -1,13 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
-import { formatMoney, type Product } from "../../data/schema";
+import { categoryLabel, formatMoney, type Product } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../AiImage";
 import { PressScale, Skeleton } from "../motion";
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
+import { ProductImage } from "../ProductArt";
 
 /** One mood on the onboarding grid: a featured product's picture, name and price. */
 export function ModeCard({
@@ -27,27 +23,17 @@ export function ModeCard({
 }) {
   const theme = useTheme();
   return (
-    <View
-      style={{
-        borderRadius: theme.radius.lg,
-        backgroundColor: theme.colors.surface,
-        shadowColor: theme.colors.text,
-        shadowOpacity: 0.1,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 3,
-      }}
-    >
+    <View style={{ borderRadius: theme.radius.lg, backgroundColor: theme.colors.surface }}>
       <PressScale
         onPress={onPress}
         haptic="selection"
         scaleTo={0.97}
         accessibilityRole="radio"
         accessibilityLabel={`${label}. ${product ? product.name : caption}`}
-        accessibilityState={{ checked: selected }}
+        accessibilityState={{ checked: selected, selected }}
         style={{
           borderRadius: theme.radius.lg,
-          borderWidth: selected ? 2 : 1,
+          borderWidth: 2,
           borderColor: selected ? theme.colors.primary : theme.colors.border,
           backgroundColor: theme.colors.surface,
           overflow: "hidden",
@@ -61,8 +47,8 @@ export function ModeCard({
           }}
         >
           {product ? (
-            <AiImage
-              prompt={`${product.name}, ${product.category}, soft watercolor product illustration on a plain background`}
+            <ProductImage
+              product={product}
               fit="contain"
               style={{ width: "100%", height: imageHeight, borderRadius: 0 }}
             />
@@ -122,7 +108,7 @@ export function ModeCard({
               numberOfLines={1}
               style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
             >
-              {capitalize(product.category)}
+              {categoryLabel(product.category)}
             </Text>
           ) : null}
         </View>

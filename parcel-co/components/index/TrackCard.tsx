@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Pressable, Text, View } from "react-native";
+import { Animated, Easing, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
   ORDER_TIMELINE,
@@ -13,8 +13,9 @@ import {
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Lottie } from "../lottie";
-import { Mascot, haptic, useReducedMotion } from "../motion";
-import { PrimaryButton, Surface } from "../ui";
+import { haptic, useReducedMotion } from "../motion";
+import { Pip } from "../Pip";
+import { PrimaryButton, SecondaryButton, Surface } from "../ui";
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
@@ -79,13 +80,14 @@ function StepNode({ state }: { state: NodeState }) {
     }).start();
   }, [state, reduced, pop]);
 
-  const size = state === "current" ? 26 : 34;
+  // Done steps are filled with a check, the current one is a ringed dot, later ones are hollow.
+  const size = state === "current" ? 14 : state === "next" ? 26 : 30;
   const fill =
-    state === "done"
-      ? theme.colors.text
-      : state === "next"
-        ? theme.colors.surface
-        : theme.colors.success;
+    state === "next"
+      ? theme.colors.surface
+      : state === "finished"
+        ? theme.colors.success
+        : theme.colors.primary;
 
   return (
     <Animated.View
@@ -101,11 +103,12 @@ function StepNode({ state }: { state: NodeState }) {
         <View
           style={{
             position: "absolute",
-            width: NODE,
-            height: NODE,
-            borderRadius: NODE / 2,
+            width: 30,
+            height: 30,
+            borderRadius: 15,
             borderWidth: 2,
-            borderColor: theme.colors.success,
+            borderColor: theme.colors.primary,
+            backgroundColor: theme.colors.surface,
           }}
         />
       ) : null}
@@ -117,12 +120,12 @@ function StepNode({ state }: { state: NodeState }) {
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: fill,
-          borderWidth: state === "next" ? 2 : 0,
-          borderColor: theme.colors.border,
+          borderWidth: state === "next" ? 1.5 : 0,
+          borderColor: theme.colors.textMuted,
         }}
       >
         {state === "done" || state === "finished" ? (
-          <Ionicons name="checkmark" size={18} color={theme.colors.surface} />
+          <Ionicons name="checkmark" size={18} color={theme.colors.onPrimary} />
         ) : null}
       </View>
     </Animated.View>
@@ -172,8 +175,8 @@ function Timeline({ status }: { status: OrderStatus }) {
         >
           <Path
             d={line}
-            stroke={theme.colors.border}
-            strokeWidth={3}
+            stroke={theme.colors.textMuted}
+            strokeWidth={2}
             strokeLinecap="round"
             strokeDasharray={[1, 7]}
             fill="none"
@@ -206,7 +209,8 @@ function Timeline({ status }: { status: OrderStatus }) {
               <Text
                 numberOfLines={2}
                 style={{
-                  minHeight: 30,
+                  minHeight: 32,
+                  lineHeight: 16,
                   textAlign: "center",
                   color: index <= active ? theme.colors.text : theme.colors.textMuted,
                   fontSize: theme.font.size.caption,
@@ -224,7 +228,7 @@ function Timeline({ status }: { status: OrderStatus }) {
 }
 
 /**
- * The latest order: Pip, its status and a live timeline, with Track Live and Ask Pip. When the
+ * The latest order: Pip, its status and a live timeline, with Track live and Ask Pip. When the
  * status moves on, Pip squashes, leaps up and lands on the new milestone with a soft tap.
  */
 export function TrackCard({
@@ -316,56 +320,38 @@ export function TrackCard({
                 flexShrink: 1,
                 color: theme.colors.text,
                 fontSize: theme.font.size.body,
+                lineHeight: 22,
                 fontWeight: theme.font.weight.medium,
               }}
             >
               {headline}
             </Text>
           </View>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+          <Text
+            style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, lineHeight: 17 }}
+          >
             {detailFor(order)}
           </Text>
         </View>
         <Animated.View style={{ transform: [{ translateY: lift }, { scaleY: squash }] }}>
-          <Mascot pose={poseFor(order.status)} size={112} />
+          <Pip pose={poseFor(order.status)} size={112} />
         </Animated.View>
       </View>
 
       <Timeline status={order.status} />
 
       <View style={{ flexDirection: "row", gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
-        <PrimaryButton label="Track Live" onPress={onTrack} style={{ flex: 1 }} />
-        <Pressable
-          onPress={onAsk}
-          accessibilityRole="button"
-          accessibilityLabel="Ask Pip about this order"
-          style={({ pressed }) => ({
-            flex: 1.2,
-            minHeight: 50,
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.surface,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: theme.spacing.sm,
-            paddingHorizontal: theme.spacing.md,
-            opacity: pressed ? 0.7 : 1,
-          })}
-        >
-          <Ionicons name="chatbubble-ellipses-outline" size={18} color={theme.colors.text} />
-          <Text
-            numberOfLines={1}
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.medium,
-            }}
-          >
-            Ask Pip
-          </Text>
-        </Pressable>
+        <View style={{ flex: 1 }}>
+          <PrimaryButton label="Track live" onPress={onTrack} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SecondaryButton
+            label="Ask Pip"
+            icon="chatbubble-ellipses-outline"
+            accessibilityLabel="Ask Pip about this order"
+            onPress={onAsk}
+          />
+        </View>
       </View>
     </Surface>
   );

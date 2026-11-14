@@ -7,18 +7,25 @@ import { AiImage } from "../components/AiImage";
 import { Lottie } from "../components/lottie";
 import { ModeCard, ModeCardSkeleton } from "../components/onboarding/ModeCard";
 import { PipBubble } from "../components/onboarding/PipBubble";
-import { OnboardingTabBar, TAB_BAR_BASE } from "../components/onboarding/TabBar";
+import { OnboardingTabBar } from "../components/onboarding/TabBar";
 import {
   Appear,
   Float,
   haptic,
-  Mascot,
   PageDots,
   Skeleton,
   Stagger,
   StepTransition,
 } from "../components/motion";
-import { Chip, PrimaryButton, Surface } from "../components/ui";
+import { Pip } from "../components/Pip";
+import {
+  Chip,
+  InlineNotice,
+  PrimaryButton,
+  ScreenTitle,
+  Surface,
+  useStalled,
+} from "../components/ui";
 import { useAI } from "../data/ai";
 import { useAppState } from "../data/app-state";
 import { useCollection } from "../data/repo";
@@ -34,7 +41,7 @@ import {
 import { useTheme } from "../theme/ThemeProvider";
 
 const STEPS = 3;
-const HERO_HEIGHT = 200;
+const HERO_HEIGHT = 180;
 const REMINDER_HOURS = [8, 12, 18, 21];
 
 const MODES: { key: ShopMode; label: string; caption: string }[] = [
@@ -103,19 +110,7 @@ function StepHeader({ title, body }: { title: string; body: string }) {
   const theme = useTheme();
   return (
     <View style={{ gap: theme.spacing.sm, alignItems: "center" }}>
-      <Text
-        accessibilityRole="header"
-        style={{
-          color: theme.colors.text,
-          fontFamily: theme.font.family ?? "Georgia",
-          fontSize: theme.font.size.headline,
-          fontWeight: theme.font.weight.regular,
-          lineHeight: 34,
-          textAlign: "center",
-        }}
-      >
-        {title}
-      </Text>
+      <ScreenTitle align="center">{title}</ScreenTitle>
       <Text
         style={{
           color: theme.colors.text,
@@ -146,6 +141,8 @@ export default function Welcome() {
   const [hour, setHour] = useState(18);
   const [saving, setSaving] = useState(false);
   const [reminderState, setReminderState] = useState<"idle" | "on" | "declined">("idle");
+  // If the catalog doesn't arrive, the moods are still offered, without a featured product.
+  const catalogStalled = useStalled(products.loading, 6000);
 
   const selected: string | null = answers.shopmode ?? null;
   const canNext = step === 0 ? Boolean(selected) : true;
@@ -220,7 +217,7 @@ export default function Welcome() {
           <View key={c} style={{ flex: 1, gap: theme.spacing.md }}>
             {column.map((cell, i) => (
               <Appear key={cell.mode.key} delay={(i * 2 + c) * 90}>
-                {products.loading ? (
+                {products.loading && !catalogStalled ? (
                   <ModeCardSkeleton imageHeight={cell.imageHeight} />
                 ) : (
                   <ModeCard
@@ -255,7 +252,7 @@ export default function Welcome() {
       {asked ? (
         <Surface style={{ gap: theme.spacing.sm }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-            <Mascot pose="pip-delivering" size={44} />
+            <Pip pose="pip-delivering" size={44} />
             <Text style={labelStyle}>Pip says</Text>
           </View>
           {ai.loading ? (
@@ -269,9 +266,9 @@ export default function Welcome() {
               <Skeleton width="55%" height={12} />
             </View>
           ) : ai.error ? (
-            <Text style={{ color: theme.colors.danger, fontSize: theme.font.size.body }}>
+            <InlineNotice tone="danger" live>
               {ai.error}
-            </Text>
+            </InlineNotice>
           ) : (
             <Text
               style={{
@@ -306,10 +303,7 @@ export default function Welcome() {
         body="One reminder a day about your open orders, at the time you pick. Change it or turn it off anytime in Settings."
       />
       <View style={{ alignItems: "center" }}>
-        <Mascot
-          pose={reminderState === "on" ? "pip-celebrating" : "pip-delivering"}
-          size={140}
-        />
+        <Pip pose={reminderState === "on" ? "pip-celebrating" : "pip-delivering"} size={120} />
       </View>
       {reminderState === "idle" ? (
         hourChoices
@@ -319,7 +313,7 @@ export default function Welcome() {
           <Text
             style={{
               color: theme.colors.text,
-              fontSize: theme.font.size.title,
+              fontSize: theme.font.size.body,
               fontWeight: theme.font.weight.bold,
             }}
           >
@@ -330,12 +324,11 @@ export default function Welcome() {
           </Text>
         </Surface>
       ) : (
-        <Surface style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}>
-          <Ionicons name="notifications-off-outline" size={22} color={theme.colors.warning} />
-          <Text style={{ flex: 1, color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+        <Surface>
+          <InlineNotice icon="notifications-off-outline">
             Notifications are off for Parcel & Co. Allow them in your phone's Settings to get
             reminders later.
-          </Text>
+          </InlineNotice>
         </Surface>
       )}
       {reminderState === "idle" ? (
@@ -433,19 +426,23 @@ export default function Welcome() {
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 2,
-                opacity: !canNext ? 0.4 : pressed ? 0.6 : 1,
+                opacity: pressed ? 0.6 : 1,
               })}
             >
               <Text
                 style={{
-                  color: theme.colors.primary,
+                  color: canNext ? theme.colors.primary : theme.colors.textMuted,
                   fontSize: theme.font.size.body,
-                  fontWeight: theme.font.weight.bold,
+                  fontWeight: canNext ? theme.font.weight.bold : theme.font.weight.medium,
                 }}
               >
                 Next
               </Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.primary} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={canNext ? theme.colors.primary : theme.colors.textMuted}
+              />
             </Pressable>
           ) : null}
         </View>
@@ -456,16 +453,21 @@ export default function Welcome() {
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
           paddingTop: theme.spacing.sm,
-          paddingBottom: TAB_BAR_BASE + insets.bottom + 110,
+          paddingBottom: theme.spacing.xl,
           gap: theme.spacing.lg,
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <Float amplitude={6} duration={3200}>
+        <Float amplitude={6} duration={3200} style={{ alignItems: "center" }}>
+          {/* The picture has its own cream paper, so it is framed like a print in both themes. */}
           <AiImage
             prompt="Watercolor postcards with postage stamps, a postmark and a red ribbon on warm cream paper, no characters"
-            fit="contain"
-            style={{ width: "100%", height: HERO_HEIGHT, borderRadius: 0 }}
+            fit="cover"
+            style={{
+              height: HERO_HEIGHT,
+              aspectRatio: 4 / 3,
+              borderRadius: theme.radius.lg,
+            }}
           />
         </Float>
         <StepTransition step={step} direction={direction}>
@@ -473,16 +475,16 @@ export default function Welcome() {
         </StepTransition>
       </ScrollView>
 
+      {/* Pip's question sits in its own strip above the tab bar, so it never covers a card. */}
       {step === 0 ? (
         <View
-          pointerEvents="box-none"
           style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: TAB_BAR_BASE + insets.bottom + theme.spacing.md,
             paddingHorizontal: theme.spacing.lg,
+            paddingVertical: theme.spacing.sm,
             alignItems: "flex-end",
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.background,
           }}
         >
           <PipBubble

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, Stack, router, useLocalSearchParams } from "expo-router";
+import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import Svg, { Circle, Path, Rect, Text as SvgText } from "react-native-svg";
 import { track } from "../../data/analytics";
+import { useAppState } from "../../data/app-state";
+import { appStructure } from "../../data/app-structure";
 import {
   formatDate,
   formatMoney,
@@ -24,14 +26,12 @@ import {
 } from "../../data/schema";
 import { useCollection } from "../../data/repo";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../../components/AiImage";
 import { Lottie } from "../../components/lottie";
 import {
   Appear,
   CountUp,
   GrowBar,
   haptic,
-  Mascot,
   PressScale,
   Skeleton,
   SkeletonList,
@@ -39,7 +39,21 @@ import {
   useReducedMotion,
 } from "../../components/motion";
 import { OrderTimeline, dueText } from "../../components/order-detail/OrderTimeline";
-import { Chip, EmptyState, PrimaryButton, SectionTitle } from "../../components/ui";
+import { Pip } from "../../components/Pip";
+import { ProductImage } from "../../components/ProductArt";
+import {
+  Chip,
+  DISPLAY_FONT,
+  EmptyState,
+  HEADER_EDGE,
+  navTitleStyle,
+  LoadProblem,
+  PrimaryButton,
+  SecondaryButton,
+  SectionTitle,
+  useStalled,
+  withRetry,
+} from "../../components/ui";
 import { useShareImage } from "../../components/share";
 
 const RETURN_REASONS = ["Wrong item", "Damaged", "Doesn't suit me", "Changed my mind"];
@@ -163,8 +177,8 @@ function WaxSeal({ label }: { label: string }) {
       <SvgText
         x={50}
         y={59}
-        fontSize={22}
-        fontWeight="700"
+        fontSize={24}
+        fontFamily={DISPLAY_FONT}
         fontStyle="italic"
         textAnchor="middle"
         fill={theme.colors.onPrimary}
@@ -232,15 +246,17 @@ function Postmark() {
   );
 }
 
-export default function OrderScreen() {
+function OrderScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const reduced = useReducedMotion();
+  const { ready, onboarded } = useAppState();
   const { id } = useLocalSearchParams<{ id: string }>();
   const orders = useCollection<Order>("orders");
   const products = useCollection<Product>("products");
   const { ref, share, sharing } = useShareImage();
   const order = orders.items.find((o) => o.id === id);
   const orderId = order?.id;
+  const stalled = useStalled(orders.loading || products.loading);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
@@ -313,10 +329,24 @@ export default function OrderScreen() {
     return () => clearTimeout(timer);
   }, [added]);
 
+  // First launch can land here before onboarding (this route sits outside the guarded group).
+  if (appStructure.onboarding && ready && !onboarded) return <Redirect href="/onboarding" />;
+
+  const header = { title: "Order", headerTitleStyle: navTitleStyle(theme) };
+
+  if (stalled) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.colors.background }}>
+        <Stack.Screen options={header} />
+        <LoadProblem onRetry={onRetry} />
+      </View>
+    );
+  }
+
   if (orders.loading || products.loading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <Stack.Screen options={{ title: "Order" }} />
+        <Stack.Screen options={header} />
         <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, gap: theme.spacing.lg }}>
           <Skeleton width={230} height={30} />
           <Skeleton width={190} height={14} />
@@ -330,8 +360,8 @@ export default function OrderScreen() {
 
   if (!order) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <Stack.Screen options={{ title: "Order" }} />
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.colors.background }}>
+        <Stack.Screen options={header} />
         <EmptyState
           icon="cube-outline"
           title="This order isn't here"
@@ -397,36 +427,25 @@ export default function OrderScreen() {
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <Stack.Screen
         options={{
-          title: "Order",
+          ...header,
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Share order card"
+              accessibilityState={{ disabled: sharing }}
               disabled={sharing}
-              hitSlop={10}
+              hitSlop={6}
               onPress={shareCard}
               style={({ pressed }) => ({
-                flexDirection: "row",
+                width: 44,
+                height: 44,
+                marginRight: HEADER_EDGE - theme.spacing.sm,
                 alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: theme.radius.pill,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                opacity: pressed ? 0.7 : 1,
+                justifyContent: "center",
+                opacity: pressed ? 0.6 : 1,
               })}
             >
-              <Ionicons name="share-outline" size={16} color={theme.colors.text} />
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.medium,
-                }}
-              >
-                Share Card
-              </Text>
+              <Ionicons name="share-outline" size={24} color={theme.colors.text} />
             </Pressable>
           ),
         }}
@@ -438,7 +457,7 @@ export default function OrderScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Stagger step={80} style={{ gap: theme.spacing.lg }}>
+        <Stagger step={80} style={{ gap: theme.spacing.xl }}>
           <View style={{ gap: 4 }}>
             <Text
               accessibilityRole="header"
@@ -473,12 +492,13 @@ export default function OrderScreen() {
               backgroundColor: theme.colors.surface,
             }}
           >
-            <Mascot pose={poseFor(order.status)} size={104} />
+            <Pip pose={poseFor(order.status)} size={96} />
             <View style={{ flex: 1, gap: theme.spacing.sm }}>
               <Text
                 style={{
                   color: theme.colors.text,
                   fontSize: theme.font.size.body,
+                  lineHeight: 22,
                   fontWeight: theme.font.weight.medium,
                 }}
               >
@@ -497,10 +517,17 @@ export default function OrderScreen() {
             </View>
           </View>
 
-          <OrderTimeline order={order} />
+          <View style={{ gap: theme.spacing.xl }}>
+            <OrderTimeline order={order} />
+            <SecondaryButton
+              label="Ask Pip about this order"
+              icon="chatbubble-ellipses-outline"
+              onPress={() => router.push("/assistant")}
+            />
+          </View>
 
           <View>
-            <SectionTitle title="Items Purchased" />
+            <SectionTitle title="Items purchased" flush />
             <FlatList
               data={lines}
               keyExtractor={(line) => line.key}
@@ -518,8 +545,9 @@ export default function OrderScreen() {
                         paddingVertical: theme.spacing.sm,
                       }}
                     >
-                      <AiImage
-                        prompt={item.name}
+                      <ProductImage
+                        product={product}
+                        name={item.name}
                         style={{ width: 56, height: 56, borderRadius: theme.radius.sm }}
                       />
                       <View style={{ flex: 1, gap: 2 }}>
@@ -528,6 +556,7 @@ export default function OrderScreen() {
                           style={{
                             color: theme.colors.text,
                             fontSize: theme.font.size.body,
+                            lineHeight: 21,
                             fontWeight: theme.font.weight.medium,
                           }}
                         >
@@ -540,7 +569,7 @@ export default function OrderScreen() {
                             fontVariant: ["tabular-nums"],
                           }}
                         >
-                          {`Qty: ${item.qty}`}
+                          {`Qty ${item.qty}`}
                         </Text>
                       </View>
                       {item.lineTotal !== null ? (
@@ -558,8 +587,12 @@ export default function OrderScreen() {
                       {product ? (
                         <Pressable
                           accessibilityRole="button"
-                          accessibilityLabel={`Add ${item.name} to cart`}
-                          hitSlop={8}
+                          accessibilityLabel={
+                            added === product.id
+                              ? `${item.name} added to cart`
+                              : `Buy ${item.name} again`
+                          }
+                          hitSlop={6}
                           onPress={() => buyAgain(product)}
                           style={({ pressed }) => ({
                             width: 44,
@@ -573,7 +606,7 @@ export default function OrderScreen() {
                           })}
                         >
                           <Ionicons
-                            name={added === product.id ? "checkmark" : "add"}
+                            name={added === product.id ? "checkmark" : "bag-add-outline"}
                             size={22}
                             color={theme.colors.primary}
                           />
@@ -628,6 +661,7 @@ export default function OrderScreen() {
               style={{
                 color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
+                lineHeight: 17,
                 marginTop: theme.spacing.sm,
               }}
             >
@@ -635,7 +669,7 @@ export default function OrderScreen() {
             </Text>
           </View>
 
-          <View style={{ marginTop: theme.spacing.md }}>
+          <View>
             <Animated.View
               {...pan.panHandlers}
               style={{
@@ -677,10 +711,9 @@ export default function OrderScreen() {
                 >
                   <Text
                     style={{
-                      color: theme.colors.textMuted,
-                      fontSize: theme.font.size.caption,
-                      fontWeight: theme.font.weight.bold,
-                      letterSpacing: 1,
+                      color: theme.colors.text,
+                      fontFamily: DISPLAY_FONT,
+                      fontSize: theme.font.size.body,
                     }}
                   >
                     Parcel & Co
@@ -711,8 +744,9 @@ export default function OrderScreen() {
                       accessibilityRole="header"
                       style={{
                         color: theme.colors.text,
+                        fontFamily: DISPLAY_FONT,
                         fontSize: theme.font.size.title,
-                        fontWeight: theme.font.weight.bold,
+                        lineHeight: 28,
                       }}
                     >
                       {headline}
@@ -795,46 +829,8 @@ export default function OrderScreen() {
               </View>
             </Animated.View>
 
-            <Link href="/(tabs)/assistant" asChild>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Ask Pip where my package is"
-                hitSlop={8}
-                style={({ pressed }) => ({
-                  position: "absolute",
-                  top: -14,
-                  right: theme.spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingHorizontal: theme.spacing.md,
-                  paddingVertical: theme.spacing.sm,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surface,
-                  opacity: pressed ? 0.8 : 1,
-                })}
-              >
-                <Ionicons
-                  name="chatbubble-ellipses-outline"
-                  size={16}
-                  color={theme.colors.primary}
-                />
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontSize: theme.font.size.caption,
-                    fontWeight: theme.font.weight.medium,
-                  }}
-                >
-                  Where is my package?
-                </Text>
-              </Pressable>
-            </Link>
-
             <PrimaryButton
-              label="Save / Share Order Card"
+              label="Share order card"
               icon="share-outline"
               onPress={shareCard}
               disabled={sharing}
@@ -899,10 +895,12 @@ export default function OrderScreen() {
                 }}
               >
                 <Text
+                  accessibilityRole="header"
                   style={{
                     color: theme.colors.text,
+                    fontFamily: DISPLAY_FONT,
                     fontSize: theme.font.size.title,
-                    fontWeight: theme.font.weight.bold,
+                    lineHeight: 28,
                   }}
                 >
                   Why are you returning it?
@@ -937,7 +935,12 @@ export default function OrderScreen() {
                   accessibilityLabel="Keep this order"
                   hitSlop={12}
                   onPress={() => setDrawerOpen(false)}
-                  style={{ minHeight: 44, alignItems: "center", justifyContent: "center" }}
+                  style={({ pressed }) => ({
+                    minHeight: 44,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: pressed ? 0.6 : 1,
+                  })}
                 >
                   <Text
                     style={{
@@ -965,12 +968,12 @@ export default function OrderScreen() {
                     borderRadius: theme.radius.pill,
                     borderWidth: 1.5,
                     borderColor: canReturn ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: canReturn ? undefined : theme.colors.surfaceAlt,
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: theme.spacing.sm,
                     paddingHorizontal: theme.spacing.lg,
-                    opacity: canReturn ? 1 : 0.6,
                   }}
                 >
                   <Ionicons
@@ -1007,3 +1010,5 @@ export default function OrderScreen() {
     </View>
   );
 }
+
+export default withRetry(OrderScreen);

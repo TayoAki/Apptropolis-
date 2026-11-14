@@ -2,8 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 import { formatMoney, type Product } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../AiImage";
 import { PressScale } from "../motion";
+import { ProductImage } from "../ProductArt";
 
 /** A product Pip suggests in the chat, with a quick add-to-cart button. */
 export function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
@@ -18,24 +18,27 @@ export function ProductCard({ product, onAdd }: { product: Product; onAdd: () =>
         borderRadius: theme.radius.md,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surfaceAlt,
+        backgroundColor: theme.colors.surface,
       }}
     >
-      <AiImage prompt={product.name} style={{ width: 72, height: 72, borderRadius: theme.radius.sm }} />
+      <ProductImage
+        product={product}
+        style={{ width: 64, height: 64, borderRadius: theme.radius.sm }}
+      />
       <View style={{ flex: 1, gap: 2 }}>
         <Text
-          numberOfLines={1}
+          numberOfLines={2}
           style={{
             color: theme.colors.text,
             fontSize: theme.font.size.body,
+            lineHeight: 21,
             fontWeight: theme.font.weight.bold,
           }}
         >
           {product.name}
         </Text>
         <Text
-          numberOfLines={1}
-          style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
+          style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, lineHeight: 17 }}
         >
           {product.description}
         </Text>

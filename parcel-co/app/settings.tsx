@@ -11,27 +11,24 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { AiImage } from "../components/AiImage";
 import { Lottie } from "../components/lottie";
-import { Appear, haptic, Mascot, Skeleton, Stagger } from "../components/motion";
-import {
-  Card,
-  DISPLAY_FONT,
-  Radio,
-  Row,
-  SectionHeading,
-  Segmented,
-  Wheel,
-} from "../components/settings/Controls";
+import { Appear, haptic, Skeleton, Stagger } from "../components/motion";
+import { Pip } from "../components/Pip";
+import { ProductArt } from "../components/ProductArt";
+import { Card, Radio, Row, Segmented, Wheel } from "../components/settings/Controls";
 import { useSupport } from "../components/support";
-import { PrimaryButton } from "../components/ui";
+import { InlineNotice, navTitleStyle, PrimaryButton, SectionTitle } from "../components/ui";
 import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
 import { usePurchases } from "../data/purchases";
 import { useCollection } from "../data/repo";
 import { useReminder } from "../data/reminders";
 import {
+  DEFAULT_SHOP_MODE,
   SHOP_MODES,
+  WALLET,
+  modeLabel,
+  shopModeFrom,
   type AssistantMessage,
   type Order,
   type Product,
@@ -48,7 +45,6 @@ const MODE_NAMES: Record<ShopMode, string> = {
   pantry: "Pantry (food & drink)",
 };
 
-const WALLET = Platform.OS === "android" ? "Google Pay" : "Apple Pay";
 const BILLING_URL =
   Platform.OS === "ios"
     ? "https://apps.apple.com/account/billing"
@@ -56,35 +52,14 @@ const BILLING_URL =
       ? "https://play.google.com/store/paymentmethods"
       : "";
 
-const MONO = Platform.OS === "ios" ? "Menlo" : "monospace";
-
 const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1));
 const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
-const PERIODS = ["AM", "PM"];
+const PERIODS = ["am", "pm"];
 
+/** "8:00 pm", written the way the rest of the app writes times. */
 function clock(hour: number, minute: number): string {
-  const period = hour < 12 ? "AM" : "PM";
+  const period = hour < 12 ? "am" : "pm";
   return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${period}`;
-}
-
-/**
- * The shop mode saved in onboarding, whether it was stored as a key ("glow"), its label
- * ("Glow") or its full name ("Glow (skincare)").
- */
-function modeKey(raw: string | undefined): ShopMode | null {
-  const value = raw?.trim().toLowerCase();
-  if (!value) return null;
-  return (
-    SHOP_MODES.find((m) => {
-      const label = m.label.toLowerCase();
-      return (
-        value === m.key ||
-        value === label ||
-        value.startsWith(label) ||
-        value === MODE_NAMES[m.key].toLowerCase()
-      );
-    })?.key ?? null
-  );
 }
 
 export default function SettingsScreen() {
@@ -97,7 +72,7 @@ export default function SettingsScreen() {
   const products = useCollection<Product>("products");
   const messages = useCollection<AssistantMessage>("assistant_messages");
 
-  const [timeOpen, setTimeOpen] = useState(true);
+  const [timeOpen, setTimeOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState(false);
   const [draftAddress, setDraftAddress] = useState("");
@@ -113,7 +88,9 @@ export default function SettingsScreen() {
     return () => clearTimeout(id);
   }, [addressSaved]);
 
-  const shopMode = modeKey(answers.shopmode ?? answers.shop_mode ?? answers.mode);
+  // Until a mode is chosen the app shows the first one, so Settings shows that too.
+  const shopMode =
+    shopModeFrom(answers.shopmode ?? answers.shop_mode ?? answers.mode) ?? DEFAULT_SHOP_MODE;
   const tone: Tone = answers.tone === "brief" ? "brief" : "playful";
   const latestOrder = [...orders.items].sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0];
   const address = answers.address?.trim() || latestOrder?.shippingAddress || "";
@@ -213,50 +190,35 @@ export default function SettingsScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: "Settings",
-          headerLargeTitle: true,
-          headerLargeTitleStyle: {
-            fontFamily: DISPLAY_FONT,
-            fontWeight: "400",
-            fontSize: theme.font.size.display,
-            color: theme.colors.text,
-          },
-          headerTitleStyle: {
-            fontFamily: DISPLAY_FONT,
-            fontWeight: "400",
-            color: theme.colors.text,
-          },
-        }}
-      />
+      <Stack.Screen options={{ title: "Settings", headerTitleStyle: navTitleStyle(theme) }} />
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
+        automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
+        style={{ backgroundColor: theme.colors.background }}
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
-          paddingTop: theme.spacing.sm,
+          paddingTop: theme.spacing.lg,
           paddingBottom: theme.spacing.xl * 2,
         }}
       >
         <Stagger step={70} style={{ gap: theme.spacing.xl }}>
           {/* Order notifications */}
-          <View style={{ gap: theme.spacing.sm }}>
-            <SectionHeading>Order Notifications & Nudges</SectionHeading>
+          <View>
+            <SectionTitle title="Order notifications & nudges" flush />
             <Card>
               {reminder.ready ? (
                 <Row
-                  label="Daily Order Reminder"
+                  label="Daily order reminder"
                   chevron={false}
-                  last
                   right={
                     <Switch
                       value={reminder.enabled}
                       onValueChange={toggleReminder}
                       accessibilityLabel="Daily order reminder"
-                      trackColor={{ false: theme.colors.surfaceAlt, true: theme.colors.success }}
-                      thumbColor={theme.colors.surface}
-                      ios_backgroundColor={theme.colors.surfaceAlt}
+                      trackColor={{ false: theme.colors.textMuted, true: theme.colors.primary }}
+                      thumbColor={theme.dark ? theme.colors.text : theme.colors.surface}
+                      ios_backgroundColor={theme.colors.textMuted}
                     />
                   }
                 />
@@ -266,36 +228,33 @@ export default function SettingsScreen() {
                 </View>
               )}
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remind me at ${clock(reminder.hour, reminder.minute)}. ${
-                  timeOpen ? "Hide the time wheels" : "Show the time wheels"
+              <Row
+                label="Reminder time"
+                accessibilityLabel={`Reminder time, ${clock(reminder.hour, reminder.minute)}. ${
+                  timeOpen ? "Hide the time picker" : "Change"
                 }`}
-                accessibilityState={{ expanded: timeOpen }}
                 onPress={toggleTime}
-                style={({ pressed }) => ({
-                  minHeight: 48,
-                  marginTop: theme.spacing.sm,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1.5,
-                  borderColor: theme.colors.primary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingHorizontal: theme.spacing.lg,
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.primary,
-                    fontSize: theme.font.size.body,
-                    fontWeight: theme.font.weight.medium,
-                    fontVariant: ["tabular-nums"],
-                  }}
-                >
-                  {`Remind me at ${clock(reminder.hour, reminder.minute)}`}
-                </Text>
-              </Pressable>
+                chevron={false}
+                right={
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+                    <Text
+                      style={{
+                        color: theme.colors.primary,
+                        fontSize: theme.font.size.body,
+                        fontWeight: theme.font.weight.medium,
+                        fontVariant: ["tabular-nums"],
+                      }}
+                    >
+                      {clock(reminder.hour, reminder.minute)}
+                    </Text>
+                    <Ionicons
+                      name={timeOpen ? "chevron-up" : "chevron-down"}
+                      size={18}
+                      color={theme.colors.textMuted}
+                    />
+                  </View>
+                }
+              />
 
               {timeOpen ? (
                 <Appear distance={8} duration={280}>
@@ -304,7 +263,9 @@ export default function SettingsScreen() {
                       flexDirection: "row",
                       justifyContent: "center",
                       gap: theme.spacing.sm,
-                      paddingTop: theme.spacing.sm,
+                      paddingVertical: theme.spacing.md,
+                      borderBottomWidth: 1,
+                      borderBottomColor: theme.colors.border,
                     }}
                   >
                     <Wheel
@@ -322,7 +283,7 @@ export default function SettingsScreen() {
                       width={76}
                     />
                     <Wheel
-                      label="AM or PM"
+                      label="am or pm"
                       items={PERIODS}
                       index={periodIndex}
                       onChange={changePeriod}
@@ -333,23 +294,20 @@ export default function SettingsScreen() {
               ) : null}
 
               {reminder.permission === "denied" ? (
-                <View style={{ gap: theme.spacing.xs, paddingTop: theme.spacing.sm }}>
-                  <Text
-                    style={{
-                      color: theme.colors.danger,
-                      fontSize: theme.font.size.caption,
-                      lineHeight: 18,
-                    }}
-                  >
+                <View style={{ paddingTop: theme.spacing.md }}>
+                  <InlineNotice icon="notifications-off-outline">
                     Notifications for Parcel & Co are off. Allow them in your phone's Settings to
                     get the daily reminder.
-                  </Text>
+                  </InlineNotice>
                   <Pressable
                     accessibilityRole="button"
+                    accessibilityLabel="Open phone Settings"
                     onPress={() => Linking.openSettings()}
                     hitSlop={8}
                     style={({ pressed }) => ({
+                      alignSelf: "flex-start",
                       minHeight: 44,
+                      marginLeft: 20 + theme.spacing.sm,
                       justifyContent: "center",
                       opacity: pressed ? 0.6 : 1,
                     })}
@@ -371,41 +329,47 @@ export default function SettingsScreen() {
                 style={{
                   color: theme.colors.textMuted,
                   fontSize: theme.font.size.caption,
-                  lineHeight: 18,
-                  paddingTop: theme.spacing.sm,
-                  paddingBottom: theme.spacing.xs,
+                  lineHeight: 17,
+                  paddingVertical: theme.spacing.md,
                 }}
               >
-                Pip sends one calm summary of open parcel movements each morning.
+                Pip sends one calm summary of open parcel movements a day, at the time you set.
               </Text>
             </Card>
           </View>
 
           {/* Shop experience */}
-          <View style={{ gap: theme.spacing.sm }}>
-            <SectionHeading>Shop Experience</SectionHeading>
+          <View>
+            <SectionTitle title="Shop experience" flush />
             <Card>
               <Row
-                label="Default Shop Mode"
-                accessibilityLabel={`Default shop mode, ${
-                  shopMode ? MODE_NAMES[shopMode] : "not set"
-                }. Change`}
+                label="Default shop mode"
+                accessibilityLabel={`Default shop mode, ${MODE_NAMES[shopMode]}. ${
+                  modeOpen ? "Hide the choices" : "Change"
+                }`}
                 onPress={() => {
                   haptic("selection");
                   setModeOpen((open) => !open);
                 }}
+                chevron={false}
                 right={
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: theme.colors.primary,
-                      fontSize: theme.font.size.body,
-                      flexShrink: 1,
-                      maxWidth: 180,
-                    }}
-                  >
-                    {shopMode ? MODE_NAMES[shopMode] : "Choose"}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: theme.colors.primary,
+                        fontSize: theme.font.size.body,
+                        fontWeight: theme.font.weight.medium,
+                      }}
+                    >
+                      {modeLabel(shopMode)}
+                    </Text>
+                    <Ionicons
+                      name={modeOpen ? "chevron-up" : "chevron-down"}
+                      size={18}
+                      color={theme.colors.textMuted}
+                    />
+                  </View>
                 }
               />
               {modeOpen
@@ -421,40 +385,32 @@ export default function SettingsScreen() {
                   ))
                 : null}
 
-              {/* Pip peeks out over the divider between the two rows. */}
-              <View style={{ height: 0 }}>
-                <Mascot
-                  pose="pip-neutral"
-                  size={54}
-                  style={{ position: "absolute", left: "43%", top: -30 }}
-                />
-              </View>
-
-              <Row label="Pip Assistant Tone" chevron={false} last>
-                <Segmented<Tone>
-                  label="Pip assistant tone"
-                  options={[
-                    { key: "playful", label: "Playful & Warm" },
-                    { key: "brief", label: "Brief & Direct" },
-                  ]}
-                  value={tone}
-                  onChange={(key) => setAnswer("tone", key)}
-                />
+              <Row label="Pip assistant tone" chevron={false} last>
+                <View style={{ paddingBottom: theme.spacing.xs }}>
+                  <Segmented<Tone>
+                    label="Pip assistant tone"
+                    options={[
+                      { key: "playful", label: "Playful & warm" },
+                      { key: "brief", label: "Brief & direct" },
+                    ]}
+                    value={tone}
+                    onChange={(key) => setAnswer("tone", key)}
+                  />
+                </View>
               </Row>
             </Card>
           </View>
 
           {/* Shipping & billing */}
-          <View style={{ gap: theme.spacing.sm }}>
-            <SectionHeading>Shipping & Billing</SectionHeading>
+          <View>
+            <SectionTitle title="Shipping & billing" flush />
             <Card>
               <View
                 style={{
-                  paddingVertical: theme.spacing.sm,
+                  paddingVertical: theme.spacing.md,
                   gap: theme.spacing.sm,
                   borderBottomWidth: 1,
                   borderBottomColor: theme.colors.border,
-                  borderStyle: "dashed",
                 }}
               >
                 {addressLoading ? (
@@ -468,6 +424,7 @@ export default function SettingsScreen() {
                       value={draftAddress}
                       onChangeText={setDraftAddress}
                       multiline
+                      autoFocus
                       autoCapitalize="words"
                       placeholder="Street, apartment, city, state and ZIP"
                       placeholderTextColor={theme.colors.textMuted}
@@ -476,27 +433,29 @@ export default function SettingsScreen() {
                         minHeight: 88,
                         borderRadius: theme.radius.sm,
                         borderWidth: 1,
-                        borderColor: theme.colors.border,
+                        borderColor: theme.colors.textMuted,
                         backgroundColor: theme.colors.background,
                         padding: theme.spacing.md,
                         color: theme.colors.text,
-                        fontFamily: MONO,
                         fontSize: theme.font.size.body,
                         lineHeight: 22,
                         textAlignVertical: "top",
+                        outlineColor: theme.colors.primary,
                       }}
                     />
                     <View
                       style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}
                     >
-                      <PrimaryButton
-                        label="Save address"
-                        onPress={saveAddress}
-                        disabled={!draftAddress.trim()}
-                        style={{ flex: 1 }}
-                      />
+                      <View style={{ flex: 1 }}>
+                        <PrimaryButton
+                          label="Save address"
+                          onPress={saveAddress}
+                          disabled={!draftAddress.trim()}
+                        />
+                      </View>
                       <Pressable
                         accessibilityRole="button"
+                        accessibilityLabel="Cancel"
                         onPress={() => setEditingAddress(false)}
                         hitSlop={8}
                         style={({ pressed }) => ({
@@ -508,7 +467,7 @@ export default function SettingsScreen() {
                       >
                         <Text
                           style={{
-                            color: theme.colors.textMuted,
+                            color: theme.colors.primary,
                             fontSize: theme.font.size.body,
                             fontWeight: theme.font.weight.medium,
                           }}
@@ -520,17 +479,25 @@ export default function SettingsScreen() {
                   </View>
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-                    <Text
-                      style={{
-                        flex: 1,
-                        color: address ? theme.colors.text : theme.colors.textMuted,
-                        fontFamily: MONO,
-                        fontSize: theme.font.size.body,
-                        lineHeight: 23,
-                      }}
-                    >
-                      {address || "No shipping address yet. Add one so checkout is quicker."}
-                    </Text>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontSize: theme.font.size.caption,
+                        }}
+                      >
+                        Shipping address
+                      </Text>
+                      <Text
+                        style={{
+                          color: address ? theme.colors.text : theme.colors.textMuted,
+                          fontSize: theme.font.size.body,
+                          lineHeight: 22,
+                        }}
+                      >
+                        {address || "None yet. Add one so checkout is quicker."}
+                      </Text>
+                    </View>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={
@@ -541,7 +508,7 @@ export default function SettingsScreen() {
                       style={({ pressed }) => ({
                         minHeight: 44,
                         minWidth: 64,
-                        paddingHorizontal: theme.spacing.md,
+                        paddingHorizontal: theme.spacing.lg,
                         alignItems: "center",
                         justifyContent: "center",
                         borderRadius: theme.radius.pill,
@@ -563,42 +530,40 @@ export default function SettingsScreen() {
                   </View>
                 )}
                 {addressSaved ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-                    <Lottie name="success" size={36} />
-                    <Text
-                      style={{
-                        color: theme.colors.success,
-                        fontSize: theme.font.size.caption,
-                        fontWeight: theme.font.weight.medium,
-                      }}
-                    >
-                      Address saved. Your next order ships here.
-                    </Text>
-                  </View>
+                  <InlineNotice tone="success" live>
+                    Address saved. Your next order ships here.
+                  </InlineNotice>
                 ) : null}
               </View>
 
               <Row
-                label={`${WALLET} (Default)`}
-                accessibilityLabel={`${WALLET}, default. Manage payment methods`}
+                label={WALLET}
+                detail="Default payment method"
+                accessibilityLabel={`${WALLET}, default payment method${
+                  BILLING_URL ? ". Manage payment methods" : ""
+                }`}
                 leading={
-                  <AiImage
-                    prompt="Apple Pay card icon thumbnail"
-                    style={{ width: 40, height: 26, borderRadius: 5 }}
-                  />
-                }
-                right={
-                  <View
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 4,
-                      borderWidth: 1.5,
-                      borderColor: theme.colors.textMuted,
-                    }}
-                  />
+                  Platform.OS === "android" ? (
+                    <View
+                      style={{
+                        width: 40,
+                        height: 28,
+                        borderRadius: 6,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: theme.colors.surfaceAlt,
+                      }}
+                    >
+                      <Ionicons name="card-outline" size={18} color={theme.colors.primary} />
+                    </View>
+                  ) : (
+                    <ProductArt
+                      prompt="Apple Pay card icon thumbnail"
+                      icon="card-outline"
+                      label="Apple Pay"
+                      style={{ width: 40, height: 28, borderRadius: 6 }}
+                    />
+                  )
                 }
                 onPress={BILLING_URL ? () => Linking.openURL(BILLING_URL) : undefined}
                 chevron={Boolean(BILLING_URL)}
@@ -608,13 +573,12 @@ export default function SettingsScreen() {
           </View>
 
           {/* Account & support */}
-          <View style={{ gap: theme.spacing.sm }}>
-            <SectionHeading>Account & Support</SectionHeading>
-            <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-              <Card style={{ flex: 1 }}>
+          <View>
+            <SectionTitle title="Account & support" flush />
+            <Card>
                 {support.available ? (
                   <Row
-                    label="Help & Concierge Desk"
+                    label="Help & concierge desk"
                     onPress={support.open}
                     right={
                       supportUnread > 0 ? (
@@ -645,10 +609,10 @@ export default function SettingsScreen() {
                   />
                 ) : null}
                 {appInfo.termsUrl ? (
-                  <Row label="Terms of Service" onPress={() => Linking.openURL(appInfo.termsUrl)} />
+                  <Row label="Terms of service" onPress={() => Linking.openURL(appInfo.termsUrl)} />
                 ) : null}
                 {appInfo.privacyUrl ? (
-                  <Row label="Privacy Policy" onPress={() => Linking.openURL(appInfo.privacyUrl)} />
+                  <Row label="Privacy policy" onPress={() => Linking.openURL(appInfo.privacyUrl)} />
                 ) : null}
                 <Row
                   label="Restore purchases"
@@ -668,7 +632,7 @@ export default function SettingsScreen() {
                 />
                 <Row label="Replay onboarding" onPress={() => resetOnboarding()} />
                 <Row
-                  label="Reset App Data"
+                  label="Reset app data"
                   danger
                   chevron={false}
                   last
@@ -684,25 +648,21 @@ export default function SettingsScreen() {
                   onPress={resetData}
                   accessibilityLabel={armed ? "Confirm reset app data" : "Reset app data"}
                 />
-              </Card>
-              <Mascot
-                pose="pip-delivering"
-                size={128}
-                style={{ marginLeft: -theme.spacing.md, marginBottom: -theme.spacing.sm }}
-              />
-            </View>
+            </Card>
           </View>
 
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: MONO,
-              fontSize: theme.font.size.caption,
-              textAlign: "center",
-            }}
-          >
-            {`${appInfo.name} v${appInfo.version} · Crafted on ${theme.name}`}
-          </Text>
+          <View style={{ alignItems: "center", gap: theme.spacing.sm }}>
+            <Pip pose="pip-delivering" size={88} />
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontSize: theme.font.size.caption,
+                textAlign: "center",
+              }}
+            >
+              {`${appInfo.name} v${appInfo.version} · Crafted on ${theme.name}`}
+            </Text>
+          </View>
         </Stagger>
       </ScrollView>
     </>

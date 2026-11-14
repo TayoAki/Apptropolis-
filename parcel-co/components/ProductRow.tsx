@@ -2,8 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
 import { formatMoney, type Product } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
-import { AiImage } from "./AiImage";
 import { haptic } from "./motion";
+import { ProductImage } from "./ProductArt";
 
 /** A product in a list: picture, name, price, and quick save-to-wishlist and add-to-cart. */
 export function ProductRow({
@@ -27,7 +27,10 @@ export function ProductRow({
         backgroundColor: theme.colors.surface,
       }}
     >
-      <AiImage prompt={product.name} style={{ width: 64, height: 64, borderRadius: theme.radius.sm }} />
+      <ProductImage
+        product={product}
+        style={{ width: 64, height: 64, borderRadius: theme.radius.sm }}
+      />
       <View style={{ flex: 1, gap: 2 }}>
         <Text
           numberOfLines={1}
@@ -78,7 +81,7 @@ export function ProductRow({
           <Ionicons
             name={product.isWishlisted ? "heart" : "heart-outline"}
             size={22}
-            color={product.isWishlisted ? theme.colors.danger : theme.colors.textMuted}
+            color={product.isWishlisted ? theme.colors.primary : theme.colors.textMuted}
           />
         </Pressable>
         <Pressable

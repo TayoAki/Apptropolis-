@@ -1,6 +1,5 @@
-// Shop controls: the Glow/Style/Home/Pantry switch, the in-stock filter chip, the wishlist heart
-// and the per-card cart control (Add to Cart, or an outlined "N in cart" tag). Used by
-// app/(tabs)/shop.tsx.
+// Shop controls: the Style/Glow/Home/Pantry switch (also on Home), the in-stock filter chip, the
+// wishlist heart and the per-card cart control (Add to cart, or an outlined "N in cart" tag).
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
@@ -73,7 +72,7 @@ export function ModeSwitch({
         return (
           <Pressable
             key={mode.key}
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={mode.label}
             accessibilityState={{ selected }}
             hitSlop={4}
@@ -87,9 +86,16 @@ export function ModeSwitch({
               haptic("selection");
               onChange(mode.key);
             }}
-            style={{ flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center" }}
+            style={({ pressed }) => ({
+              flex: 1,
+              minHeight: 44,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed && !selected ? 0.6 : 1,
+            })}
           >
             <Text
+              numberOfLines={1}
               style={{
                 color: selected ? theme.colors.onPrimary : theme.colors.text,
                 fontSize: theme.font.size.body,
@@ -105,7 +111,7 @@ export function ModeSwitch({
   );
 }
 
-/** Outlined toggle with a tag icon: limits the list to products that can be bought now. */
+/** Outlined toggle: limits the list to products that can be bought now. Checked when on. */
 export function InStockChip({
   selected,
   onPress,
@@ -114,11 +120,12 @@ export function InStockChip({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const ink = selected ? theme.colors.primary : theme.colors.text;
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole="switch"
       accessibilityLabel="In stock only"
-      accessibilityState={{ selected }}
+      accessibilityState={{ checked: selected }}
       hitSlop={6}
       onPress={() => {
         haptic("selection");
@@ -131,31 +138,27 @@ export function InStockChip({
         gap: theme.spacing.xs,
         paddingHorizontal: theme.spacing.md,
         borderRadius: theme.radius.pill,
-        borderWidth: 1,
-        borderColor: theme.colors.text,
-        ...(selected ? { backgroundColor: theme.colors.surfaceAlt } : {}),
+        borderWidth: selected ? 1.5 : 1,
+        borderColor: selected ? theme.colors.primary : theme.colors.textMuted,
+        backgroundColor: selected ? theme.colors.primary + "1F" : theme.colors.surface,
         opacity: pressed ? 0.7 : 1,
       })}
     >
+      <Ionicons name={selected ? "checkmark" : "pricetag-outline"} size={16} color={ink} />
       <Text
         style={{
-          color: theme.colors.text,
+          color: ink,
           fontSize: theme.font.size.body,
           fontWeight: theme.font.weight.medium,
         }}
       >
-        In Stock
+        In stock
       </Text>
-      <Ionicons
-        name={selected ? "pricetag" : "pricetag-outline"}
-        size={16}
-        color={selected ? theme.colors.primary : theme.colors.textMuted}
-      />
     </Pressable>
   );
 }
 
-/** The heart: filled red when saved; a small heart burst plays on saving. */
+/** The heart: filled in the brand color when saved; a small heart burst plays on saving. */
 export function WishlistButton({
   saved,
   name,
@@ -196,14 +199,20 @@ export function WishlistButton({
       accessibilityRole="button"
       accessibilityLabel={saved ? `Remove ${name} from wishlist` : `Save ${name} to wishlist`}
       accessibilityState={{ selected: saved }}
-      hitSlop={10}
-      style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        width: 44,
+        height: 44,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
         <Ionicons
           name={saved ? "heart" : "heart-outline"}
           size={24}
-          color={saved ? theme.colors.danger : theme.colors.textMuted}
+          color={saved ? theme.colors.primary : theme.colors.textMuted}
         />
       </Animated.View>
       {playing ? (
@@ -212,7 +221,7 @@ export function WishlistButton({
             key={burst}
             name="heart"
             size={56}
-            color={theme.colors.danger}
+            color={theme.colors.primary}
             onFinish={() => setPlaying(false)}
           />
         </View>
@@ -222,7 +231,7 @@ export function WishlistButton({
 }
 
 /**
- * One cart control per card: a filled "Add to Cart" pill when the product isn't in the cart,
+ * One cart control per card: a filled "Add to cart" pill when the product isn't in the cart,
  * and an outlined "N in cart" tag once it is (tapping the tag opens the cart).
  */
 export function CartPill({
@@ -240,37 +249,36 @@ export function CartPill({
 
   if (quantity > 0) {
     return (
-      <View style={{ alignItems: "flex-end" }}>
-        <Pressable
-          onPress={onOpenCart}
-          accessibilityRole="button"
-          accessibilityLabel={`${quantity} of ${name} in cart. Review cart`}
-          hitSlop={6}
-          style={({ pressed }) => ({
-            minHeight: 36,
-            minWidth: 96,
-            paddingHorizontal: theme.spacing.md,
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            borderColor: theme.colors.primary,
-            backgroundColor: theme.colors.surface,
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: pressed ? 0.7 : 1,
-          })}
+      <Pressable
+        onPress={onOpenCart}
+        accessibilityRole="button"
+        accessibilityLabel={`${quantity} of ${name} in cart. Review cart`}
+        hitSlop={4}
+        style={({ pressed }) => ({
+          minHeight: 40,
+          flexDirection: "row",
+          gap: theme.spacing.xs,
+          paddingHorizontal: theme.spacing.md,
+          borderRadius: theme.radius.pill,
+          borderWidth: 1.5,
+          borderColor: theme.colors.primary,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <Ionicons name="checkmark" size={16} color={theme.colors.primary} />
+        <Text
+          style={{
+            color: theme.colors.primary,
+            fontSize: theme.font.size.body,
+            fontWeight: theme.font.weight.medium,
+            fontVariant: ["tabular-nums"],
+          }}
         >
-          <Text
-            style={{
-              color: theme.colors.primary,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.medium,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            {quantity} in cart
-          </Text>
-        </Pressable>
-      </View>
+          {quantity} in cart
+        </Text>
+      </Pressable>
     );
   }
 
@@ -296,7 +304,7 @@ export function CartPill({
           fontWeight: theme.font.weight.medium,
         }}
       >
-        Add to Cart
+        Add to cart
       </Text>
     </PressScale>
   );

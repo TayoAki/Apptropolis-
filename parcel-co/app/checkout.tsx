@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, Stack } from "expo-router";
+import { Redirect, router, Stack } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -11,34 +12,54 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
 import { SlideToPay } from "../components/checkout/SlideToPay";
 import { Celebrate, Lottie } from "../components/lottie";
 import {
   Appear,
   CountUp,
+  haptic,
   Mascot,
   PressScale,
   Skeleton,
   Stagger,
   useReducedMotion,
 } from "../components/motion";
-import { EmptyState, PrimaryButton } from "../components/ui";
+import { Pip } from "../components/Pip";
+import { ProductImage } from "../components/ProductArt";
+import {
+  EmptyState,
+  HEADER_EDGE,
+  InlineNotice,
+  LoadProblem,
+  navTitleStyle,
+  PrimaryButton,
+  ScreenTitle,
+  SectionTitle,
+  useStalled,
+  withRetry,
+} from "../components/ui";
 import { track } from "../data/analytics";
+import { useAppState } from "../data/app-state";
+import { appStructure } from "../data/app-structure";
 import { useCollection } from "../data/repo";
 import {
   cartCount,
   cartLines,
   cartSubtotal,
+  categoryLabel,
   daysFromNow,
   formatMoney,
   modeLabel,
   relativeDay,
   shippingCost,
+  WALLET,
   type Order,
   type Product,
 } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
+
+/** The wallet's logo for the payment row. */
+const WALLET_ICON = Platform.OS === "android" ? "logo-google" : "logo-apple";
 
 /** Estimated sales tax on the subtotal. */
 const TAX_RATE = 0.0863;
@@ -51,22 +72,6 @@ function nextOrderNumber(existing: Order[]): string {
     20400,
   );
   return `PC-${highest + 1}`;
-}
-
-function Heading({ children }: { children: string }) {
-  const theme = useTheme();
-  return (
-    <Text
-      accessibilityRole="header"
-      style={{
-        color: theme.colors.text,
-        fontSize: theme.font.size.title,
-        fontWeight: theme.font.weight.medium,
-      }}
-    >
-      {children}
-    </Text>
-  );
 }
 
 function MoneyRow({ label, value }: { label: string; value: string }) {
@@ -130,81 +135,97 @@ function SpeedOption({
     outputRange: [theme.colors.border, theme.colors.primary],
     extrapolate: "clamp",
   });
+  // The ring is the control's outline, so it stays visible when the option isn't chosen.
+  const ring = pick.interpolate({
+    inputRange: [0, 1],
+    outputRange: [theme.colors.textMuted, theme.colors.primary],
+    extrapolate: "clamp",
+  });
   const dot = pick.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
 
   return (
     <PressScale
       onPress={onSelect}
       haptic="selection"
-      scaleTo={0.97}
+      scaleTo={0.98}
       accessibilityRole="radio"
       accessibilityLabel={`${title}, ${detail}, ${price}`}
-      accessibilityState={{ selected }}
-      style={{ flex: 1 }}
+      accessibilityState={{ checked: selected, selected }}
     >
       <Animated.View
         style={{
-          flex: 1,
-          minHeight: 156,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: theme.spacing.md,
+          minHeight: 76,
           borderRadius: theme.radius.md,
           borderWidth: 2,
           borderColor: edge,
           backgroundColor: fill,
-          padding: theme.spacing.md,
-          gap: theme.spacing.xs,
-          overflow: "hidden",
+          paddingVertical: theme.spacing.md,
+          paddingHorizontal: theme.spacing.md,
         }}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: theme.spacing.sm }}>
+        <Animated.View
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            borderWidth: 2,
+            borderColor: ring,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Animated.View
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              backgroundColor: theme.colors.primary,
+              transform: [{ scale: dot }],
+            }}
+          />
+        </Animated.View>
+        <View style={{ flex: 1, gap: 2 }}>
           <Text
             style={{
-              flex: 1,
               color: theme.colors.text,
               fontSize: theme.font.size.body,
+              lineHeight: 21,
               fontWeight: theme.font.weight.bold,
             }}
           >
             {title}
           </Text>
-          <Animated.View
+          <Text
             style={{
-              width: 20,
-              height: 20,
-              borderRadius: 10,
-              borderWidth: 2,
-              borderColor: edge,
-              alignItems: "center",
-              justifyContent: "center",
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption,
+              lineHeight: 17,
+              fontVariant: ["tabular-nums"],
             }}
           >
-            <Animated.View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 5,
-                backgroundColor: theme.colors.primary,
-                transform: [{ scale: dot }],
-              }}
-            />
-          </Animated.View>
+            {detail}
+          </Text>
         </View>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>{detail}</Text>
+        {pip ? (
+          <View style={{ pointerEvents: "none" }}>
+            <Mascot pose="pip-delivering" size={40} />
+          </View>
+        ) : null}
         <Text
           style={{
+            minWidth: 52,
+            textAlign: "right",
             color: theme.colors.text,
             fontSize: theme.font.size.body,
             fontWeight: theme.font.weight.bold,
             fontVariant: ["tabular-nums"],
-            marginTop: "auto",
           }}
         >
           {price}
         </Text>
-        {pip ? (
-          <View pointerEvents="none" style={{ position: "absolute", right: 6, bottom: 6 }}>
-            <Mascot pose="pip-delivering" size={44} />
-          </View>
-        ) : null}
       </Animated.View>
     </PressScale>
   );
@@ -225,10 +246,8 @@ function CheckoutSkeleton() {
       </View>
       <View style={{ gap: theme.spacing.sm }}>
         <Skeleton width={150} height={22} />
-        <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
-          <Skeleton width="48%" height={132} radius={theme.radius.md} />
-          <Skeleton width="48%" height={132} radius={theme.radius.md} />
-        </View>
+        <Skeleton height={76} radius={theme.radius.md} />
+        <Skeleton height={76} radius={theme.radius.md} />
       </View>
     </View>
   );
@@ -249,23 +268,13 @@ function Confirmation({ order }: { order: Placed }) {
       }}
     >
       <Appear>
-        <Mascot pose="pip-celebrating" size={180} />
+        <Pip pose="pip-celebrating" size={180} />
       </Appear>
       <Appear delay={120}>
         <Lottie name="success" size={72} />
       </Appear>
       <Appear delay={200} style={{ alignItems: "center", gap: theme.spacing.sm }}>
-        <Text
-          accessibilityRole="header"
-          style={{
-            color: theme.colors.text,
-            fontSize: theme.font.size.headline,
-            fontWeight: theme.font.weight.bold,
-            textAlign: "center",
-          }}
-        >
-          Order placed
-        </Text>
+        <ScreenTitle align="center">Order placed</ScreenTitle>
         <Text
           style={{
             color: theme.colors.textMuted,
@@ -285,6 +294,7 @@ function Confirmation({ order }: { order: Placed }) {
         />
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Back to home"
           onPress={() => router.replace("/(tabs)")}
           style={({ pressed }) => ({
             minHeight: 44,
@@ -308,9 +318,10 @@ function Confirmation({ order }: { order: Placed }) {
   );
 }
 
-export default function CheckoutScreen() {
+function CheckoutScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { ready, onboarded } = useAppState();
   const products = useCollection<Product>("products");
   const orders = useCollection<Order>("orders");
 
@@ -318,8 +329,8 @@ export default function CheckoutScreen() {
   const subtotal = cartSubtotal(lines);
   const count = cartCount(lines);
   const modes = Array.from(new Set(lines.map((product) => product.mode)));
-  const catalogTitle = `${count} ${count === 1 ? "Item" : "Items"}${
-    modes.length === 1 ? ` from ${modeLabel(modes[0]!)} Catalog` : ""
+  const catalogTitle = `${count} ${count === 1 ? "item" : "items"}${
+    modes.length === 1 ? ` from ${modeLabel(modes[0]!)}` : ""
   }`;
 
   const lastAddress = useMemo(() => {
@@ -394,9 +405,17 @@ export default function CheckoutScreen() {
   };
 
   const loading = products.loading || orders.loading;
+  const stalled = useStalled(loading);
 
   function renderBody() {
     if (placed) return <Confirmation order={placed} />;
+    if (stalled) {
+      return (
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <LoadProblem onRetry={onRetry} />
+        </View>
+      );
+    }
     if (loading) return <CheckoutSkeleton />;
     if (lines.length === 0) {
       return (
@@ -416,77 +435,74 @@ export default function CheckoutScreen() {
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xl }}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
-          <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-            <View style={card}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.spacing.sm }}>
-                <Text
-                  numberOfLines={2}
-                  style={{
-                    flex: 1,
-                    color: theme.colors.text,
-                    fontSize: theme.font.size.title,
-                    fontWeight: theme.font.weight.medium,
-                  }}
-                >
-                  {catalogTitle}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Edit cart"
-                  hitSlop={12}
-                  onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/shop"))}
-                  style={({ pressed }) => ({
-                    minHeight: 44,
-                    justifyContent: "center",
-                    opacity: pressed ? 0.6 : 1,
-                  })}
-                >
-                  <Text
+          <Stagger step={70} style={{ gap: theme.spacing.xl }}>
+            <View>
+              <SectionTitle
+                title={catalogTitle}
+                actionLabel="Edit cart"
+                onAction={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/shop"))}
+                flush
+              />
+              <View style={[card, { gap: 0, paddingVertical: theme.spacing.xs }]}>
+                {lines.map((product, index) => (
+                  <View
+                    key={product.id}
                     style={{
-                      color: theme.colors.primary,
-                      fontSize: theme.font.size.body,
-                      fontWeight: theme.font.weight.medium,
-                      textDecorationLine: "underline",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: theme.spacing.md,
+                      paddingVertical: theme.spacing.sm,
+                      borderTopWidth: index > 0 ? 1 : 0,
+                      borderTopColor: theme.colors.border,
                     }}
                   >
-                    Edit Cart
-                  </Text>
-                </Pressable>
-              </View>
-              <View style={{ flexDirection: "row", gap: theme.spacing.md, marginTop: theme.spacing.sm }}>
-                {lines.slice(0, 3).map((product) => (
-                  <View key={product.id} style={{ flex: 1, alignItems: "center", gap: theme.spacing.xs }}>
-                    <AiImage
-                      prompt={product.name}
-                      style={{ width: 72, height: 72, borderRadius: theme.radius.sm }}
+                    <ProductImage
+                      product={product}
+                      style={{ width: 48, height: 48, borderRadius: theme.radius.sm }}
                     />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontSize: theme.font.size.body,
+                          lineHeight: 21,
+                          fontWeight: theme.font.weight.medium,
+                        }}
+                      >
+                        {product.name}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontSize: theme.font.size.caption,
+                          fontVariant: ["tabular-nums"],
+                        }}
+                      >
+                        {`Qty ${product.cartQuantity} · ${categoryLabel(product.category)}`}
+                      </Text>
+                    </View>
                     <Text
-                      numberOfLines={2}
                       style={{
                         color: theme.colors.text,
                         fontSize: theme.font.size.body,
-                        textAlign: "center",
+                        fontWeight: theme.font.weight.medium,
+                        fontVariant: ["tabular-nums"],
                       }}
                     >
-                      {`${product.name} (x${product.cartQuantity})`}
+                      {formatMoney(product.price * product.cartQuantity)}
                     </Text>
                   </View>
                 ))}
-                {lines.length > 3 ? (
-                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-                      {`+${lines.length - 3} more`}
-                    </Text>
-                  </View>
-                ) : null}
               </View>
             </View>
 
-            <View style={{ gap: theme.spacing.sm }}>
-              <Heading>Shipping Address</Heading>
-              <View style={[card, { flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }]}>
+            <View>
+              <SectionTitle title="Shipping address" flush />
+              <View style={[card, { flexDirection: "row", alignItems: "center", gap: theme.spacing.md }]}>
                 <View style={{ flex: 1, gap: theme.spacing.sm }}>
                   {editingAddress ? (
                     <>
@@ -504,20 +520,26 @@ export default function CheckoutScreen() {
                         style={{
                           minHeight: 88,
                           borderRadius: theme.radius.sm,
-                          backgroundColor: theme.colors.surfaceAlt,
+                          borderWidth: 1,
+                          borderColor: theme.colors.textMuted,
+                          backgroundColor: theme.colors.background,
                           padding: theme.spacing.md,
                           color: theme.colors.text,
                           fontSize: theme.font.size.body,
+                          lineHeight: 22,
                           textAlignVertical: "top",
+                          outlineColor: theme.colors.primary,
                         }}
                       />
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Save shipping address"
+                        hitSlop={8}
                         onPress={() => setEditingAddress(false)}
                         style={({ pressed }) => ({
                           alignSelf: "flex-end",
                           minHeight: 44,
+                          paddingHorizontal: theme.spacing.sm,
                           justifyContent: "center",
                           opacity: pressed ? 0.6 : 1,
                         })}
@@ -548,15 +570,16 @@ export default function CheckoutScreen() {
                 {!editingAddress ? (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Change shipping address"
+                    accessibilityLabel={hasAddress ? "Change shipping address" : "Add shipping address"}
                     hitSlop={10}
                     onPress={() => setEditingAddress(true)}
                     style={({ pressed }) => ({
                       minHeight: 44,
-                      paddingHorizontal: theme.spacing.md,
+                      paddingHorizontal: theme.spacing.lg,
                       justifyContent: "center",
                       borderRadius: theme.radius.pill,
-                      backgroundColor: theme.colors.surfaceAlt,
+                      borderWidth: 1.5,
+                      borderColor: theme.colors.primary,
                       opacity: pressed ? 0.7 : 1,
                     })}
                   >
@@ -567,27 +590,27 @@ export default function CheckoutScreen() {
                         fontWeight: theme.font.weight.medium,
                       }}
                     >
-                      Change
+                      {hasAddress ? "Change" : "Add"}
                     </Text>
                   </Pressable>
                 ) : null}
               </View>
             </View>
 
-            <View style={{ gap: theme.spacing.sm }}>
-              <Heading>Delivery Speed</Heading>
-              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+            <View>
+              <SectionTitle title="Delivery speed" flush />
+              <View accessibilityRole="radiogroup" style={{ gap: theme.spacing.sm }}>
                 <SpeedOption
                   selected={speed === "standard"}
-                  title="Standard Eco Parcel"
-                  detail="3-5 business days"
+                  title="Standard eco parcel"
+                  detail="3 to 5 business days"
                   price={standardShipping === 0 ? "Free" : formatMoney(standardShipping)}
                   onSelect={() => setSpeed("standard")}
                 />
                 <SpeedOption
                   selected={speed === "express"}
-                  title="Express Courier with Pip Live Tracking"
-                  detail="Tomorrow by 12 PM"
+                  title="Express courier with Pip live tracking"
+                  detail="Tomorrow by 12 pm"
                   price={formatMoney(expressShipping)}
                   pip
                   onSelect={() => setSpeed("express")}
@@ -595,10 +618,12 @@ export default function CheckoutScreen() {
               </View>
             </View>
 
-            <View style={{ gap: theme.spacing.sm }}>
-              <Heading>Payment Method</Heading>
+            <View>
+              <SectionTitle title="Payment method" flush />
               <View style={[card, { flexDirection: "row", alignItems: "center", gap: theme.spacing.md }]}>
                 <View
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -610,7 +635,7 @@ export default function CheckoutScreen() {
                     paddingVertical: theme.spacing.xs,
                   }}
                 >
-                  <Ionicons name="logo-apple" size={16} color={theme.colors.text} />
+                  <Ionicons name={WALLET_ICON} size={16} color={theme.colors.text} />
                   <Text
                     style={{
                       color: theme.colors.text,
@@ -621,7 +646,7 @@ export default function CheckoutScreen() {
                     Pay
                   </Text>
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, gap: 2 }}>
                   <Text
                     style={{
                       color: theme.colors.text,
@@ -629,7 +654,7 @@ export default function CheckoutScreen() {
                       fontWeight: theme.font.weight.medium,
                     }}
                   >
-                    Apple Pay
+                    {WALLET}
                   </Text>
                   <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
                     Charged when you place the order
@@ -638,8 +663,8 @@ export default function CheckoutScreen() {
               </View>
             </View>
 
-            <View style={{ gap: theme.spacing.sm }}>
-              <Heading>Price Breakdown</Heading>
+            <View>
+              <SectionTitle title="Price breakdown" flush />
               <View style={[card, { gap: theme.spacing.md }]}>
                 <MoneyRow label="Subtotal" value={formatMoney(subtotal)} />
                 <MoneyRow label="Shipping" value={shipping === 0 ? "Free" : formatMoney(shipping)} />
@@ -682,39 +707,51 @@ export default function CheckoutScreen() {
           }}
         >
           {error ? (
-            <Text
-              accessibilityRole="alert"
-              style={{ color: theme.colors.danger, fontSize: theme.font.size.caption, textAlign: "center" }}
-            >
+            <InlineNotice tone="danger" live>
               {error}
-            </Text>
+            </InlineNotice>
           ) : hint ? (
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, textAlign: "center" }}>
-              {hint}
-            </Text>
+            <InlineNotice tone="warning">{hint}</InlineNotice>
           ) : null}
           <SlideToPay
             key={slideKey}
-            label="Slide to Place Order"
+            label="Slide to place order"
             disabled={!canPlace}
             done={placing}
             onComplete={placeOrder}
           />
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, textAlign: "center" }}>
-            Charged via Apple Pay. Protected by Parcel & Co Guarantee
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption,
+              lineHeight: 17,
+              textAlign: "center",
+            }}
+          >
+            {`Charged via ${WALLET}. Protected by Parcel & Co Guarantee.`}
           </Text>
         </View>
       </View>
     );
   }
 
+  // First launch lands here before onboarding (this route sits outside the guarded group).
+  if (appStructure.onboarding && ready && !onboarded) return <Redirect href="/onboarding" />;
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <Stack.Screen
         options={{
           title: "Checkout",
+          headerTitleStyle: navTitleStyle(theme),
           headerRight: () => (
-            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.primary} />
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color={theme.colors.textMuted}
+              accessibilityLabel="Secure checkout"
+              style={{ marginRight: HEADER_EDGE }}
+            />
           ),
         }}
       />
@@ -723,3 +760,5 @@ export default function CheckoutScreen() {
     </View>
   );
 }
+
+export default withRetry(CheckoutScreen);

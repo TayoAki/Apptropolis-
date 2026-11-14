@@ -59,7 +59,7 @@ function detailFor(order: Order, key: OrderStatus, state: NodeState): string {
       : state === "current"
         ? `Expected by ${formatTime(eta)}`
         : "Waiting";
-  if (state === "done") return order.status === "returned" ? "Return started" : "Delivered";
+  if (state === "done") return order.status === "returned" ? "Return started" : formatDate(eta);
   return `Expected ${dueText(eta)}`;
 }
 
@@ -80,7 +80,6 @@ export function timelineSteps(order: Order): Step[] {
 
 /** A vertical timeline whose nodes light up one after another from the top. */
 export function OrderTimeline({ order }: { order: Order }) {
-  const theme = useTheme();
   const reduced = useReducedMotion();
   const steps = timelineSteps(order);
   const fills = useRef(steps.map(() => new Animated.Value(0))).current;
@@ -138,7 +137,9 @@ function TimelineRow({
   const theme = useTheme();
   const isCurrent = step.state === "current";
   const lit = step.state !== "todo";
-  const color = isCurrent ? theme.colors.warning : theme.colors.primary;
+  // Every reached step is in the brand color; the current one is told apart by its dot, its
+  // halo and its bold label, never by a status color.
+  const color = theme.colors.primary;
   const scale = fill.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.5, 1.12, 1] });
 
   return (
@@ -179,8 +180,8 @@ function TimelineRow({
             width: NODE,
             height: NODE,
             borderRadius: NODE / 2,
-            borderWidth: 2,
-            borderColor: lit ? color : theme.colors.border,
+            borderWidth: lit ? 2 : 1.5,
+            borderColor: lit ? color : theme.colors.textMuted,
             backgroundColor: theme.colors.surface,
             alignItems: "center",
             justifyContent: "center",
@@ -239,6 +240,7 @@ function TimelineRow({
           style={{
             color: lit ? theme.colors.text : theme.colors.textMuted,
             fontSize: theme.font.size.body,
+            lineHeight: 21,
             fontWeight: isCurrent ? theme.font.weight.bold : theme.font.weight.medium,
           }}
         >

@@ -19,7 +19,7 @@ const TABS: { key: string; label: string; icon: IconName; activeIcon: IconName }
   { key: "shop", label: "Shop", icon: "storefront-outline", activeIcon: "storefront" },
   {
     key: "assistant",
-    label: "Pip Chat",
+    label: "Pip chat",
     icon: "chatbubble-ellipses-outline",
     activeIcon: "chatbubble-ellipses",
   },

@@ -1,4 +1,8 @@
 // Record shapes and small helpers shared by the screens. Money is in dollars; dates are ISO strings.
+import { Platform } from "react-native";
+
+/** The phone's own wallet: Google Pay on Android, Apple Pay everywhere else. */
+export const WALLET = Platform.OS === "android" ? "Google Pay" : "Apple Pay";
 
 export const SHOP_MODES = [
   { key: "style", label: "Style" },
@@ -146,6 +150,24 @@ export function shippingCost(speed: Order["deliverySpeed"], subtotal: number): n
 
 export function modeLabel(mode: ShopMode): string {
   return SHOP_MODES.find((m) => m.key === mode)?.label ?? mode;
+}
+
+/** The mode every screen shows until one has been chosen. */
+export const DEFAULT_SHOP_MODE: ShopMode = SHOP_MODES[0].key;
+
+/**
+ * The shop mode a saved answer names, whether it was stored as a key ("glow"), a label ("Glow")
+ * or a longer name ("Glow (skincare)"); null when there is none.
+ */
+export function shopModeFrom(value: string | undefined): ShopMode | null {
+  const text = (value ?? "").trim().toLowerCase();
+  if (!text) return null;
+  return SHOP_MODES.find((m) => text.startsWith(m.key))?.key ?? null;
+}
+
+/** "serums" to "Serums", for showing a category as a label. */
+export function categoryLabel(category: string): string {
+  return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
 /** The products currently in the cart. */

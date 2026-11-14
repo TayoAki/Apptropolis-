@@ -3,49 +3,35 @@ import { Link, router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
 import { TrackCard } from "../../components/index/TrackCard";
 import { Celebrate } from "../../components/lottie";
+import { Appear, PressScale, Skeleton, Stagger, useReducedMotion } from "../../components/motion";
+import { ProductImage } from "../../components/ProductArt";
+import { ModeSwitch } from "../../components/shop/controls";
 import {
-  Appear,
-  Mascot,
-  PressScale,
-  Skeleton,
-  Stagger,
-  StepTransition,
-  haptic,
-  useReducedMotion,
-} from "../../components/motion";
-import { EmptyState, SectionTitle } from "../../components/ui";
+  EmptyState,
+  LoadProblem,
+  ScreenTitle,
+  SectionTitle,
+  useStalled,
+  withRetry,
+} from "../../components/ui";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
 import { useAuth } from "../../data/auth";
 import { useCollection } from "../../data/repo";
 import {
-  SHOP_MODES,
+  DEFAULT_SHOP_MODE,
   formatDate,
   formatMoney,
   modeLabel,
+  shopModeFrom,
   statusLabel,
   type Order,
   type Product,
   type ShopMode,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-
-/** The shop mode from onboarding or the pill; falls back to the first mode. */
-function modeFrom(value: string | undefined): ShopMode {
-  const text = (value ?? "").toLowerCase();
-  return (
-    SHOP_MODES.find((m) => text.includes(m.key) || text.includes(m.label.toLowerCase()))?.key ??
-    SHOP_MODES[0].key
-  );
-}
-
-function nextMode(mode: ShopMode): ShopMode {
-  const index = SHOP_MODES.findIndex((m) => m.key === mode);
-  return SHOP_MODES[(index + 1) % SHOP_MODES.length]!.key;
-}
 
 function greetingNow(): string {
   const hour = new Date().getHours();
@@ -90,13 +76,18 @@ function PickCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
         backgroundColor: theme.colors.surface,
       }}
     >
-      <AiImage prompt={product.name} fit="contain" style={{ height: 120, borderRadius: theme.radius.sm }} />
+      <ProductImage
+        product={product}
+        fit="contain"
+        style={{ height: 120, borderRadius: theme.radius.sm }}
+      />
       <Text
         numberOfLines={2}
         style={{
-          minHeight: 40,
+          minHeight: 44,
           color: theme.colors.text,
           fontSize: theme.font.size.body,
+          lineHeight: 22,
           fontWeight: theme.font.weight.bold,
         }}
       >
@@ -119,14 +110,18 @@ function PickCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
           haptic="light"
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={`Add ${product.name} to cart`}
-          style={{ width: 36, height: 36 }}
+          accessibilityLabel={
+            count > 0
+              ? `Add another ${product.name} to cart, ${count} in cart`
+              : `Add ${product.name} to cart`
+          }
+          style={{ width: 40, height: 40 }}
         >
           <Animated.View
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
+              width: 40,
+              height: 40,
+              borderRadius: 20,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: count > 0 ? theme.colors.primary : theme.colors.surfaceAlt,
@@ -155,8 +150,9 @@ function PickCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
 }
 
 /** A past order in the horizontal list: its first item, the number, status and date. */
-function OrderChip({ order }: { order: Order }) {
+function OrderChip({ order, products }: { order: Order; products: Product[] }) {
   const theme = useTheme();
+  const item = firstItem(order.items);
   const tone =
     order.status === "delivered"
       ? theme.colors.success
@@ -179,7 +175,11 @@ function OrderChip({ order }: { order: Order }) {
         backgroundColor: theme.colors.surface,
       }}
     >
-      <AiImage prompt={firstItem(order.items)} style={{ width: 56, height: 56, borderRadius: theme.radius.sm }} />
+      <ProductImage
+        product={products.find((p) => p.name === item)}
+        name={item}
+        style={{ width: 56, height: 56, borderRadius: theme.radius.sm }}
+      />
       <View style={{ flex: 1, gap: 2 }}>
         <Text
           numberOfLines={1}
@@ -192,12 +192,30 @@ function OrderChip({ order }: { order: Order }) {
         >
           Order #{order.orderNumber}
         </Text>
-        <Text
-          numberOfLines={1}
-          style={{ color: tone, fontSize: theme.font.size.caption, fontWeight: theme.font.weight.medium }}
-        >
-          {title}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+          <Ionicons
+            name={
+              order.status === "delivered"
+                ? "checkmark-circle"
+                : order.status === "returned"
+                  ? "return-up-back-outline"
+                  : "time-outline"
+            }
+            size={14}
+            color={tone}
+          />
+          <Text
+            numberOfLines={1}
+            style={{
+              flexShrink: 1,
+              color: tone,
+              fontSize: theme.font.size.caption,
+              fontWeight: theme.font.weight.medium,
+            }}
+          >
+            {title}
+          </Text>
+        </View>
         <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
           {formatDate(order.estimatedDelivery)}
         </Text>
@@ -206,7 +224,7 @@ function OrderChip({ order }: { order: Order }) {
   );
 }
 
-export default function HomeScreen() {
+function HomeScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -214,8 +232,9 @@ export default function HomeScreen() {
   const orders = useCollection<Order>("orders");
   const products = useCollection<Product>("products");
 
-  const mode = modeFrom(answers.shopmode);
+  const mode = shopModeFrom(answers.shopmode) ?? DEFAULT_SHOP_MODE;
   const loading = orders.loading || products.loading;
+  const stalled = useStalled(loading);
 
   const sorted = useMemo(
     () => [...orders.items].sort((a, b) => b.placedAt.localeCompare(a.placedAt)),
@@ -249,9 +268,8 @@ export default function HomeScreen() {
     lastSeen.current = { id: latest.id, status: latest.status };
   }, [latest?.id, latest?.status]);
 
-  function cycleMode() {
-    haptic("selection");
-    void setAnswer("shopmode", nextMode(mode));
+  function chooseMode(next: ShopMode) {
+    void setAnswer("shopmode", next);
   }
 
   function addToCart(product: Product) {
@@ -265,7 +283,6 @@ export default function HomeScreen() {
 
   const name = user?.name?.trim().split(/\s+/)[0];
   const greeting = `${greetingNow()}${name ? `, ${name}` : ""}`;
-  const activeParcel = latest && latest.status !== "delivered" && latest.status !== "returned";
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -273,57 +290,18 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + theme.spacing.md,
-          paddingBottom: 120,
+          paddingBottom: theme.spacing.xl,
           paddingHorizontal: theme.spacing.lg,
         }}
       >
-        <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+        <Stagger step={70} style={{ gap: theme.spacing.xl }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text
-                accessibilityRole="header"
-                numberOfLines={2}
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.headline,
-                  fontWeight: theme.font.weight.bold,
-                }}
-              >
-                {greeting}
-              </Text>
+              <ScreenTitle numberOfLines={2}>{greeting}</ScreenTitle>
               <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
                 {formatDate(new Date().toISOString())}
               </Text>
             </View>
-            <Pressable
-              onPress={cycleMode}
-              accessibilityRole="button"
-              accessibilityLabel={`${modeLabel(mode)} mode. Switch shop mode`}
-              hitSlop={8}
-              style={({ pressed }) => ({
-                minHeight: 44,
-                paddingHorizontal: theme.spacing.md,
-                borderRadius: theme.radius.pill,
-                backgroundColor: theme.colors.primary,
-                justifyContent: "center",
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              <StepTransition step={mode} direction={1}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Text
-                    style={{
-                      color: theme.colors.onPrimary,
-                      fontSize: theme.font.size.body,
-                      fontWeight: theme.font.weight.medium,
-                    }}
-                  >
-                    {modeLabel(mode)} Mode
-                  </Text>
-                  <Ionicons name="chevron-down" size={14} color={theme.colors.onPrimary} />
-                </View>
-              </StepTransition>
-            </Pressable>
             <Link href="/settings" asChild>
               <Pressable
                 accessibilityRole="button"
@@ -332,18 +310,21 @@ export default function HomeScreen() {
                 style={({ pressed }) => ({
                   width: 44,
                   height: 44,
+                  marginRight: -theme.spacing.sm,
                   alignItems: "center",
                   justifyContent: "center",
                   opacity: pressed ? 0.6 : 1,
                 })}
               >
-                <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
+                <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
               </Pressable>
             </Link>
           </View>
 
-          {loading ? (
-            <Skeleton height={300} radius={theme.radius.lg} />
+          {stalled ? (
+            <LoadProblem onRetry={onRetry} />
+          ) : loading ? (
+            <Skeleton height={320} radius={theme.radius.lg} />
           ) : latest ? (
             <TrackCard
               order={latest}
@@ -360,9 +341,9 @@ export default function HomeScreen() {
             />
           )}
 
-          {loading || past.length > 0 ? (
+          {stalled ? null : loading || past.length > 0 ? (
             <View>
-              <SectionTitle title="Recent Orders" />
+              <SectionTitle title="Recent orders" flush />
               {loading ? (
                 <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
                   <Skeleton width={248} height={92} radius={theme.radius.md} />
@@ -381,7 +362,7 @@ export default function HomeScreen() {
                   }}
                   renderItem={({ item, index }) => (
                     <Appear delay={Math.min(index, 8) * 50}>
-                      <OrderChip order={item} />
+                      <OrderChip order={item} products={products.items} />
                     </Appear>
                   )}
                 />
@@ -389,8 +370,12 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
+          {stalled ? null : (
           <View>
-            <SectionTitle title={`${modeLabel(mode)} Picks for You`} />
+            <SectionTitle title="Picks for you" flush />
+            <View style={{ marginBottom: theme.spacing.md }}>
+              <ModeSwitch value={mode} onChange={chooseMode} />
+            </View>
             {loading ? (
               <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
                 <View style={{ flex: 1 }}>
@@ -426,49 +411,13 @@ export default function HomeScreen() {
               />
             )}
           </View>
+          )}
         </Stagger>
       </ScrollView>
-
-      {activeParcel ? (
-        <Appear delay={600} style={{ position: "absolute", right: theme.spacing.lg, bottom: theme.spacing.md }}>
-          <Pressable
-            onPress={() => askPip({ prompt: "Where is my package?" })}
-            accessibilityRole="button"
-            accessibilityLabel="Ask Pip: where is my package?"
-            style={({ pressed }) => ({
-              minHeight: 44,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: theme.spacing.sm,
-              paddingLeft: theme.spacing.md,
-              paddingRight: theme.spacing.xs,
-              paddingVertical: theme.spacing.xs,
-              borderRadius: theme.radius.pill,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              backgroundColor: theme.colors.surface,
-              opacity: pressed ? 0.8 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.medium,
-              }}
-            >
-              Where is my package?
-            </Text>
-            <Mascot
-              pose="pip-neutral"
-              size={32}
-              onPress={() => askPip({ prompt: "Where is my package?" })}
-            />
-          </Pressable>
-        </Appear>
-      ) : null}
 
       <Celebrate trigger={celebrateAt} />
     </View>
   );
 }
+
+export default withRetry(HomeScreen);

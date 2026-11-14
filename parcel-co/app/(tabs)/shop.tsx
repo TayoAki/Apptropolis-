@@ -1,21 +1,29 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState, type ReactNode } from "react";
-import { FlatList, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
 import { Appear, CountUp, Mascot, PressScale, Skeleton, Stagger } from "../../components/motion";
+import { ProductImage } from "../../components/ProductArt";
 import { CartPill, InStockChip, ModeSwitch, WishlistButton } from "../../components/shop/controls";
-import { EmptyState } from "../../components/ui";
+import {
+  EmptyState,
+  LoadProblem,
+  ScreenTitle,
+  useStalled,
+  withRetry,
+} from "../../components/ui";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
 import { useCollection } from "../../data/repo";
 import {
-  SHOP_MODES,
+  DEFAULT_SHOP_MODE,
   cartCount,
   cartSubtotal,
+  categoryLabel,
   formatMoney,
   modeLabel,
+  shopModeFrom,
   type Order,
   type Product,
   type ShopMode,
@@ -25,52 +33,15 @@ import { useTheme } from "../../theme/ThemeProvider";
 /** A product can carry stock information; one without it is in stock. */
 type ShopProduct = Product & { inStock?: boolean };
 
-const SERIF = Platform.select({ ios: "Georgia", default: "serif" });
 const BAR_HEIGHT = 52;
 
+/** Short enough to fit the search field beside the In stock chip on a small phone. */
 const SEARCH_HINT: Record<ShopMode, string> = {
-  style: "Search tops, knitwear, bags",
-  glow: "Search botanical serums, oils...",
-  home: "Search candles, kitchen, decor",
-  pantry: "Search oils, coffee, tea",
+  style: "Tops, knitwear, bags",
+  glow: "Serums, oils, masks",
+  home: "Candles, kitchen, decor",
+  pantry: "Oils, coffee, tea",
 };
-
-/** The vessel or form each category is drawn in, for its picture. */
-const CATEGORY_VESSEL: Record<string, string> = {
-  serums: "glass dropper bottle",
-  oils: "glass oil bottle",
-  toners: "spray mist bottle",
-  moisturizers: "cream jar",
-  masks: "cream jar",
-  "eye care": "small cream jar",
-  cleansers: "squeeze tube",
-  sunscreen: "squeeze tube",
-  candles: "glass candle in a ceramic vessel",
-  bags: "canvas tote bag",
-  tops: "folded shirt",
-  knitwear: "folded sweater",
-  bottoms: "pair of trousers",
-  tableware: "stoneware plate",
-  kitchen: "ceramic kitchen piece",
-  coffee: "bag of coffee beans",
-  tea: "tin of loose tea",
-};
-
-/** The picture description for a product: drawn once per product, shown whole on a beige tile. */
-function productPicture(product: ShopProduct): string {
-  const vessel = CATEGORY_VESSEL[product.category];
-  const subject = vessel ? `${vessel} for ${product.name}` : product.name;
-  return `${subject}, soft watercolor illustration, centered on a plain background`;
-}
-
-/** The mode from onboarding's answer (a key or a label), Glow when there is none. */
-function modeFromAnswer(answer: string | undefined): ShopMode {
-  const needle = (answer ?? "").trim().toLowerCase();
-  const found = SHOP_MODES.find(
-    (mode) => mode.key === needle || mode.label.toLowerCase() === needle,
-  );
-  return found?.key ?? "glow";
-}
 
 function matches(product: Product, needle: string): boolean {
   return [product.name, product.category, product.description].some((text) =>
@@ -92,6 +63,7 @@ function ProductCard({
   const theme = useTheme();
   return (
     <View
+      accessibilityLabel={`${product.name}. ${product.description}`}
       style={{
         flex: 1,
         gap: theme.spacing.xs,
@@ -110,8 +82,8 @@ function ProductCard({
           overflow: "hidden",
         }}
       >
-        <AiImage
-          prompt={productPicture(product)}
+        <ProductImage
+          product={product}
           fit="contain"
           style={{ width: "100%", height: "100%", borderRadius: 0 }}
         />
@@ -122,10 +94,11 @@ function ProductCard({
       <Text
         numberOfLines={2}
         style={{
-          minHeight: 40,
+          minHeight: 44,
           marginTop: theme.spacing.xs,
           color: theme.colors.text,
           fontSize: theme.font.size.body,
+          lineHeight: 22,
           fontWeight: theme.font.weight.bold,
         }}
       >
@@ -135,7 +108,7 @@ function ProductCard({
         numberOfLines={1}
         style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
       >
-        {product.description}
+        {categoryLabel(product.category)}
       </Text>
       <Text
         style={{
@@ -159,16 +132,23 @@ function ProductCard({
   );
 }
 
-export default function ShopScreen() {
+function ShopScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { answers } = useAppState();
   const products = useCollection<ShopProduct>("products");
   const orders = useCollection<Order>("orders");
 
-  const [mode, setMode] = useState<ShopMode>(() => modeFromAnswer(answers["shopmode"]));
+  const saved = shopModeFrom(answers.shopmode);
+  const [mode, setMode] = useState<ShopMode>(saved ?? DEFAULT_SHOP_MODE);
+  // Open on the default shop mode, and follow it when it is changed on Home or in Settings.
+  useEffect(() => {
+    if (saved) setMode(saved);
+  }, [saved]);
   const [query, setQuery] = useState("");
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const stalled = useStalled(products.loading);
 
   const needle = query.trim().toLowerCase();
   const inMode = products.items.filter((product) => product.mode === mode);
@@ -182,8 +162,6 @@ export default function ShopScreen() {
     (order) => order.status !== "delivered" && order.status !== "returned",
   );
   const pose = activeOrder?.status === "out_for_delivery" ? "pip-delivering" : "pip-neutral";
-  // The cart bar sits just above the tab bar; the list and Pip clear it when it shows.
-  const barSpace = count > 0 ? BAR_HEIGHT + theme.spacing.md + theme.spacing.sm : 0;
 
   function openCart() {
     router.push("/checkout");
@@ -201,26 +179,42 @@ export default function ShopScreen() {
 
   const header = (
     <Stagger step={70} style={{ gap: theme.spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Text
-          accessibilityRole="header"
-          style={{
-            color: theme.colors.text,
-            fontFamily: SERIF,
-            fontSize: theme.font.size.headline,
-            fontWeight: theme.font.weight.regular,
-          }}
-        >
-          Boutique Catalog
-        </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+        <ScreenTitle numberOfLines={1} style={{ flex: 1 }}>
+          Boutique catalog
+        </ScreenTitle>
         <Pressable
-          onPress={openCart}
+          onPress={() => router.push("/assistant")}
           accessibilityRole="button"
-          accessibilityLabel={count > 0 ? `Cart, ${count} items` : "Cart, empty"}
-          hitSlop={10}
+          accessibilityLabel={activeOrder ? "Ask Pip where your package is" : "Ask Pip"}
+          hitSlop={6}
           style={({ pressed }) => ({
             width: 44,
             height: 44,
+            borderRadius: 22,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <View style={{ pointerEvents: "none" }}>
+            <Mascot pose={pose} size={34} />
+          </View>
+        </Pressable>
+        <Pressable
+          onPress={openCart}
+          accessibilityRole="button"
+          accessibilityLabel={
+            count > 0 ? `Cart, ${count} ${count === 1 ? "item" : "items"}` : "Cart, empty"
+          }
+          hitSlop={6}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            marginRight: -theme.spacing.sm,
             alignItems: "center",
             justifyContent: "center",
             opacity: pressed ? 0.6 : 1,
@@ -239,7 +233,7 @@ export default function ShopScreen() {
                 paddingHorizontal: 5,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: theme.colors.danger,
+                backgroundColor: theme.colors.primary,
               }}
             >
               <Text
@@ -263,26 +257,34 @@ export default function ShopScreen() {
         <View
           style={{
             flex: 1,
+            minWidth: 0,
             flexDirection: "row",
             alignItems: "center",
             gap: theme.spacing.sm,
             height: 44,
-            paddingLeft: theme.spacing.md,
-            paddingRight: theme.spacing.md,
+            paddingHorizontal: theme.spacing.md,
             borderRadius: theme.radius.pill,
-            backgroundColor: theme.colors.surfaceAlt,
+            borderWidth: 1.5,
+            borderColor: searching ? theme.colors.primary : theme.colors.textMuted,
+            backgroundColor: theme.colors.surface,
           }}
         >
+          <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} />
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder={SEARCH_HINT[mode]}
             placeholderTextColor={theme.colors.textMuted}
-            accessibilityLabel="Search products"
+            accessibilityLabel={`Search ${modeLabel(mode)} products`}
             returnKeyType="search"
             autoCorrect={false}
+            onFocus={() => setSearching(true)}
+            onBlur={() => setSearching(false)}
             style={{
               flex: 1,
+              minWidth: 0,
+              height: 40,
+              outlineWidth: 0,
               color: theme.colors.text,
               fontSize: theme.font.size.body,
               paddingVertical: 0,
@@ -293,19 +295,21 @@ export default function ShopScreen() {
               onPress={() => setQuery("")}
               accessibilityRole="button"
               accessibilityLabel="Clear search"
-              hitSlop={10}
+              hitSlop={12}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
             >
-              <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+              <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
             </Pressable>
           ) : null}
-          <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} />
         </View>
         <InStockChip selected={inStockOnly} onPress={() => setInStockOnly((on) => !on)} />
       </View>
     </Stagger>
   );
 
-  const empty: ReactNode = products.loading ? (
+  const empty: ReactNode = stalled ? (
+    <LoadProblem onRetry={onRetry} />
+  ) : products.loading ? (
     <View
       accessibilityRole="progressbar"
       accessibilityLabel="Loading products"
@@ -342,7 +346,7 @@ export default function ShopScreen() {
     <EmptyState
       icon="pricetag-outline"
       title={`Nothing in stock in ${modeLabel(mode)} right now`}
-      body="Turn off In Stock to see everything, including items being restocked."
+      body="Turn off In stock to see everything, including items being restocked."
       actionLabel="Show all"
       onAction={() => setInStockOnly(false)}
     />
@@ -359,6 +363,7 @@ export default function ShopScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <FlatList
+        style={{ flex: 1 }}
         data={visible}
         keyExtractor={(product) => product.id}
         numColumns={2}
@@ -367,7 +372,7 @@ export default function ShopScreen() {
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
           paddingTop: insets.top + theme.spacing.md,
-          paddingBottom: theme.spacing.xl + barSpace,
+          paddingBottom: theme.spacing.xl,
         }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -385,13 +390,15 @@ export default function ShopScreen() {
         )}
       />
 
+      {/* The cart bar has its own strip above the tab bar, so it never covers a product. */}
       {count > 0 ? (
         <Appear
           style={{
-            position: "absolute",
-            left: theme.spacing.lg,
-            right: theme.spacing.lg,
-            bottom: theme.spacing.md,
+            paddingHorizontal: theme.spacing.lg,
+            paddingVertical: theme.spacing.sm,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.background,
           }}
         >
           <PressScale
@@ -399,25 +406,44 @@ export default function ShopScreen() {
             scaleTo={0.97}
             haptic="light"
             accessibilityRole="button"
-            accessibilityLabel={`Review cart and checkout, ${count} items, ${formatMoney(subtotal)}`}
+            accessibilityLabel={`Checkout, ${count} ${count === 1 ? "item" : "items"}, ${formatMoney(subtotal)}`}
             style={{
               height: BAR_HEIGHT,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: theme.spacing.sm,
+              gap: theme.spacing.md,
               paddingHorizontal: theme.spacing.lg,
               borderRadius: theme.radius.pill,
               backgroundColor: theme.colors.primary,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.spacing.sm,
+                flexShrink: 1,
+              }}
+            >
               <Text
                 numberOfLines={1}
-                style={{ color: theme.colors.onPrimary, fontSize: theme.font.size.body }}
+                style={{
+                  color: theme.colors.onPrimary,
+                  fontSize: theme.font.size.body,
+                  fontVariant: ["tabular-nums"],
+                }}
               >
-                {count} {count === 1 ? "item" : "items"} in cart ·{" "}
+                {count} {count === 1 ? "item" : "items"}
               </Text>
+              <View
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: theme.colors.onPrimary,
+                }}
+              />
               <CountUp
                 value={subtotal}
                 format={formatMoney}
@@ -428,80 +454,23 @@ export default function ShopScreen() {
                 }}
               />
             </View>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              style={{
-                color: theme.colors.onPrimary,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              Review Cart & Checkout →
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+              <Text
+                style={{
+                  color: theme.colors.onPrimary,
+                  fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
+                Checkout
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color={theme.colors.onPrimary} />
+            </View>
           </PressScale>
         </Appear>
       ) : null}
-
-      <View
-        pointerEvents="box-none"
-        style={{
-          position: "absolute",
-          right: theme.spacing.md,
-          bottom: theme.spacing.md + barSpace,
-          alignItems: "flex-end",
-        }}
-      >
-        {activeOrder ? (
-          <View style={{ marginBottom: theme.spacing.sm, marginRight: theme.spacing.xs }}>
-            <Pressable
-              onPress={() => router.push("/assistant")}
-              accessibilityRole="button"
-              accessibilityLabel="Ask Pip where your package is"
-              style={({ pressed }) => ({
-                maxWidth: 230,
-                paddingHorizontal: theme.spacing.md,
-                paddingVertical: theme.spacing.sm,
-                borderRadius: theme.radius.lg,
-                backgroundColor: theme.colors.surfaceAlt,
-                opacity: pressed ? 0.8 : 1,
-              })}
-            >
-              <Text style={{ color: theme.colors.text, fontSize: theme.font.size.caption }}>
-                Where is my package?
-              </Text>
-            </Pressable>
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                bottom: -5,
-                right: 20,
-                width: 12,
-                height: 12,
-                backgroundColor: theme.colors.surfaceAlt,
-                transform: [{ rotate: "45deg" }],
-              }}
-            />
-          </View>
-        ) : null}
-        <Mascot
-          pose={pose}
-          size={50}
-          onPress={() => router.push("/assistant")}
-          style={{
-            width: 60,
-            height: 60,
-            borderRadius: 30,
-            alignItems: "center",
-            justifyContent: "center",
-            overflow: "hidden",
-            backgroundColor: theme.colors.surface,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-          }}
-        />
-      </View>
     </View>
   );
 }
+
+export default withRetry(ShopScreen);

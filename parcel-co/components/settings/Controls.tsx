@@ -1,10 +1,9 @@
-// Building blocks for Settings: paper cards, rows, a segmented control, a radio and a drag wheel.
+// Building blocks for Settings: a grouped card, rows, a segmented control, a radio and a drag wheel.
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
   PanResponder,
-  Platform,
   Pressable,
   Text,
   View,
@@ -14,52 +13,7 @@ import {
 import { useTheme } from "../../theme/ThemeProvider";
 import { haptic, PressScale } from "../motion";
 
-type IconName = ComponentProps<typeof Ionicons>["name"];
-
-/** The serif face for titles, like a printed shop catalogue. */
-export const DISPLAY_FONT: string =
-  Platform.select({ ios: "Iowan Old Style", android: "serif", default: "Georgia" }) ?? "serif";
-
-/** A section title in the serif display face, sitting above its card. */
-export function SectionHeading({
-  children,
-  trailing,
-}: {
-  children: ReactNode;
-  trailing?: ReactNode;
-}) {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: theme.spacing.md,
-        paddingHorizontal: 2,
-      }}
-    >
-      <Text
-        accessibilityRole="header"
-        style={{
-          flex: 1,
-          color: theme.colors.text,
-          fontFamily: DISPLAY_FONT,
-          fontSize: theme.font.size.headline,
-          fontWeight: theme.font.weight.regular,
-        }}
-      >
-        {children}
-      </Text>
-      {trailing}
-    </View>
-  );
-}
-
-/**
- * A cream paper card: a warm surface with a fine border and a dotted line set in from the edge,
- * like a printed tag. Holds rows.
- */
+/** A grouped card for a settings section: one surface with a hairline edge. Holds rows. */
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const theme = useTheme();
   return (
@@ -67,34 +21,15 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
       style={[
         {
           backgroundColor: theme.colors.surface,
-          borderRadius: theme.radius.sm,
+          borderRadius: theme.radius.md,
           borderWidth: 1,
           borderColor: theme.colors.border,
           paddingHorizontal: theme.spacing.lg,
-          paddingVertical: theme.spacing.md,
-          shadowColor: theme.colors.text,
-          shadowOpacity: 0.12,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 2,
+          paddingVertical: theme.spacing.xs,
         },
         style,
       ]}
     >
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 6,
-          left: 6,
-          right: 6,
-          bottom: 6,
-          borderWidth: 1,
-          borderStyle: "dotted",
-          borderColor: theme.colors.border,
-          borderRadius: Math.max(0, theme.radius.sm - 4),
-        }}
-      />
       {children}
     </View>
   );
@@ -136,8 +71,7 @@ export function Row({
     paddingVertical: theme.spacing.sm,
     borderBottomWidth: last ? 0 : 1,
     borderBottomColor: theme.colors.border,
-    borderStyle: "dashed",
-    opacity: disabled ? 0.5 : 1,
+    opacity: disabled ? 0.6 : 1,
   };
   const content = (
     <>
@@ -155,6 +89,7 @@ export function Row({
             style={{
               color: danger ? theme.colors.danger : theme.colors.text,
               fontSize: theme.font.size.body,
+              lineHeight: 21,
               fontWeight: theme.font.weight.medium,
             }}
           >
@@ -198,7 +133,7 @@ export function Row({
 
 const PAD = 3;
 
-/** Two or three choices in a pill; the brown indicator slides to the chosen one. */
+/** Two or three choices in a pill; the brand-colored indicator slides to the chosen one. */
 export function Segmented<T extends string>({
   label,
   options,
@@ -328,7 +263,7 @@ export function Radio({ selected }: { selected: boolean }) {
         height: 24,
         borderRadius: 12,
         borderWidth: 2,
-        borderColor: selected ? theme.colors.primary : theme.colors.border,
+        borderColor: selected ? theme.colors.primary : theme.colors.textMuted,
         alignItems: "center",
         justifyContent: "center",
       }}
