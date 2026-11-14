@@ -1,0 +1,5 @@
+# Impeccable's engine binary is platform-specific and re-downloads itself on first run.
+.claude/skills/impeccable/scripts/bin/
+# Per-machine Claude Code settings (the impeccable install writes its hooks here).
+.claude/settings.local.json
+node_modules/
