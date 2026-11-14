@@ -6,7 +6,7 @@ import { PressScale } from "../motion";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-/** An uppercase section label, the grouped card(s) under it, and an optional italic note. */
+/** An uppercase section label, the grouped card(s) under it, and an optional note. */
 export function SettingsSection({
   title,
   note,
@@ -36,10 +36,8 @@ export function SettingsSection({
         <Text
           style={{
             color: theme.colors.textMuted,
-            fontFamily: theme.font.family,
-            fontStyle: "italic",
             fontSize: theme.font.size.caption,
-            lineHeight: theme.font.size.caption * 1.5,
+            lineHeight: theme.font.size.caption * 1.4,
             paddingHorizontal: theme.spacing.sm,
           }}
         >
@@ -50,22 +48,17 @@ export function SettingsSection({
   );
 }
 
-/** A rounded cream card. Rows inside it are separated by hairlines aligned to their labels. */
+/** A rounded card. Rows inside it are separated by hairlines aligned to their labels. */
 export function SettingsCard({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const items = Children.toArray(children);
   return (
     <View
       style={{
-        borderRadius: theme.radius.lg,
+        borderRadius: theme.radius.md,
         backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        shadowColor: theme.colors.text,
-        shadowOpacity: 0.06,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 2,
       }}
     >
       {items.map((child, index) => (
@@ -83,10 +76,11 @@ export function SettingsCard({ children }: { children: ReactNode }) {
 }
 
 /**
- * One settings row: an icon, a label (and optional italic subtitle), and what sits on the right
+ * One settings row: an icon, a label (and optional subtitle), and what sits on the right
  * (a value, a control, an accessory, a chevron). With onPress the row is a button. `wide` gives
  * the right side the remaining width (for sliders and swatches). `children` show below the row
- * (an expanded explanation).
+ * (an expanded explanation). The label never breaks inside a word: the right side is sized to
+ * its content and the label column takes what is left.
  */
 export function SettingsRow({
   icon,
@@ -98,6 +92,7 @@ export function SettingsRow({
   chevron,
   expanded,
   onPress,
+  accessibilityLabel,
   accessibilityHint,
   wide,
   children,
@@ -111,6 +106,8 @@ export function SettingsRow({
   chevron?: boolean;
   expanded?: boolean;
   onPress?: () => void;
+  /** Spoken label for a pressable row; defaults to the label, value and subtitle. */
+  accessibilityLabel?: string;
   accessibilityHint?: string;
   wide?: boolean;
   children?: ReactNode;
@@ -130,23 +127,14 @@ export function SettingsRow({
       <View style={{ width: 28, alignItems: "center" }}>
         {icon ? <Ionicons name={icon} size={22} color={theme.colors.text} /> : null}
       </View>
-      <View style={{ flexGrow: wide ? 0 : 1, flexShrink: 1, gap: 2 }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontFamily: theme.font.family,
-            fontSize: theme.font.size.body,
-          }}
-        >
-          {label}
-        </Text>
+      <View style={wide ? { flexShrink: 0 } : { flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>{label}</Text>
         {subtitle ? (
           <Text
             style={{
               color: theme.colors.textMuted,
-              fontFamily: theme.font.family,
-              fontStyle: "italic",
               fontSize: theme.font.size.caption,
+              lineHeight: theme.font.size.caption * 1.35,
             }}
           >
             {subtitle}
@@ -156,7 +144,7 @@ export function SettingsRow({
       <View
         style={{
           flexGrow: wide ? 1 : 0,
-          flexShrink: 1,
+          flexShrink: wide ? 1 : 0,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "flex-end",
@@ -166,11 +154,11 @@ export function SettingsRow({
         {control}
         {value ? (
           <Text
+            numberOfLines={1}
             style={{
               color: theme.colors.textMuted,
               fontSize: theme.font.size.body,
               textAlign: "right",
-              flexShrink: 1,
             }}
           >
             {value}
@@ -195,7 +183,9 @@ export function SettingsRow({
           onPress={onPress}
           scaleTo={0.98}
           accessibilityRole="button"
-          accessibilityLabel={value ? `${label}, ${value}` : label}
+          accessibilityLabel={
+            accessibilityLabel ?? [label, value, subtitle].filter(Boolean).join(", ")
+          }
           accessibilityHint={accessibilityHint}
           accessibilityState={{ expanded }}
           style={rowStyle}
@@ -203,7 +193,9 @@ export function SettingsRow({
           {main}
         </PressScale>
       ) : (
-        <View style={rowStyle}>{main}</View>
+        <View accessible={!control && !accessory} style={rowStyle}>
+          {main}
+        </View>
       )}
       {children ? (
         <View

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   Animated,
   FlatList,
@@ -16,7 +16,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Line } from "react-native-svg";
-import { AiImage } from "../../components/AiImage";
 import { EmptyState } from "../../components/EmptyState";
 import { Lottie } from "../../components/lottie";
 import {
@@ -35,8 +34,10 @@ import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import {
   DAY_MS,
+  READING_POSITION,
   formatDay,
   formatReference,
+  readingPosition,
   savedBookmarks,
   type Bookmark,
 } from "../../data/schema";
@@ -44,10 +45,11 @@ import { useTheme } from "../../theme/ThemeProvider";
 
 const ALL = "__all__";
 
-// Folders the reader can file verses into. Shown even before anything is filed in them.
-const SUGGESTED_FOLDERS = ["Comfort", "Morning Light", "Promises", "Wisdom"];
+/** The field's border shows focus, so the browser's own ring is turned off on the web. */
+const WEB_NO_FOCUS_RING = Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : null;
 
-const KEY_PROMPT = "Key icon beside the 'Patron key' link in the header";
+// Folders the reader can file verses into. Shown even before anything is filed in them.
+const SUGGESTED_FOLDERS = ["Comfort", "Morning light", "Promises", "Wisdom"];
 
 type SheetState = { title: string; ids: string[]; name: string; token: number };
 
@@ -83,22 +85,25 @@ function FilterPill({
     <Pressable
       onLayout={onLayout}
       onPress={onPress}
-      hitSlop={6}
+      hitSlop={{ top: 4, bottom: 4 }}
       accessibilityRole="button"
-      accessibilityLabel={`${label}, ${count} verses`}
+      accessibilityLabel={`${label}, ${count} ${count === 1 ? "verse" : "verses"}`}
       accessibilityHint={locked ? "Folders are a premium feature" : undefined}
       accessibilityState={{ selected: active }}
       style={({ pressed }) => ({
         minHeight: 40,
-        justifyContent: "center",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: theme.spacing.xs + 2,
         paddingHorizontal: theme.spacing.lg,
         borderRadius: theme.radius.pill,
-        borderWidth: active ? 0 : 1,
-        borderColor: theme.colors.border,
+        borderWidth: 1,
+        borderColor: active ? theme.colors.primary : theme.colors.border,
         backgroundColor: active ? undefined : theme.colors.surface,
         opacity: pressed ? 0.7 : 1,
       })}
     >
+      {locked ? <Ionicons name="lock-closed" size={13} color={theme.colors.textMuted} /> : null}
       <Text
         style={{
           color: ink,
@@ -132,11 +137,11 @@ function FolderSheet({
   onClose: () => void;
 }) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const rise = useRef(new Animated.Value(reduced ? 0 : 1)).current;
   const [name, setName] = useState(initialName);
   const [picked, setPicked] = useState<string[]>(initialIds);
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     if (reduced) {
@@ -182,9 +187,10 @@ function FolderSheet({
           gap: theme.spacing.md,
           paddingTop: theme.spacing.xl,
           paddingHorizontal: theme.spacing.lg,
-          paddingBottom: insets.bottom + theme.spacing.lg,
+          paddingBottom: theme.spacing.lg,
           borderTopLeftRadius: theme.radius.lg,
           borderTopRightRadius: theme.radius.lg,
+          // The sheet ends at the tab bar, which already covers the home indicator's inset.
           borderTopWidth: 1,
           borderColor: theme.colors.border,
           backgroundColor: theme.colors.surface,
@@ -222,12 +228,18 @@ function FolderSheet({
           accessibilityLabel="Folder name"
           maxLength={40}
           returnKeyType="done"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           style={{
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.md,
-            paddingHorizontal: theme.spacing.lg,
-            paddingVertical: theme.spacing.md,
+            minHeight: 48,
+            // The border thickens with focus (the padding gives the pixel back), and the web's
+            // default focus ring is turned off in its favor.
+            borderWidth: focused ? 2 : 1,
+            borderColor: focused ? theme.colors.primary : theme.colors.textMuted,
+            ...WEB_NO_FOCUS_RING,
+            borderRadius: theme.radius.sm,
+            paddingHorizontal: theme.spacing.lg - (focused ? 1 : 0),
+            paddingVertical: theme.spacing.md - (focused ? 1 : 0),
             fontSize: theme.font.size.body,
             color: theme.colors.text,
             backgroundColor: theme.colors.background,
@@ -327,7 +339,7 @@ export default function SavedScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
-  const { items, loading, update, remove } = useCollection<Bookmark>("bookmarks");
+  const { items, loading, add, update, remove } = useCollection<Bookmark>("bookmarks");
   const { isPremium, openPaywall } = usePurchases();
   const { ref, share, sharing } = useShareImage();
 
@@ -338,7 +350,7 @@ export default function SavedScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [layoutTick, setLayoutTick] = useState(0);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const layouts = useRef<Record<string, { x: number; width: number }>>({});
   const glideReady = useRef(false);
   const glideX = useRef(new Animated.Value(0)).current;
@@ -435,10 +447,24 @@ export default function SavedScreen() {
     setSheet({ title, ids, name, token: Date.now() });
   }
 
-  function openInReader(b: Bookmark) {
-    router.push({
+  /** Open a saved verse on the Read tab, and make it the place the reader resumes from. */
+  async function openInReader(b: Bookmark) {
+    const place = { book: b.book, chapter: b.chapter, verse: b.verse, text: b.text };
+    try {
+      const position = readingPosition(items);
+      if (position) await update(position.id, place);
+      else await add({ ...place, folder: READING_POSITION, createdAt: new Date().toISOString() });
+    } catch {
+      // The verse still opens; only the resume point is left where it was.
+    }
+    router.navigate({
       pathname: "/",
-      params: { book: b.book, chapter: String(b.chapter), verse: String(b.verse) },
+      params: {
+        book: b.book,
+        chapter: String(b.chapter),
+        verse: String(b.verse),
+        at: String(Date.now()),
+      },
     });
   }
 
@@ -452,12 +478,12 @@ export default function SavedScreen() {
     const label = name.trim();
     if (!label) return;
     const picked = new Set(ids);
-    const changes = saved.filter((b) =>
-      picked.has(b.id) ? b.folder !== label : b.folder === label,
-    );
+    // Only the ticked verses move. Verses already in the folder stay there: the sheet doesn't
+    // show which ones those are, so leaving them unticked must not take them out.
+    const changes = saved.filter((b) => picked.has(b.id) && b.folder !== label);
     // One at a time: each save rewrites the stored list, so they must not overlap.
     for (const b of changes) {
-      await update(b.id, { folder: picked.has(b.id) ? label : "" });
+      await update(b.id, { folder: label });
     }
     haptic("success");
     setFilter(label);
@@ -479,87 +505,103 @@ export default function SavedScreen() {
   }
 
   const header = (
-    <View style={{ paddingTop: insets.top + theme.spacing.lg, gap: theme.spacing.md }}>
+    <View style={{ paddingTop: insets.top + theme.spacing.md, gap: theme.spacing.md }}>
       <Appear>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            paddingHorizontal: theme.spacing.lg,
-            gap: theme.spacing.md,
-          }}
-        >
-          <View style={{ flex: 1, gap: theme.spacing.xs }}>
+        <View style={{ paddingHorizontal: theme.spacing.lg }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: theme.spacing.md,
+              minHeight: 44,
+            }}
+          >
             <Text
               accessibilityRole="header"
               numberOfLines={1}
               adjustsFontSizeToFit
               style={{
+                flex: 1,
                 color: theme.colors.text,
                 fontFamily: theme.font.family,
                 fontSize: theme.font.size.headline,
                 fontWeight: theme.font.weight.bold,
               }}
             >
-              Saved Verses
+              Saved verses
             </Text>
-            {loading ? (
-              <Skeleton width={150} height={14} />
-            ) : (
-              <CountUp
-                value={saved.length}
-                format={(n) => {
-                  const whole = Math.round(n);
-                  return whole === 1 ? "1 Verse Saved" : `${whole} Verses Saved`;
-                }}
-                style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.font.family,
-                  fontSize: theme.font.size.body,
-                }}
-              />
-            )}
-          </View>
-          <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
             <PressScale
               onPress={() => (isPremium ? openFolder("New folder", [], "") : openPaywall())}
               accessibilityRole="button"
               accessibilityLabel="New folder"
               accessibilityHint={isPremium ? undefined : "Folders are a premium feature"}
-              hitSlop={10}
               scaleTo={0.96}
-              style={{ minHeight: 44, justifyContent: "center" }}
-            >
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontSize: theme.font.size.title,
-                  fontWeight: theme.font.weight.medium,
-                }}
-              >
-                + New Folder
-              </Text>
-            </PressScale>
-            <Pressable
-              onPress={() => openPaywall()}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Patron key, unlock premium"
-              style={({ pressed }) => ({
-                minHeight: 36,
+              style={{
+                minHeight: 44,
                 flexDirection: "row",
                 alignItems: "center",
                 gap: theme.spacing.xs,
-                opacity: pressed ? 0.7 : 1,
-              })}
+              }}
             >
-              <AiImage prompt={KEY_PROMPT} fit="contain" style={{ width: 16, height: 16 }} />
+              <Ionicons name="add" size={22} color={theme.colors.primary} />
               <Text
                 style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.font.family,
+                  color: theme.colors.primary,
                   fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.medium,
+                }}
+              >
+                New folder
+              </Text>
+            </PressScale>
+          </View>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: theme.spacing.md,
+              minHeight: 32,
+            }}
+          >
+            {loading ? (
+              <Skeleton width={120} height={14} />
+            ) : (
+              <CountUp
+                value={saved.length}
+                format={(n) => {
+                  const whole = Math.round(n);
+                  return whole === 1 ? "1 verse saved" : `${whole} verses saved`;
+                }}
+                style={{
+                  color: theme.colors.textMuted,
+                  fontSize: theme.font.size.body,
+                  fontVariant: ["tabular-nums"],
+                }}
+              />
+            )}
+            <Pressable
+              onPress={() => openPaywall()}
+              hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isPremium ? "Patron key, see your plan" : "Patron key, unlock premium"
+              }
+              style={({ pressed }) => ({
+                minHeight: 32,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.spacing.xs + 2,
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Ionicons name="key-outline" size={16} color={theme.colors.primary} />
+              <Text
+                style={{
+                  color: theme.colors.primary,
+                  fontSize: theme.font.size.caption,
+                  fontWeight: theme.font.weight.medium,
                 }}
               >
                 Patron key
@@ -618,10 +660,13 @@ export default function SavedScreen() {
               marginHorizontal: theme.spacing.lg,
               padding: theme.spacing.md,
               borderRadius: theme.radius.md,
-              backgroundColor: theme.colors.surface,
+              backgroundColor: theme.colors.surfaceAlt,
             }}
           >
-            <Lottie name="success" size={40} />
+            {/* A fixed box, so the message keeps its width while the animation loads. */}
+            <View style={{ width: 40, height: 40, overflow: "hidden" }}>
+              <Lottie name="success" size={40} />
+            </View>
             <Text
               accessibilityLiveRegion="polite"
               style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.caption }}
@@ -681,7 +726,7 @@ export default function SavedScreen() {
             <SavedRow
               bookmark={item}
               savedLabel={`${savedAgo(item.createdAt)}${item.folder ? ` · ${item.folder}` : ""}`}
-              onOpen={() => openInReader(item)}
+              onOpen={() => void openInReader(item)}
               onShare={() => setPreview(item)}
               onFolder={() =>
                 isPremium ? openFolder("Move to folder", [item.id], item.folder) : openPaywall()

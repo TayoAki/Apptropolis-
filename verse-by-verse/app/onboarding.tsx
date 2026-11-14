@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AiImage } from "../components/AiImage";
+import { hasArt } from "../components/Art";
 import { Lottie } from "../components/lottie";
 import {
   DrawCheck,
@@ -112,6 +113,9 @@ export default function OnboardingScreen() {
   const reminder = useReminder();
   const bookmarks = useCollection<Bookmark>("bookmarks");
   const serif = { fontFamily: theme.font.family };
+  // The mascot peeks over the first card only once its picture exists; until then the card
+  // sits in the list without the gap left for it.
+  const hasBadger = hasArt(BADGER);
 
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -245,39 +249,27 @@ export default function OnboardingScreen() {
     }
   }
 
-  const backPill = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Back"
-      accessibilityState={{ disabled: step === 0 }}
-      disabled={step === 0}
-      hitSlop={10}
-      onPress={() => go(step - 1)}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 2,
-        minHeight: 44,
-        paddingLeft: theme.spacing.sm,
-        paddingRight: theme.spacing.md,
-        borderRadius: theme.radius.sm,
-        backgroundColor: theme.colors.surface,
-        opacity: step === 0 ? 0.45 : pressed ? 0.7 : 1,
-      })}
-    >
-      <Ionicons name="chevron-back" size={18} color={theme.colors.text} />
-      <Text
-        style={{
-          ...serif,
-          color: theme.colors.text,
-          fontSize: theme.font.size.body,
-          fontWeight: theme.font.weight.medium,
-        }}
+  // There is nothing to go back to on the first step, so the button only appears after it.
+  const backPill =
+    step === 0 ? null : (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        hitSlop={8}
+        onPress={() => go(step - 1)}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          minHeight: 44,
+          paddingRight: theme.spacing.sm,
+          marginLeft: -theme.spacing.sm,
+          opacity: pressed ? 0.6 : 1,
+        })}
       >
-        Back
-      </Text>
-    </Pressable>
-  );
+        <Ionicons name="chevron-back" size={24} color={theme.colors.primary} />
+        <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body }}>Back</Text>
+      </Pressable>
+    );
 
   return (
     <View
@@ -317,9 +309,8 @@ export default function OnboardingScreen() {
           </Text>
           <Text
             style={{
-              ...serif,
               color: theme.colors.textMuted,
-              fontSize: theme.font.size.body,
+              fontSize: theme.font.size.caption,
               fontVariant: ["tabular-nums"],
             }}
           >
@@ -357,7 +348,7 @@ export default function OnboardingScreen() {
                     textAlign: "center",
                   }}
                 >
-                  Verse of the Day
+                  Verse of the day
                 </Text>
                 <Text
                   style={{
@@ -387,9 +378,9 @@ export default function OnboardingScreen() {
               >
                 <Text
                   style={{
-                    ...serif,
-                    color: theme.colors.textMuted,
+                    color: theme.colors.primary,
                     fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
                   }}
                 >
                   Skip setup
@@ -400,16 +391,16 @@ export default function OnboardingScreen() {
               const featured = index === 0;
               return (
                 <Appear delay={Math.min(index, 8) * 50}>
-                  <View style={{ marginTop: featured ? theme.spacing.xl * 2 : 0 }}>
+                  <View style={{ marginTop: featured && hasBadger ? theme.spacing.xl * 2 : 0 }}>
                     <VerseStartCard
                       label={`John 1:${item.verse}`}
                       text={item.text}
                       featured={featured}
-                      inset={featured ? PANEL_WIDTH - theme.spacing.lg + theme.spacing.md : undefined}
+                      inset={featured ? PANEL_WIDTH + theme.spacing.md : undefined}
                       onPress={() => startAt(index)}
                     />
                     {featured ? <SideActions hasNote={item.note} /> : null}
-                    {featured ? (
+                    {featured && hasBadger ? (
                       <View
                         pointerEvents="none"
                         style={{
@@ -467,7 +458,7 @@ export default function OnboardingScreen() {
                       gap: theme.spacing.md,
                       padding: theme.spacing.lg,
                       minHeight: 240,
-                      borderRadius: theme.radius.lg,
+                      borderRadius: theme.radius.md,
                       borderWidth: 1,
                       borderColor: theme.colors.border,
                       backgroundColor: theme.colors.surface,
@@ -492,7 +483,11 @@ export default function OnboardingScreen() {
                         >
                           John 1:{current.verse}
                         </Text>
-                        {savedMark ? <Lottie name="heart" size={40} /> : null}
+                        {savedMark ? (
+                          <View style={{ width: 40, height: 40, overflow: "hidden" }}>
+                            <Lottie name="heart" size={40} />
+                          </View>
+                        ) : null}
                       </View>
                       <Text
                         style={{
@@ -537,10 +532,9 @@ export default function OnboardingScreen() {
                         </Pressable>
                       )}
                       <View style={{ alignItems: "center", gap: 2 }}>
-                        <Ionicons name="open-outline" size={22} color={theme.colors.textMuted} />
+                        <Ionicons name="reader-outline" size={22} color={theme.colors.textMuted} />
                         <Text
                           style={{
-                            ...serif,
                             color: theme.colors.textMuted,
                             fontSize: theme.font.size.caption,
                             textAlign: "center",
@@ -558,13 +552,12 @@ export default function OnboardingScreen() {
                           />
                           <Text
                             style={{
-                              ...serif,
                               color: theme.colors.textMuted,
                               fontSize: theme.font.size.caption,
                               textAlign: "center",
                             }}
                           >
-                            Note available
+                            Study note
                           </Text>
                         </View>
                       ) : null}
@@ -575,7 +568,6 @@ export default function OnboardingScreen() {
                   <GrowBar progress={(verse + 1) / DEMO.length} />
                   <Text
                     style={{
-                      ...serif,
                       alignSelf: "center",
                       color: theme.colors.textMuted,
                       fontSize: theme.font.size.caption,
@@ -596,7 +588,9 @@ export default function OnboardingScreen() {
                 />
                 {turnedOn ? (
                   <View style={{ alignItems: "center" }}>
-                    <Lottie name="success" size={96} />
+                    <View style={{ width: 96, height: 96, overflow: "hidden" }}>
+                      <Lottie name="success" size={96} />
+                    </View>
                   </View>
                 ) : null}
                 <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
@@ -612,35 +606,45 @@ export default function OnboardingScreen() {
                           accessibilityLabel={`${option.label}, ${clock(option.hour, option.minute)}`}
                           accessibilityState={{ selected, disabled: turnedOn }}
                           style={{
-                            minHeight: 56,
-                            borderRadius: theme.radius.md,
+                            minHeight: 60,
+                            borderRadius: theme.radius.sm,
                             alignItems: "center",
                             justifyContent: "center",
                             gap: 2,
                             backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
-                            borderWidth: selected ? 0 : 1,
-                            borderColor: theme.colors.border,
+                            borderWidth: 1,
+                            borderColor: selected ? theme.colors.primary : theme.colors.border,
                           }}
                         >
                           <Text
                             style={{
-                              ...serif,
                               color: selected ? theme.colors.onPrimary : theme.colors.text,
+                              fontSize: theme.font.size.body,
                               fontWeight: theme.font.weight.bold,
                               fontVariant: ["tabular-nums"],
                             }}
                           >
                             {clock(option.hour, option.minute)}
                           </Text>
-                          <Text
-                            style={{
-                              ...serif,
-                              color: selected ? theme.colors.onPrimary : theme.colors.textMuted,
-                              fontSize: theme.font.size.caption,
-                            }}
+                          <View
+                            style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
                           >
-                            {option.label}
-                          </Text>
+                            {selected ? (
+                              <Ionicons
+                                name="checkmark"
+                                size={14}
+                                color={theme.colors.onPrimary}
+                              />
+                            ) : null}
+                            <Text
+                              style={{
+                                color: selected ? theme.colors.onPrimary : theme.colors.textMuted,
+                                fontSize: theme.font.size.caption,
+                              }}
+                            >
+                              {option.label}
+                            </Text>
+                          </View>
                         </PressScale>
                       </View>
                     );
@@ -652,7 +656,7 @@ export default function OnboardingScreen() {
                     alignItems: "center",
                     gap: theme.spacing.md,
                     padding: theme.spacing.lg,
-                    borderRadius: theme.radius.lg,
+                    borderRadius: theme.radius.md,
                     borderWidth: 1,
                     borderColor: theme.colors.border,
                     backgroundColor: theme.colors.surface,
@@ -662,7 +666,6 @@ export default function OnboardingScreen() {
                   <View style={{ flex: 1, gap: theme.spacing.xs }}>
                     <Text
                       style={{
-                        ...serif,
                         color: theme.colors.text,
                         fontSize: theme.font.size.body,
                         fontWeight: theme.font.weight.bold,
@@ -673,7 +676,6 @@ export default function OnboardingScreen() {
                     </Text>
                     <Text
                       style={{
-                        ...serif,
                         color: theme.colors.textMuted,
                         fontSize: theme.font.size.caption,
                         lineHeight: theme.font.size.caption * 1.4,
@@ -713,7 +715,7 @@ export default function OnboardingScreen() {
           {step === 2 ? (
             <>
               <PrimaryButton
-                label={declined ? "Start reading" : enabling ? "Turning on..." : "Turn on reminders"}
+                label={declined ? "Start reading" : enabling ? "Turning on…" : "Turn on reminders"}
                 disabled={enabling || turnedOn}
                 onPress={() => (declined ? void completeOnboarding() : void turnOnReminders())}
                 accessibilityHint="Sets one daily reminder at the time you chose"

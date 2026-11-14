@@ -3,6 +3,7 @@ import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { formatReference, type VerseRef } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 import { PressScale } from "./motion";
+import { useReadingType } from "./reading";
 
 /**
  * A verse as a card: its reference, the text, and optional actions below (children).
@@ -26,11 +27,12 @@ export function VerseCard({
   label?: string;
 }) {
   const theme = useTheme();
+  const type = useReadingType();
   const spokenLabel = label ?? `${formatReference(reference)}. ${text}`;
   const cardStyle: ViewStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.lg,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
@@ -47,16 +49,7 @@ export function VerseCard({
       >
         {formatReference(reference).toUpperCase()}
       </Text>
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontSize: theme.font.size.title,
-          lineHeight: theme.font.size.title * 1.5,
-          fontFamily: theme.font.family,
-        }}
-      >
-        {text}
-      </Text>
+      <Text style={{ ...type.verse(theme.font.size.title), color: theme.colors.text }}>{text}</Text>
       {children}
     </>
   );
@@ -74,6 +67,7 @@ export function VerseCard({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={spokenLabel}
+      accessibilityHint="Reads from this verse"
       style={[cardStyle, style]}
     >
       {body}

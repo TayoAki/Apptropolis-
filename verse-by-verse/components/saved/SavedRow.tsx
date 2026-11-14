@@ -1,20 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useRef } from "react";
 import { Animated, PanResponder, Pressable, Text, useWindowDimensions, View } from "react-native";
-import { DAY_MS, formatReference, type Bookmark } from "../../data/schema";
+import { formatReference, type Bookmark } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../AiImage";
 import { haptic, PressScale, useReducedMotion } from "../motion";
 
 const REVEAL = 96;
 
-const BOOKMARK_PROMPT = "Small brown bookmark icon at top right of each verse card";
-const BOOKMARK_SAVED_PROMPT = "Small filled amber bookmark icon, plain transparent background, no text";
-const SHARE_PROMPT = "Thin outlined share icon beside the bookmark on each verse card";
-
 /**
  * One saved verse as a card: reference, text (wrapping to two lines) and when it was saved, with
- * a bookmark button (move to folder) and a share button on the right. Swipe left to reveal
+ * a folder button (move to folder) and a share button on the right. Swipe left to reveal
  * Remove; swipe past the halfway point to remove it outright.
  */
 export function SavedRow({
@@ -38,8 +33,7 @@ export function SavedRow({
   const slide = useRef(new Animated.Value(0)).current;
   const revealed = useRef(false);
   const reference = formatReference(bookmark);
-  // Saved in the last day: the bookmark shows in the amber highlight.
-  const recent = Date.now() - Date.parse(bookmark.createdAt) < DAY_MS;
+  const filed = Boolean(bookmark.folder);
 
   const snap = useCallback(
     (to: number) => {
@@ -102,14 +96,6 @@ export function SavedRow({
     }
   };
 
-  const cardShadow = {
-    shadowColor: theme.colors.text,
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  };
-
   return (
     <View
       accessibilityActions={[
@@ -119,16 +105,10 @@ export function SavedRow({
         { name: "remove", label: "Remove" },
       ]}
       onAccessibilityAction={onAccessibilityAction}
-      style={[
-        {
-          borderRadius: theme.radius.md,
-          backgroundColor: theme.colors.background,
-        },
-        cardShadow,
-      ]}
     >
       <View style={{ borderRadius: theme.radius.md, overflow: "hidden" }}>
-        <View
+        {/* Hidden until the card slides, so no red shows around the card's rounded corners. */}
+        <Animated.View
           style={{
             position: "absolute",
             top: 0,
@@ -136,6 +116,11 @@ export function SavedRow({
             right: 0,
             width: REVEAL,
             backgroundColor: theme.colors.danger,
+            opacity: slide.interpolate({
+              inputRange: [-8, 0],
+              outputRange: [1, 0],
+              extrapolate: "clamp",
+            }),
           }}
         >
           <Pressable
@@ -163,7 +148,7 @@ export function SavedRow({
               Remove
             </Text>
           </Pressable>
-        </View>
+        </Animated.View>
 
         <Animated.View
           {...pan.panHandlers}
@@ -174,59 +159,59 @@ export function SavedRow({
             gap: theme.spacing.md,
             paddingLeft: theme.spacing.lg,
             paddingRight: theme.spacing.sm,
-            paddingVertical: theme.spacing.lg,
+            paddingVertical: theme.spacing.md,
             borderRadius: theme.radius.md,
             borderWidth: 1,
             borderColor: theme.colors.border,
-            backgroundColor: theme.colors.background,
+            backgroundColor: theme.colors.surface,
           }}
         >
-          <PressScale
-            onPress={() => (revealed.current ? snap(0) : onOpen())}
-            accessibilityRole="button"
-            accessibilityLabel={`Open ${reference} in the reader`}
-            scaleTo={0.985}
-            style={{ flex: 1, gap: theme.spacing.sm }}
-          >
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontFamily: theme.font.family,
-                fontSize: theme.font.size.title,
-                fontWeight: theme.font.weight.bold,
-              }}
+          {/* PressScale styles its inner view, so this wrapper is what takes the row's width. */}
+          <View style={{ flex: 1, minWidth: 0, paddingVertical: theme.spacing.xs }}>
+            <PressScale
+              onPress={() => (revealed.current ? snap(0) : onOpen())}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${reference} in the reader`}
+              scaleTo={0.985}
+              style={{ gap: theme.spacing.sm }}
             >
-              {reference}
-            </Text>
-            <Text
-              numberOfLines={2}
-              style={{
-                color: theme.colors.text,
-                fontFamily: theme.font.family,
-                fontSize: theme.font.size.body,
-                lineHeight: theme.font.size.body * 1.45,
-              }}
-            >
-              {bookmark.text}
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.font.family,
-                fontSize: theme.font.size.caption,
-                fontStyle: "italic",
-              }}
-            >
-              {savedLabel}
-            </Text>
-          </PressScale>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.font.family,
+                  fontSize: theme.font.size.title,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
+                {reference}
+              </Text>
+              <Text
+                numberOfLines={2}
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.font.family,
+                  fontSize: theme.font.size.body,
+                  lineHeight: theme.font.size.body * 1.45,
+                }}
+              >
+                {bookmark.text}
+              </Text>
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                {savedLabel}
+              </Text>
+            </PressScale>
+          </View>
 
-          <View style={{ alignItems: "center", gap: theme.spacing.xs }}>
+          <View style={{ alignItems: "center" }}>
             <Pressable
               onPress={onFolder}
               accessibilityRole="button"
-              accessibilityLabel={`Move ${reference} to a folder`}
-              hitSlop={12}
+              accessibilityLabel={
+                filed
+                  ? `${reference} is in ${bookmark.folder}. Move to another folder`
+                  : `Move ${reference} to a folder`
+              }
+              hitSlop={{ top: 8, left: 8, right: 8 }}
               style={({ pressed }) => ({
                 width: 44,
                 height: 44,
@@ -235,17 +220,17 @@ export function SavedRow({
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <AiImage
-                prompt={recent ? BOOKMARK_SAVED_PROMPT : BOOKMARK_PROMPT}
-                fit="contain"
-                style={{ width: 22, height: 22 }}
+              <Ionicons
+                name={filed ? "folder" : "folder-outline"}
+                size={22}
+                color={filed ? theme.colors.primary : theme.colors.textMuted}
               />
             </Pressable>
             <Pressable
               onPress={onShare}
               accessibilityRole="button"
               accessibilityLabel={`Share ${reference} as a card`}
-              hitSlop={12}
+              hitSlop={{ bottom: 8, left: 8, right: 8 }}
               style={({ pressed }) => ({
                 width: 44,
                 height: 44,
@@ -254,7 +239,7 @@ export function SavedRow({
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <AiImage prompt={SHARE_PROMPT} fit="contain" style={{ width: 22, height: 22 }} />
+              <Ionicons name="share-outline" size={22} color={theme.colors.textMuted} />
             </Pressable>
           </View>
         </Animated.View>

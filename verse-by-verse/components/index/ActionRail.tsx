@@ -6,9 +6,13 @@ import { PressScale } from "../motion";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
+/** Width of the rail, wide enough for a two-word caption on two lines. */
+export const RAIL_WIDTH = 72;
+
 /**
  * The vertical rail on the verse card's right edge: bookmark, share, full context, and the
- * study note. Each control is labelled for screen readers.
+ * study note. It sits beside the verse (never over it), each control is at least 44pt, and an
+ * active control changes its icon to the filled one as well as its color.
  */
 export function ActionRail({
   saved,
@@ -33,56 +37,41 @@ export function ActionRail({
   return (
     <View
       style={{
-        position: "absolute",
-        top: "26%",
-        right: theme.spacing.sm,
-        width: 76,
-        alignItems: "center",
-        paddingVertical: theme.spacing.xs,
-        borderRadius: theme.radius.md,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.background,
-        shadowColor: theme.colors.text,
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 3,
+        width: RAIL_WIDTH,
+        justifyContent: "center",
+        paddingVertical: theme.spacing.sm,
+        borderLeftWidth: 1,
+        borderLeftColor: theme.colors.border,
       }}
     >
       <RailButton
         icon={saved ? "bookmark" : "bookmark-outline"}
-        color={saved ? theme.colors.accent : theme.colors.textMuted}
+        color={saved ? theme.colors.accent : theme.colors.text}
+        caption={saved ? "Saved" : "Save"}
         label={saved ? "Remove bookmark" : "Save bookmark"}
         selected={saved}
         onPress={onSave}
       />
       <RailButton
         icon="share-outline"
-        color={theme.colors.textMuted}
+        color={theme.colors.text}
+        caption="Share"
         label="Share verse"
         hint="Shares this verse as a card"
         onPress={onShare}
       />
       <RailButton
-        icon="search-outline"
-        color={wholeChapter ? theme.colors.primary : theme.colors.textMuted}
+        icon={wholeChapter ? "reader" : "reader-outline"}
+        color={wholeChapter ? theme.colors.primary : theme.colors.text}
+        caption="Full context"
         label={wholeChapter ? "Show verses from here" : "Show the whole chapter"}
-        caption="Full Context"
         selected={wholeChapter}
         onPress={onContext}
       />
-      <View
-        style={{
-          height: 1,
-          alignSelf: "stretch",
-          marginVertical: theme.spacing.xs,
-          backgroundColor: theme.colors.border,
-        }}
-      />
       <RailButton
-        icon="document-text-outline"
-        color={hasNote ? theme.colors.primary : theme.colors.textMuted}
+        icon={noteOpen ? "document-text" : "document-text-outline"}
+        color={!hasNote ? theme.colors.textMuted : noteOpen ? theme.colors.primary : theme.colors.text}
+        caption={hasNote ? "Study note" : "No note"}
         label={
           !hasNote
             ? "No study note for this verse"
@@ -90,8 +79,6 @@ export function ActionRail({
               ? "Hide study note"
               : "Show study note"
         }
-        caption={hasNote ? "Study Note Available" : "No study note"}
-        italic
         selected={noteOpen}
         disabled={!hasNote}
         onPress={onNote}
@@ -104,7 +91,6 @@ function RailButton({
   icon,
   color,
   caption,
-  italic = false,
   label,
   hint,
   selected = false,
@@ -113,8 +99,7 @@ function RailButton({
 }: {
   icon: IconName;
   color: string;
-  caption?: string;
-  italic?: boolean;
+  caption: string;
   label: string;
   hint?: string;
   selected?: boolean;
@@ -127,36 +112,31 @@ function RailButton({
       onPress={onPress}
       disabled={disabled}
       scaleTo={0.9}
-      hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={hint}
       accessibilityState={{ disabled, selected }}
       style={{
-        width: "100%",
-        minHeight: 44,
+        minHeight: 52,
         alignItems: "center",
         justifyContent: "center",
         gap: 2,
         paddingVertical: theme.spacing.xs,
-        opacity: disabled ? 0.4 : 1,
+        paddingHorizontal: theme.spacing.xs,
       }}
     >
       <Ionicons name={icon} size={22} color={color} />
-      {caption ? (
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontFamily: theme.font.family,
-            fontSize: theme.font.size.caption,
-            fontStyle: italic ? "italic" : "normal",
-            textAlign: "center",
-            lineHeight: theme.font.size.caption * 1.15,
-          }}
-        >
-          {caption}
-        </Text>
-      ) : null}
+      <Text
+        style={{
+          color: theme.colors.textMuted,
+          fontSize: theme.font.size.caption,
+          lineHeight: theme.font.size.caption + 3,
+          fontWeight: selected ? theme.font.weight.bold : theme.font.weight.medium,
+          textAlign: "center",
+        }}
+      >
+        {caption}
+      </Text>
     </PressScale>
   );
 }

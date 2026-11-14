@@ -1,15 +1,17 @@
-import { type ComponentRef } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { type ComponentRef, type Ref } from "react";
 import { Text, View } from "react-native";
 import type { StudyNote, Verse } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../AiImage";
+import { Flourish } from "../Flourish";
 import { Appear } from "../motion";
+import { useReadingType } from "../reading";
 import { ActionRail } from "./ActionRail";
 
 /**
  * The verse as a large card: serif text, an ornamental divider and the attribution, with the
- * action rail along its right edge. The card (not the rail) is what gets shared as an image.
- * An open study note appears below, labelled as commentary.
+ * action rail in its own column on the right. The verse column (not the rail) is what gets
+ * shared as an image. An open study note appears below, labelled as commentary.
  */
 export function VerseHero({
   verse,
@@ -24,7 +26,7 @@ export function VerseHero({
   onNote,
 }: {
   verse: Verse;
-  shareRef: import("react").Ref<ComponentRef<typeof View>>;
+  shareRef: Ref<ComponentRef<typeof View>>;
   saved: boolean;
   note: StudyNote | undefined;
   noteOpen: boolean;
@@ -35,45 +37,43 @@ export function VerseHero({
   onNote: () => void;
 }) {
   const theme = useTheme();
+  const type = useReadingType();
   return (
     <View style={{ gap: theme.spacing.md }}>
-      <View style={{ position: "relative" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          borderRadius: theme.radius.md,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surface,
+        }}
+      >
         <View
           ref={shareRef}
           collapsable={false}
           style={{
+            flex: 1,
+            minWidth: 0,
+            justifyContent: "center",
             paddingVertical: theme.spacing.xl,
-            paddingLeft: theme.spacing.lg,
-            paddingRight: 92,
+            paddingHorizontal: theme.spacing.lg,
             gap: theme.spacing.lg,
-            borderRadius: theme.radius.md,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md - 1,
             backgroundColor: theme.colors.surface,
-            shadowColor: theme.colors.text,
-            shadowOpacity: 0.08,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 4 },
-            elevation: 2,
           }}
         >
           <Text
             accessibilityLabel={`${verse.book} ${verse.chapter}:${verse.verse}. ${verse.text}`}
             style={{
+              ...type.display(theme.font.size.headline),
               color: theme.colors.text,
-              fontFamily: theme.font.family,
-              fontSize: theme.font.size.headline,
-              lineHeight: theme.font.size.headline * 1.35,
               textAlign: "center",
             }}
           >
             {verse.text}
           </Text>
-          <AiImage
-            prompt="a thin ornamental flourish divider in brown ink, centered line with small scrolls at the middle, plain transparent background, no text"
-            fit="contain"
-            style={{ width: 180, height: 24, alignSelf: "center" }}
-          />
+          <Flourish width={160} />
           <Text
             style={{
               color: theme.colors.textMuted,
@@ -118,16 +118,6 @@ function NoteBlock({ note }: { note: StudyNote }) {
       >
         <Text
           style={{
-            color: theme.colors.primary,
-            fontSize: theme.font.size.caption,
-            fontWeight: theme.font.weight.bold,
-            letterSpacing: 0.5,
-          }}
-        >
-          COMMENTARY, NOT SCRIPTURE
-        </Text>
-        <Text
-          style={{
             color: theme.colors.text,
             fontFamily: theme.font.family,
             fontSize: theme.font.size.title,
@@ -136,9 +126,22 @@ function NoteBlock({ note }: { note: StudyNote }) {
         >
           {note.title}
         </Text>
+        {/* The label follows the title, as a tag on the note rather than a kicker above it. */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
+          <Ionicons name="information-circle-outline" size={16} color={theme.colors.primary} />
+          <Text
+            style={{
+              color: theme.colors.primary,
+              fontSize: theme.font.size.caption,
+              fontWeight: theme.font.weight.bold,
+            }}
+          >
+            Commentary, not Scripture
+          </Text>
+        </View>
         <Text
           style={{
-            color: theme.colors.textMuted,
+            color: theme.colors.text,
             fontFamily: theme.font.family,
             fontSize: theme.font.size.body,
             lineHeight: theme.font.size.body * 1.5,

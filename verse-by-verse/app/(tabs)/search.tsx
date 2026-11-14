@@ -5,6 +5,7 @@ import {
   Animated,
   FlatList,
   Keyboard,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -12,7 +13,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
+import { Plate } from "../../components/Art";
 import { EmptyState } from "../../components/EmptyState";
 import { Highlighted } from "../../components/search/Highlighted";
 import {
@@ -47,9 +48,9 @@ import { useTheme } from "../../theme/ThemeProvider";
 type Mode = "reference" | "keywords";
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-const MODES: Array<{ id: Mode; label: string }> = [
-  { id: "reference", label: "Reference Jump" },
-  { id: "keywords", label: "Keywords" },
+const MODES: Array<{ id: Mode; label: string; placeholder: string }> = [
+  { id: "reference", label: "Reference jump", placeholder: "Reference, e.g. John 3:16" },
+  { id: "keywords", label: "Keywords", placeholder: "Word or phrase, e.g. peace" },
 ];
 
 // Passages people look up most. Only the ones in the library are shown, so every chip opens.
@@ -93,6 +94,7 @@ export default function SearchScreen() {
   const [query, setQuery] = useState("");
   const [jumpError, setJumpError] = useState<string | null>(null);
   const [segmentWidth, setSegmentWidth] = useState(0);
+  const [focused, setFocused] = useState(false);
 
   const slide = useRef(new Animated.Value(0)).current;
   const clearOpacity = useRef(new Animated.Value(0)).current;
@@ -201,6 +203,7 @@ export default function SearchScreen() {
           book: next.book,
           chapter: String(next.chapter),
           verse: String(next.verse),
+          at: String(Date.now()),
         },
       });
     } catch {
@@ -251,7 +254,7 @@ export default function SearchScreen() {
   ) : null;
 
   const header = (
-    <View style={{ gap: theme.spacing.xl }}>
+    <View style={{ gap: theme.spacing.xl, paddingBottom: theme.spacing.lg }}>
       <View style={{ gap: theme.spacing.md }}>
         <Appear>
           <Text
@@ -259,8 +262,9 @@ export default function SearchScreen() {
             style={{
               color: theme.colors.text,
               fontFamily: theme.font.family,
-              fontSize: theme.font.size.display,
+              fontSize: theme.font.size.headline,
               fontWeight: theme.font.weight.bold,
+              lineHeight: 44,
             }}
           >
             Search
@@ -273,11 +277,12 @@ export default function SearchScreen() {
               flexDirection: "row",
               alignItems: "center",
               minHeight: 52,
-              paddingHorizontal: theme.spacing.lg,
+              // The border thickens when the field has focus; the padding gives the pixel back.
+              paddingHorizontal: theme.spacing.lg - (focused ? 1 : 0),
               gap: theme.spacing.sm,
-              borderRadius: theme.radius.md,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
+              borderRadius: theme.radius.sm,
+              borderWidth: focused ? 2 : 1,
+              borderColor: focused ? theme.colors.primary : theme.colors.textMuted,
               backgroundColor: theme.colors.surface,
             }}
           >
@@ -285,12 +290,16 @@ export default function SearchScreen() {
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Reference (e.g. Rom 8:28) or keyword…"
+              placeholder={MODES.find((option) => option.id === mode)?.placeholder}
               placeholderTextColor={theme.colors.textMuted}
               returnKeyType="search"
               autoCorrect={false}
               autoCapitalize="none"
-              accessibilityLabel="Search verses or references"
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              accessibilityLabel={
+                mode === "reference" ? "Search by reference" : "Search by keyword"
+              }
               onSubmitEditing={() => {
                 Keyboard.dismiss();
                 if (mode === "reference" && results[0])
@@ -301,6 +310,8 @@ export default function SearchScreen() {
                 minHeight: 48,
                 fontSize: theme.font.size.body,
                 color: theme.colors.text,
+                // The field's own border shows focus, so the web's default ring is turned off.
+                ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : null),
               }}
             />
             <Animated.View style={{ opacity: clearOpacity }}>
@@ -327,10 +338,11 @@ export default function SearchScreen() {
 
         <Appear delay={120}>
           <View
+            accessibilityRole="tablist"
             onLayout={(event: LayoutChangeEvent) => setSegmentWidth(event.nativeEvent.layout.width)}
             style={{
               flexDirection: "row",
-              height: 44,
+              minHeight: 44,
               padding: 4,
               borderRadius: theme.radius.sm,
               backgroundColor: theme.colors.surfaceAlt,
@@ -393,9 +405,9 @@ export default function SearchScreen() {
             value={results.length}
             style={{
               color: theme.colors.text,
-              fontFamily: theme.font.family,
-              fontSize: theme.font.size.title,
+              fontSize: theme.font.size.body,
               fontWeight: theme.font.weight.bold,
+              fontVariant: ["tabular-nums"],
             }}
           />
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
@@ -407,20 +419,17 @@ export default function SearchScreen() {
       {!trimmed && mode === "reference" ? (
         <Appear delay={180}>
           <View style={{ gap: theme.spacing.md }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-              <Text
-                accessibilityRole="header"
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: theme.font.family,
-                  fontSize: theme.font.size.title,
-                  fontWeight: theme.font.weight.bold,
-                }}
-              >
-                Quick Jump
-              </Text>
-              <Ionicons name="flower-outline" size={18} color={theme.colors.primary} />
-            </View>
+            <Text
+              accessibilityRole="header"
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.font.family,
+                fontSize: theme.font.size.title,
+                fontWeight: theme.font.weight.bold,
+              }}
+            >
+              Quick jump
+            </Text>
             {loadingLibrary ? (
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
                 {[120, 132, 110, 128].map((width, index) => (
@@ -450,13 +459,14 @@ export default function SearchScreen() {
                       borderRadius: theme.radius.pill,
                       borderWidth: 1,
                       borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.surface,
                     }}
                   >
                     <Text
                       style={{
                         color: theme.colors.text,
-                        fontFamily: theme.font.family,
                         fontSize: theme.font.size.body,
+                        fontWeight: theme.font.weight.medium,
                       }}
                     >
                       {formatReference(verse)}
@@ -481,12 +491,18 @@ export default function SearchScreen() {
                 fontWeight: theme.font.weight.bold,
               }}
             >
-              Recent Searches
+              Recent searches
             </Text>
             {loadingLibrary || saved.loading ? (
               <SkeletonList rows={3} />
             ) : recent.length === 0 ? (
-              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontSize: theme.font.size.body,
+                  lineHeight: theme.font.size.body * 1.4,
+                }}
+              >
                 Verses you open and save will appear here.
               </Text>
             ) : (
@@ -509,27 +525,29 @@ export default function SearchScreen() {
                         borderBottomColor: theme.colors.border,
                       }}
                     >
-                      <Text
-                        style={{
-                          flex: 1,
-                          color: theme.colors.text,
-                          fontFamily: theme.font.family,
-                          fontSize: theme.font.size.title,
-                        }}
-                      >
-                        {item.key}
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text
+                          style={{
+                            color: theme.colors.text,
+                            fontFamily: theme.font.family,
+                            fontSize: theme.font.size.body,
+                            fontWeight: theme.font.weight.bold,
+                          }}
+                        >
+                          {item.key}
+                        </Text>
                         {item.topic ? (
                           <Text
+                            numberOfLines={1}
                             style={{
                               color: theme.colors.textMuted,
-                              fontSize: theme.font.size.body,
+                              fontSize: theme.font.size.caption,
                             }}
                           >
-                            {"  •  "}
                             {item.topic}
                           </Text>
                         ) : null}
-                      </Text>
+                      </View>
                       <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
                     </PressScale>
                   </Appear>
@@ -591,7 +609,7 @@ export default function SearchScreen() {
         </PressScale>
       </View>
     ) : !trimmed && !isPremium ? (
-      <View style={{ marginTop: theme.spacing.lg }}>
+      <View style={{ marginTop: theme.spacing.sm }}>
         <PressScale
           onPress={openPaywall}
           accessibilityRole="button"
@@ -601,15 +619,15 @@ export default function SearchScreen() {
             alignItems: "center",
             gap: theme.spacing.md,
             padding: theme.spacing.lg,
-            borderRadius: theme.radius.lg,
+            borderRadius: theme.radius.md,
             backgroundColor: theme.colors.surfaceAlt,
           }}
         >
-          <Float amplitude={4} style={{ width: 96, height: 96 }}>
-            <AiImage
+          <Float amplitude={3}>
+            <Plate
               prompt="an open book with a quill pen, sepia ink line drawing on a plain cream background"
-              fit="contain"
-              style={{ width: 96, height: 96 }}
+              icon="book-outline"
+              size={72}
             />
           </Float>
           <Text
@@ -628,6 +646,7 @@ export default function SearchScreen() {
             </Text>
             {" access"}
           </Text>
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
         </PressScale>
       </View>
     ) : null;
@@ -694,17 +713,18 @@ export default function SearchScreen() {
           </PressScale>
         </Appear>
       )}
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{
-        paddingHorizontal: theme.spacing.xl,
-        paddingTop: insets.top + theme.spacing.lg,
+        paddingHorizontal: theme.spacing.lg,
+        paddingTop: insets.top + theme.spacing.md,
         paddingBottom: theme.spacing.xl,
       }}
       ListHeaderComponent={header}
-      ListEmptyComponent={emptyView}
-      ListFooterComponent={footer}
+      ListEmptyComponent={emptyView ?? undefined}
+      ListFooterComponent={footer ?? undefined}
     />
   );
 }

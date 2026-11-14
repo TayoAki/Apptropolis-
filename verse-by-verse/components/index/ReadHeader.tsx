@@ -1,25 +1,26 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { formatReference, type Verse } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { AiImage } from "../AiImage";
 import { haptic, PressScale } from "../motion";
 
 /**
  * The top row of the Read screen: the verse pill (e.g. "John 1:1" with a caret), which opens a
- * row of verses to jump to, and the "Read Chapter N" action on the right.
+ * row of verses to jump to; "Chapter N", which opens the whole chapter; and Settings.
  */
 export function ReadHeader({
   current,
   verses,
   onPick,
   onReadChapter,
+  onSettings,
 }: {
   current: Verse;
   verses: Verse[];
   onPick: (verse: Verse) => void;
   onReadChapter: () => void;
+  onSettings: () => void;
 }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
@@ -27,69 +28,96 @@ export function ReadHeader({
 
   return (
     <View style={{ gap: theme.spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <PressScale
-          onPress={() => {
-            haptic("selection");
-            setOpen((value) => !value);
-          }}
-          scaleTo={0.95}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={`Choose a verse. Now reading ${label}`}
-          accessibilityState={{ expanded: open }}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: theme.spacing.sm,
-            minHeight: 44,
-            paddingHorizontal: theme.spacing.lg,
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.background,
-          }}
-        >
-          <Text
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+        <View style={{ flexShrink: 1 }}>
+          <PressScale
+            onPress={() => {
+              haptic("selection");
+              setOpen((value) => !value);
+            }}
+            scaleTo={0.95}
+            accessibilityRole="button"
+            accessibilityLabel={`Choose a verse. Now reading ${label}`}
+            accessibilityState={{ expanded: open }}
             style={{
-              color: theme.colors.text,
-              fontFamily: theme.font.family,
-              fontSize: theme.font.size.title,
-              fontWeight: theme.font.weight.bold,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: theme.spacing.sm,
+              minHeight: 44,
+              paddingHorizontal: theme.spacing.lg,
+              borderRadius: theme.radius.pill,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
             }}
           >
-            {label}
-          </Text>
-          <Ionicons
-            name={open ? "chevron-up" : "chevron-down"}
-            size={14}
-            color={theme.colors.text}
-          />
-        </PressScale>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={{
+                flexShrink: 1,
+                color: theme.colors.text,
+                fontFamily: theme.font.family,
+                fontSize: theme.font.size.title,
+                fontWeight: theme.font.weight.bold,
+              }}
+            >
+              {label}
+            </Text>
+            <Ionicons
+              name={open ? "chevron-up" : "chevron-down"}
+              size={16}
+              color={theme.colors.textMuted}
+            />
+          </PressScale>
+        </View>
+
+        <View style={{ flex: 1 }} />
 
         <PressScale
           onPress={onReadChapter}
           scaleTo={0.95}
-          hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={`Read ${current.book} chapter ${current.chapter} from the start`}
-          style={{ alignItems: "center", minHeight: 44, gap: 2 }}
+          accessibilityLabel={`Read all of ${current.book} chapter ${current.chapter}`}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: theme.spacing.xs + 2,
+            minHeight: 44,
+            paddingHorizontal: theme.spacing.md,
+            borderRadius: theme.radius.pill,
+            backgroundColor: theme.colors.primary + "1F",
+          }}
         >
-          <AiImage
-            prompt="a small brown line drawing of an open book with the number 1 on its left page, plain cream background, no other text"
-            fit="contain"
-            style={{ width: 28, height: 28 }}
-          />
+          <Ionicons name="book-outline" size={18} color={theme.colors.primary} />
           <Text
             style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.font.family,
+              color: theme.colors.primary,
               fontSize: theme.font.size.caption,
+              fontWeight: theme.font.weight.bold,
             }}
           >
-            {`Read Chapter ${current.chapter}`}
+            {`Chapter ${current.chapter}`}
           </Text>
         </PressScale>
+
+        <Pressable
+          onPress={onSettings}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          hitSlop={4}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: -theme.spacing.sm,
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <Ionicons name="settings-outline" size={24} color={theme.colors.primary} />
+        </Pressable>
       </View>
 
       {open ? (
@@ -114,7 +142,9 @@ export function ReadHeader({
                 accessibilityState={{ selected }}
                 style={{
                   minHeight: 44,
-                  justifyContent: "center",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.xs,
                   paddingHorizontal: theme.spacing.md,
                   borderRadius: theme.radius.pill,
                   borderWidth: 1,
@@ -122,10 +152,12 @@ export function ReadHeader({
                   backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
                 }}
               >
+                {selected ? (
+                  <Ionicons name="checkmark" size={14} color={theme.colors.onPrimary} />
+                ) : null}
                 <Text
                   style={{
                     color: selected ? theme.colors.onPrimary : theme.colors.text,
-                    fontFamily: theme.font.family,
                     fontSize: theme.font.size.caption,
                     fontWeight: theme.font.weight.medium,
                   }}

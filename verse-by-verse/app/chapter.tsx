@@ -1,12 +1,14 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import Svg, { Circle, Line, Path } from "react-native-svg";
+import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
+import { useMemo, useRef, useState, type ComponentRef } from "react";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmptyState } from "../components/EmptyState";
+import { Flourish } from "../components/Flourish";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { HeaderAction, ScreenHeader } from "../components/ScreenHeader";
 import { VerseLine } from "../components/chapter/VerseLine";
-import { Appear, PressScale, Skeleton, Stagger, haptic } from "../components/motion";
+import { Appear, Skeleton, Stagger, haptic } from "../components/motion";
+import { useSavedTheme } from "../components/reading";
 import { useAppState } from "../data/app-state";
 import { useCollection } from "../data/repo";
 import {
@@ -25,40 +27,23 @@ function wait(ms: number) {
 
 function goBack() {
   if (router.canGoBack()) router.back();
-  else router.navigate("/");
+  else router.replace("/");
 }
 
-/** A small drawn divider that closes the chapter. */
-function Ornament() {
-  const theme = useTheme();
-  const c = theme.colors.primary;
-  return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={{ alignItems: "center" }}
-    >
-      <Svg width={200} height={24} viewBox="0 0 200 24">
-        <Line x1={4} y1={12} x2={60} y2={12} stroke={c} strokeWidth={1} strokeOpacity={0.5} />
-        <Line x1={140} y1={12} x2={196} y2={12} stroke={c} strokeWidth={1} strokeOpacity={0.5} />
-        <Path
-          d="M80 12 C74 4 64 6 68 12 C72 18 80 15 81 12"
-          fill="none"
-          stroke={c}
-          strokeWidth={1.5}
-          strokeLinecap="round"
-        />
-        <Path
-          d="M120 12 C126 4 136 6 132 12 C128 18 120 15 119 12"
-          fill="none"
-          stroke={c}
-          strokeWidth={1.5}
-          strokeLinecap="round"
-        />
-        <Circle cx={100} cy={12} r={3} fill={c} />
-      </Svg>
-    </View>
-  );
+/**
+ * Close the chapter and open a verse on the Read tab underneath. `at` makes each jump
+ * distinct, even to the same verse.
+ */
+function openInReader(verse: Verse) {
+  router.dismissTo({
+    pathname: "/",
+    params: {
+      book: verse.book,
+      chapter: String(verse.chapter),
+      verse: String(verse.verse),
+      at: String(Date.now()),
+    },
+  });
 }
 
 function ChapterSkeleton() {
@@ -74,7 +59,7 @@ function ChapterSkeleton() {
           key={i}
           height={i === 0 ? 96 : 64}
           width={i === 2 ? "85%" : "100%"}
-          radius={theme.radius.lg}
+          radius={theme.radius.md}
         />
       ))}
     </View>
@@ -85,12 +70,13 @@ export default function ChapterScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ book?: string; chapter?: string; verse?: string }>();
-  const { answers } = useAppState();
+  const { ready, onboarded, answers } = useAppState();
   const verseRows = useCollection<Verse>("verses");
   const bookmarkRows = useCollection<Bookmark>("bookmarks");
   const [picked, setPicked] = useState<string | null>(null);
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrolled = useRef(false);
+  useSavedTheme();
 
   const position = readingPosition(bookmarkRows.items);
   // Without a book in the link, the chapter the reader left off in (or the chosen starting book).
@@ -103,6 +89,10 @@ export default function ChapterScreen() {
     [verseRows.items, book, chapterNumber],
   );
 
+  // This screen sits outside the root layout's guarded group, so on a first launch the router
+  // can land here before onboarding. Send those launches to onboarding.
+  if (ready && !onboarded) return <Redirect href="/onboarding" />;
+
   const requested = params.verse ? Number(params.verse) : NaN;
   const samePosition =
     position && position.book === book && position.chapter === chapterNumber
@@ -113,7 +103,6 @@ export default function ChapterScreen() {
     chapter.find((v) => v.verse === samePosition) ??
     chapter[0];
 
-  const resumeAt = position ?? target;
   const loading = verseRows.loading || bookmarkRows.loading;
 
   function onRowLayout(verse: Verse, y: number) {
@@ -135,59 +124,31 @@ export default function ChapterScreen() {
     else await bookmarkRows.add(record);
   }
 
-  // Tapping a verse moves the feed's resume point there, lets the line pulse, then returns.
-  function openInFeed(verse: Verse) {
+  // Tapping a verse moves the reader's place there, lets the line flash, then opens it in Read.
+  function readFrom(verse: Verse) {
     if (picked) return;
     haptic("selection");
     setPicked(verse.id);
     void Promise.all([
       saveReadingPosition(verse).catch(() => undefined),
       wait(340),
-    ]).then(() => router.navigate("/"));
+    ]).then(() => openInReader(verse));
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Stack.Screen
-        options={{
-          title: `${book} Chapter ${chapterNumber}`,
-          headerTitleStyle: {
-            fontFamily: theme.font.family,
-            fontWeight: theme.font.weight.bold,
-          },
-          headerLeft: () => (
-            <Pressable
-              onPress={goBack}
-              accessibilityRole="button"
-              accessibilityLabel="Back to verse"
-              hitSlop={12}
-              style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
-            >
-              <Ionicons name="chevron-back" size={22} color={theme.colors.primary} />
-              <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body }}>
-                Back to Verse
-              </Text>
-            </Pressable>
-          ),
-          headerRight: () => (
-            <Pressable
-              onPress={() => router.push("/settings")}
-              accessibilityRole="button"
-              accessibilityLabel="Text size and settings"
-              hitSlop={12}
-            >
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontFamily: theme.font.family,
-                  fontSize: theme.font.size.title,
-                }}
-              >
-                AA
-              </Text>
-            </Pressable>
-          ),
-        }}
+      <Stack.Screen options={{ title: `${book} ${chapterNumber}`, headerShown: false }} />
+      <ScreenHeader
+        title={`${book} ${chapterNumber}`}
+        backAccessibilityLabel="Back to the verse"
+        onBack={goBack}
+        right={
+          <HeaderAction
+            icon="settings-outline"
+            label="Text size and settings"
+            onPress={() => router.push("/settings")}
+          />
+        }
       />
 
       {loading ? (
@@ -197,9 +158,9 @@ export default function ChapterScreen() {
           <EmptyState
             icon="book-outline"
             title="This chapter isn't in the reader yet"
-            body="Go back to the feed and pick another chapter, or search for a reference."
+            body="Go back to Read and pick another chapter, or search for a reference."
             actionLabel="Back to Read"
-            onAction={() => router.navigate("/")}
+            onAction={() => router.dismissTo("/")}
           />
         </View>
       ) : (
@@ -207,13 +168,14 @@ export default function ChapterScreen() {
           <ScrollView
             ref={scroller}
             contentContainerStyle={{
-              padding: theme.spacing.lg,
+              paddingHorizontal: theme.spacing.lg,
+              paddingTop: theme.spacing.sm,
               paddingBottom: theme.spacing.xl,
             }}
             decelerationRate="normal"
             showsVerticalScrollIndicator={false}
           >
-            <Stagger step={55} style={{ gap: theme.spacing.sm }}>
+            <Stagger step={55} style={{ gap: theme.spacing.xs }}>
               {chapter.map((verse) => (
                 <View
                   key={verse.id}
@@ -223,73 +185,40 @@ export default function ChapterScreen() {
                     verse={verse}
                     isTarget={target?.id === verse.id}
                     picked={picked === verse.id}
-                    onPress={() => openInFeed(verse)}
+                    onPress={() => readFrom(verse)}
                   />
                 </View>
               ))}
             </Stagger>
-            <Appear delay={350} style={{ marginTop: theme.spacing.lg }}>
-              <Ornament />
+            <Appear delay={350} style={{ marginTop: theme.spacing.xl }}>
+              <Flourish />
             </Appear>
           </ScrollView>
 
           <View
             style={{
+              gap: theme.spacing.md,
               paddingHorizontal: theme.spacing.lg,
-              paddingTop: theme.spacing.sm,
+              paddingTop: theme.spacing.md,
               paddingBottom: Math.max(insets.bottom, theme.spacing.md),
+              borderTopWidth: 1,
+              borderTopColor: theme.colors.border,
               backgroundColor: theme.colors.background,
             }}
           >
-            <View
+            <Text
               style={{
-                alignItems: "center",
-                gap: theme.spacing.md,
-                padding: theme.spacing.md,
-                borderRadius: theme.radius.lg,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.surface,
+                color: theme.colors.textMuted,
+                fontSize: theme.font.size.caption,
+                lineHeight: theme.font.size.caption * 1.4,
+                textAlign: "center",
               }}
             >
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontSize: theme.font.size.caption,
-                  textAlign: "center",
-                }}
-              >
-                {resumeAt
-                  ? `Resuming at ${formatReference(resumeAt)} · Tap any verse to jump there in feed`
-                  : "Tap any verse to jump there in feed"}
-              </Text>
-              <PressScale
-                onPress={() => router.navigate("/")}
-                scaleTo={0.97}
-                haptic="light"
-                accessibilityRole="button"
-                accessibilityLabel="Return to feed"
-                style={{
-                  alignSelf: "stretch",
-                  minHeight: 48,
-                  borderRadius: theme.radius.md,
-                  backgroundColor: theme.colors.primary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.onPrimary,
-                    fontFamily: theme.font.family,
-                    fontSize: theme.font.size.title,
-                    fontWeight: theme.font.weight.medium,
-                  }}
-                >
-                  Return to Feed
-                </Text>
-              </PressScale>
-            </View>
+              {position
+                ? `You left off at ${formatReference(position)}. Tap any verse to read from there.`
+                : "Tap any verse to read from there."}
+            </Text>
+            <PrimaryButton label="Back to Read" onPress={() => router.dismissTo("/")} />
           </View>
         </>
       )}

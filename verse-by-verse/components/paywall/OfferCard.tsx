@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 import type { Offer } from "../../data/purchases";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -36,7 +37,11 @@ function ribbonText(offer: Offer): string | null {
   return parts.length ? parts.join(" · ").toUpperCase() : null;
 }
 
-/** One plan as a selectable card: name and price centered, with the savings ribbon on its corner. */
+/**
+ * One plan as a selectable card: a radio mark, then the name and price, with the savings badge
+ * on its top edge. The chosen plan is shown by the filled mark and a heavier border, not by
+ * color alone.
+ */
 export function OfferCard({
   offer,
   selected,
@@ -47,7 +52,6 @@ export function OfferCard({
   onSelect: () => void;
 }) {
   const theme = useTheme();
-  const serif = { fontFamily: theme.font.family };
   const monthly = monthlyEquivalent(offer);
   const ribbon = ribbonText(offer);
   const price = priceLabel(offer);
@@ -57,51 +61,56 @@ export function OfferCard({
       onPress={onSelect}
       scaleTo={0.98}
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, checked: selected }}
       accessibilityLabel={`${offer.label}, ${price}${ribbon ? `, ${ribbon.toLowerCase()}` : ""}`}
       style={{
+        flexDirection: "row",
         alignItems: "center",
-        gap: theme.spacing.xs,
+        gap: theme.spacing.md,
+        minHeight: 68,
         paddingVertical: theme.spacing.md,
         paddingHorizontal: theme.spacing.lg,
         borderRadius: theme.radius.md,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? theme.colors.accent : theme.colors.border,
+        borderWidth: 2,
+        borderColor: selected ? theme.colors.primary : theme.colors.border,
         backgroundColor: selected ? theme.colors.surface : theme.colors.background,
       }}
     >
-      <Text
-        style={{
-          ...serif,
-          color: theme.colors.text,
-          fontSize: theme.font.size.title,
-          fontWeight: theme.font.weight.bold,
-          textAlign: "center",
-        }}
-      >
-        {offer.label}
-      </Text>
-      <Text
-        style={{
-          ...serif,
-          color: theme.colors.text,
-          fontSize: theme.font.size.body,
-          fontVariant: ["tabular-nums"],
-          textAlign: "center",
-        }}
-      >
-        {price}
-        {monthly ? (
-          <Text style={{ color: theme.colors.textMuted }}>{` (${monthly}/mo)`}</Text>
-        ) : null}
-      </Text>
+      <Ionicons
+        name={selected ? "radio-button-on" : "radio-button-off"}
+        size={24}
+        color={selected ? theme.colors.primary : theme.colors.textMuted}
+      />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontSize: theme.font.size.body,
+            fontWeight: theme.font.weight.bold,
+          }}
+        >
+          {offer.label}
+        </Text>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontSize: theme.font.size.body,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {price}
+          {monthly ? (
+            <Text style={{ color: theme.colors.textMuted }}>{` (${monthly}/mo)`}</Text>
+          ) : null}
+        </Text>
+      </View>
       {ribbon ? (
         <View
           pointerEvents="none"
           style={{
             position: "absolute",
-            top: -12,
-            right: -6,
+            top: -13,
+            right: theme.spacing.md,
             paddingHorizontal: theme.spacing.md,
             paddingVertical: theme.spacing.xs,
             borderRadius: theme.radius.sm,

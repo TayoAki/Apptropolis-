@@ -20,14 +20,14 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 /** Approximate length of the check's stroke, in the 56-unit drawing. */
 const CHECK_LENGTH = 32;
 
-/** Width of the floating side panel that overlaps the featured verse card. */
-export const PANEL_WIDTH = 96;
+/** Width of the action column on the right of the featured verse card. */
+export const PANEL_WIDTH = 84;
 
 /** The tabs the app opens with, in the app's own order. */
-const PREVIEW_TABS: Array<{ label: string; icon: IconName }> = [
-  { label: "Read", icon: "book-outline" },
-  { label: "Search", icon: "search-outline" },
-  { label: "Saved", icon: "bookmark-outline" },
+const PREVIEW_TABS: Array<{ label: string; icon: IconName; activeIcon: IconName }> = [
+  { label: "Read", icon: "book-outline", activeIcon: "book" },
+  { label: "Search", icon: "search-outline", activeIcon: "search" },
+  { label: "Saved", icon: "bookmark-outline", activeIcon: "bookmark" },
 ];
 
 /**
@@ -116,13 +116,14 @@ export function VerseStartCard({
       accessibilityHint="Opens the reader at this verse"
       style={[
         {
-          minHeight: featured ? 200 : 140,
+          // The featured card is at least as tall as its action column; the rest fit their text.
+          minHeight: featured ? 152 : undefined,
           gap: theme.spacing.sm,
           overflow: "hidden",
           paddingVertical: theme.spacing.lg,
           paddingLeft: theme.spacing.lg,
           paddingRight: inset ?? theme.spacing.lg,
-          borderRadius: featured ? theme.radius.lg : theme.radius.md,
+          borderRadius: theme.radius.md,
           borderWidth: featured ? 1.5 : 1,
           borderColor: featured ? theme.colors.primary : theme.colors.border,
           backgroundColor: featured ? theme.colors.surface : theme.colors.background,
@@ -166,13 +167,13 @@ function SideAction({ icon, label }: { icon: IconName; label: string }) {
   const theme = useTheme();
   return (
     <View style={{ alignItems: "center", gap: 4 }}>
-      <Ionicons name={icon} size={24} color={theme.colors.primary} />
+      <Ionicons name={icon} size={22} color={theme.colors.text} />
       <Text
         style={{
-          color: theme.colors.text,
-          fontFamily: theme.font.family,
+          color: theme.colors.textMuted,
           fontSize: theme.font.size.caption,
-          lineHeight: theme.font.size.caption * 1.3,
+          fontWeight: theme.font.weight.medium,
+          lineHeight: theme.font.size.caption + 3,
           textAlign: "center",
         }}
       >
@@ -183,9 +184,11 @@ function SideAction({ icon, label }: { icon: IconName; label: string }) {
 }
 
 /**
- * The floating panel that hangs off the right edge of the featured verse card, centred on it.
- * Render it inside a relatively laid-out wrapper around the card. It is a preview of what the
- * reader offers, so it never takes touches: the card underneath stays tappable.
+ * The action column on the right of the featured verse card, laid out like the reader's own
+ * rail: inside the card, beside the verse and divided from it by a hairline. Render it inside
+ * a relatively laid-out wrapper around the card, and give the card `inset` so its text stays
+ * clear. It is a preview of what the reader offers, so it never takes touches: the card
+ * underneath stays tappable.
  */
 export function SideActions({ hasNote }: { hasNote: boolean }) {
   const theme = useTheme();
@@ -196,37 +199,28 @@ export function SideActions({ hasNote }: { hasNote: boolean }) {
       importantForAccessibility="no-hide-descendants"
       style={{
         position: "absolute",
-        top: 0,
-        bottom: 0,
-        right: -theme.spacing.lg,
+        top: 2,
+        bottom: 2,
+        right: 0,
+        width: PANEL_WIDTH,
         justifyContent: "center",
-        zIndex: 1,
+        alignItems: "center",
+        gap: theme.spacing.lg,
+        paddingHorizontal: theme.spacing.xs,
+        borderLeftWidth: 1,
+        borderLeftColor: theme.colors.border,
       }}
     >
-      <View
-        style={{
-          width: PANEL_WIDTH,
-          paddingVertical: theme.spacing.md,
-          gap: theme.spacing.lg,
-          alignItems: "center",
-          borderTopLeftRadius: theme.radius.md,
-          borderBottomLeftRadius: theme.radius.md,
-          borderWidth: 1,
-          borderRightWidth: 0,
-          borderColor: theme.colors.border,
-          backgroundColor: theme.colors.background,
-        }}
-      >
-        <SideAction icon="open-outline" label="Full Context" />
-        {hasNote ? <SideAction icon="document-text-outline" label="Note Available" /> : null}
-      </View>
+      <SideAction icon="reader-outline" label="Full context" />
+      {hasNote ? <SideAction icon="document-text-outline" label="Study note" /> : null}
     </View>
   );
 }
 
 /**
- * A preview of the app's bottom tab bar, shown at the foot of onboarding. The tabs open once
- * onboarding is finished, so the bar is decorative and never takes touches.
+ * A preview of the app's bottom tab bar, shown at the foot of onboarding with the same metrics
+ * as the real one. The tabs open once onboarding is finished, so the bar is decorative and
+ * never takes touches.
  */
 export function PreviewTabBar({ bottomInset }: { bottomInset: number }) {
   const theme = useTheme();
@@ -237,42 +231,33 @@ export function PreviewTabBar({ bottomInset }: { bottomInset: number }) {
       importantForAccessibility="no-hide-descendants"
       style={{
         flexDirection: "row",
+        height: 58 + bottomInset,
+        paddingTop: 2,
+        paddingBottom: bottomInset + 2,
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: theme.colors.border,
         backgroundColor: theme.colors.surface,
-        paddingBottom: Math.max(bottomInset, theme.spacing.sm),
       }}
     >
       {PREVIEW_TABS.map((tab, index) => {
         const active = index === 0;
         const ink = active ? theme.colors.primary : theme.colors.textMuted;
         return (
-          <View key={tab.label} style={{ flex: 1, alignItems: "center" }}>
-            {active ? (
-              <View
-                style={{
-                  width: 32,
-                  height: 3,
-                  borderBottomLeftRadius: 2,
-                  borderBottomRightRadius: 2,
-                  backgroundColor: theme.colors.primary,
-                }}
-              />
-            ) : (
-              <View style={{ height: 3 }} />
-            )}
-            <View style={{ alignItems: "center", gap: 2, paddingTop: theme.spacing.sm }}>
-              <Ionicons name={tab.icon} size={24} color={ink} />
-              <Text
-                style={{
-                  color: ink,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.medium,
-                }}
-              >
-                {tab.label}
-              </Text>
-            </View>
+          <View
+            key={tab.label}
+            style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 2 }}
+          >
+            <Ionicons name={active ? tab.activeIcon : tab.icon} size={24} color={ink} />
+            <Text
+              style={{
+                color: ink,
+                fontSize: 12,
+                lineHeight: 16,
+                fontWeight: theme.font.weight.medium,
+              }}
+            >
+              {tab.label}
+            </Text>
           </View>
         );
       })}

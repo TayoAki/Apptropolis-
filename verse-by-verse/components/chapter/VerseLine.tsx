@@ -3,12 +3,14 @@ import { Animated, Easing, Text, type ViewStyle } from "react-native";
 import { formatReference, type Verse } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PressScale, useReducedMotion } from "../motion";
+import { useReadingType } from "../reading";
 
 const FILL: ViewStyle = { position: "absolute", top: 0, bottom: 0, left: 0, right: 0 };
 
 /**
- * One verse in the chapter. The target verse glows in with a short amber underline; a tapped
- * verse flashes once (`picked`) before the reader returns to the feed.
+ * One verse in the chapter. The verse the reader came from sits on a tinted panel with a short
+ * underline that draws in; a tapped verse flashes once (`picked`) before the reader returns to
+ * the Read tab.
  */
 export function VerseLine({
   verse,
@@ -22,6 +24,7 @@ export function VerseLine({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const type = useReadingType();
   const reduced = useReducedMotion();
   const glow = useRef(new Animated.Value(0)).current;
   const underline = useRef(new Animated.Value(0)).current;
@@ -49,7 +52,11 @@ export function VerseLine({
   }, [isTarget, reduced, glow, underline]);
 
   useEffect(() => {
-    if (!picked || reduced) return;
+    if (!picked) return;
+    if (reduced) {
+      flash.setValue(1);
+      return;
+    }
     flash.setValue(0);
     Animated.sequence([
       Animated.timing(flash, { toValue: 1, duration: 140, useNativeDriver: true }),
@@ -57,41 +64,31 @@ export function VerseLine({
     ]).start();
   }, [picked, reduced, flash]);
 
-  const flashOpacity = flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.22] });
-
   return (
     <PressScale
       onPress={onPress}
       scaleTo={0.985}
       accessibilityRole="button"
       accessibilityLabel={`${formatReference(verse)}. ${verse.text}`}
-      accessibilityHint="Opens this verse in the feed"
+      accessibilityHint="Reads from this verse"
       accessibilityState={{ selected: isTarget }}
       style={{
-        borderRadius: theme.radius.lg,
+        borderRadius: theme.radius.md,
         overflow: "hidden",
         paddingVertical: theme.spacing.md,
         paddingHorizontal: theme.spacing.lg,
-        borderLeftWidth: isTarget ? 3 : 0,
-        borderLeftColor: theme.colors.primary,
       }}
     >
       <Animated.View
         pointerEvents="none"
         style={[FILL, { backgroundColor: theme.colors.surface, opacity: glow }]}
       />
+      {/* A tint, not the solid accent, so the verse stays readable while it flashes. */}
       <Animated.View
         pointerEvents="none"
-        style={[FILL, { backgroundColor: theme.colors.accent, opacity: flashOpacity }]}
+        style={[FILL, { backgroundColor: theme.colors.accent + "38", opacity: flash }]}
       />
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontFamily: theme.font.family,
-          fontSize: theme.font.size.title,
-          lineHeight: theme.font.size.title * 1.5,
-        }}
-      >
+      <Text style={{ ...type.verse(theme.font.size.title), color: theme.colors.text }}>
         <Text
           style={{
             color: theme.colors.primary,
@@ -101,7 +98,7 @@ export function VerseLine({
         >
           {verse.verse}
         </Text>
-        {"\u2002"}
+        {" "}
         {verse.text}
       </Text>
       {isTarget ? (

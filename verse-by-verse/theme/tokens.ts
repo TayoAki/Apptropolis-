@@ -1,11 +1,24 @@
+import { Platform } from "react-native";
 import type { Theme } from "./types";
+
+// Type: two faces, each with one job on every screen.
+// - Serif (font.family) is the book: Scripture, verse references set as headings, screen titles
+//   and section headings, and prose meant to be read (commentary, disclosures, intro copy).
+// - The system sans (no fontFamily) is the tool: everything tapped or scanned. Buttons, pills,
+//   tabs, inputs, row labels and values, captions, metadata and badges.
+// Georgia ships with iOS only, so Android gets its built-in serif and the web a serif stack.
+const serif = Platform.select({
+  ios: "Georgia",
+  android: "serif",
+  default: "Georgia, 'Times New Roman', Times, serif",
+});
 
 // Shared shape for every pack: the mockup's card radius, the spacing scale, and a serif reading face.
 const shape: Omit<Theme, "id" | "name" | "dark" | "colors"> = {
   radius: { sm: 10, md: 20, lg: 28, pill: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },
   font: {
-    family: "Georgia",
+    family: serif,
     size: { caption: 13, body: 17, title: 22, headline: 28, display: 40 },
     weight: { regular: "400", medium: "500", bold: "700" },
   },

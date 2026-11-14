@@ -12,10 +12,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AiImage } from "../components/AiImage";
+import { Emblem, hasArt } from "../components/Art";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { Lottie } from "../components/lottie";
 import { Appear, Float, Pulse, PressScale, Skeleton, Stagger, haptic } from "../components/motion";
 import { OfferCard, priceLabel } from "../components/paywall/OfferCard";
+import { useSavedTheme } from "../components/reading";
 import { appInfo } from "../data/app-info";
 import { usePurchases } from "../data/purchases";
 import { useTheme } from "../theme/ThemeProvider";
@@ -35,6 +37,7 @@ export default function PaywallScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const serif = { fontFamily: theme.font.family };
+  useSavedTheme();
   const {
     ready,
     isPremium,
@@ -59,7 +62,7 @@ export default function PaywallScreen() {
   const store = Platform.OS === "ios" ? "App Store" : "Google Play";
   const ctaLabel =
     selected && selected.trialDays > 0
-      ? `Start ${selected.trialDays}-Day Free Trial`
+      ? `Start ${selected.trialDays}-day free trial`
       : "Continue";
 
   function choose(id: string) {
@@ -85,7 +88,7 @@ export default function PaywallScreen() {
   if (canBuy)
     links.push({
       key: "restore",
-      label: status === "restoring" ? "Restoring…" : "Restore Purchases",
+      label: status === "restoring" ? "Restoring…" : "Restore purchases",
       onPress: () => void restore(),
       role: "button",
       disabled: busy,
@@ -93,17 +96,20 @@ export default function PaywallScreen() {
   if (appInfo.termsUrl)
     links.push({
       key: "terms",
-      label: "Terms of Use",
+      label: "Terms of use",
       onPress: () => void Linking.openURL(appInfo.termsUrl),
       role: "link",
     });
   if (appInfo.privacyUrl)
     links.push({
       key: "privacy",
-      label: "Privacy Policy",
+      label: "Privacy policy",
       onPress: () => void Linking.openURL(appInfo.privacyUrl),
       role: "link",
     });
+
+  // The purchase button stays pinned under the plans, so it is on screen without scrolling.
+  const showCta = canBuy && selected !== null;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -120,7 +126,7 @@ export default function PaywallScreen() {
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={dismissPaywall}
-          hitSlop={14}
+          hitSlop={8}
           style={({ pressed }) => ({
             width: 44,
             height: 44,
@@ -130,27 +136,33 @@ export default function PaywallScreen() {
             opacity: pressed ? 0.6 : 1,
           })}
         >
-          <Ionicons name="close" size={28} color={theme.colors.text} />
+          <Ionicons name="close" size={26} color={theme.colors.text} />
         </Pressable>
       </View>
 
       <ScrollView
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
           paddingTop: theme.spacing.xs,
-          paddingBottom: insets.bottom + theme.spacing.xl,
+          paddingBottom: showCta ? theme.spacing.lg : insets.bottom + theme.spacing.xl,
           gap: theme.spacing.lg,
         }}
       >
-        {/* The ribbon banner is drawn with its text inside the artwork; it floats gently. */}
-        <Float amplitude={4} duration={3200}>
-          <AiImage
-            prompt={BANNER_PROMPT}
-            fit="contain"
-            style={{ alignSelf: "center", width: 260, height: 150 }}
-          />
-        </Float>
+        {/* The ribbon banner is drawn with its text inside the artwork and floats gently. Until
+            that artwork exists, the patron emblem stands in for it. */}
+        {hasArt(BANNER_PROMPT) ? (
+          <Float amplitude={4} duration={3200}>
+            <AiImage
+              prompt={BANNER_PROMPT}
+              fit="contain"
+              style={{ alignSelf: "center", width: 260, height: 150 }}
+            />
+          </Float>
+        ) : (
+          <Emblem icon="ribbon-outline" size={72} style={{ alignSelf: "center" }} />
+        )}
 
         <Appear delay={80}>
           <View style={{ gap: theme.spacing.sm }}>
@@ -165,12 +177,12 @@ export default function PaywallScreen() {
                 textAlign: "center",
               }}
             >
-              Deeper reflection. Zero clutter.
+              {"Deeper reflection.\nZero clutter."}
             </Text>
             <Text
               style={{
                 ...serif,
-                color: theme.colors.text,
+                color: theme.colors.textMuted,
                 fontSize: theme.font.size.body,
                 lineHeight: theme.font.size.body * 1.4,
                 textAlign: "center",
@@ -188,19 +200,13 @@ export default function PaywallScreen() {
               key={feature}
               style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}
             >
-              <Ionicons
-                name="checkmark"
-                size={22}
-                color={theme.colors.accent}
-                style={{ marginTop: 1 }}
-              />
+              <Ionicons name="checkmark" size={22} color={theme.colors.primary} />
               <Text
                 style={{
-                  ...serif,
                   flex: 1,
                   color: theme.colors.text,
                   fontSize: theme.font.size.body,
-                  lineHeight: theme.font.size.body * 1.3,
+                  lineHeight: 24,
                 }}
               >
                 {feature}
@@ -227,13 +233,16 @@ export default function PaywallScreen() {
                 alignItems: "center",
                 gap: theme.spacing.sm,
                 padding: theme.spacing.lg,
-                borderRadius: theme.radius.lg,
+                borderRadius: theme.radius.md,
                 borderWidth: 1,
                 borderColor: theme.colors.border,
                 backgroundColor: theme.colors.surface,
               }}
             >
-              <Lottie name="success" size={96} />
+              {/* A fixed box, so the card keeps its shape while the animation loads. */}
+              <View style={{ width: 96, height: 96, overflow: "hidden" }}>
+                <Lottie name="success" size={96} />
+              </View>
               <Text
                 accessibilityRole="header"
                 style={{
@@ -248,7 +257,6 @@ export default function PaywallScreen() {
               </Text>
               <Text
                 style={{
-                  ...serif,
                   color: theme.colors.textMuted,
                   fontSize: theme.font.size.body,
                   textAlign: "center",
@@ -281,7 +289,7 @@ export default function PaywallScreen() {
                 alignItems: "center",
                 gap: theme.spacing.md,
                 padding: theme.spacing.lg,
-                borderRadius: theme.radius.lg,
+                borderRadius: theme.radius.md,
                 backgroundColor: theme.colors.surface,
               }}
             >
@@ -314,7 +322,11 @@ export default function PaywallScreen() {
         ) : (
           <>
             <Appear delay={280}>
-              <View style={{ gap: theme.spacing.md, paddingTop: theme.spacing.md }}>
+              <View
+                accessibilityRole="radiogroup"
+                accessibilityLabel="Plans"
+                style={{ gap: theme.spacing.md, paddingTop: theme.spacing.md }}
+              >
                 {offers.map((offer) => (
                   <OfferCard
                     key={offer.id}
@@ -339,46 +351,6 @@ export default function PaywallScreen() {
               </Text>
             ) : null}
 
-            {selected ? (
-              <Appear delay={360}>
-                <Pulse every={3200} scale={1.015}>
-                  <PressScale
-                    onPress={buy}
-                    disabled={busy}
-                    scaleTo={0.97}
-                    haptic="light"
-                    accessibilityRole="button"
-                    accessibilityLabel={ctaLabel}
-                    accessibilityState={{ disabled: busy, busy }}
-                    style={{
-                      minHeight: 56,
-                      borderRadius: theme.radius.pill,
-                      backgroundColor: theme.colors.primary,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: theme.spacing.sm,
-                      paddingHorizontal: theme.spacing.lg,
-                      opacity: busy ? 0.7 : 1,
-                    }}
-                  >
-                    {status === "purchasing" ? (
-                      <ActivityIndicator color={theme.colors.onPrimary} />
-                    ) : null}
-                    <Text
-                      style={{
-                        ...serif,
-                        color: theme.colors.onPrimary,
-                        fontSize: theme.font.size.title,
-                        fontWeight: theme.font.weight.bold,
-                      }}
-                    >
-                      {status === "purchasing" ? "Confirming…" : ctaLabel}
-                    </Text>
-                  </PressScale>
-                </Pulse>
-              </Appear>
-            ) : null}
           </>
         )}
 
@@ -408,12 +380,11 @@ export default function PaywallScreen() {
                     style={({ pressed }) => ({
                       minHeight: 44,
                       justifyContent: "center",
-                      opacity: pressed || link.disabled ? 0.6 : 1,
+                      opacity: pressed ? 0.6 : 1,
                     })}
                   >
                     <Text
                       style={{
-                        ...serif,
                         color: theme.colors.primary,
                         fontSize: theme.font.size.caption,
                         fontWeight: theme.font.weight.medium,
@@ -454,23 +425,9 @@ export default function PaywallScreen() {
             </Text>
           ) : null}
 
-          {canBuy && selected && selected.period !== "lifetime" ? (
-            <Text
-              style={{
-                ...serif,
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
-                textAlign: "center",
-              }}
-            >
-              {`Cancel anytime in ${store} settings.`}
-            </Text>
-          ) : null}
-
           {isPremium ? (
             <Text
               style={{
-                ...serif,
                 color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
                 textAlign: "center",
@@ -482,7 +439,6 @@ export default function PaywallScreen() {
 
           <Text
             style={{
-              ...serif,
               color: theme.colors.textMuted,
               fontSize: theme.font.size.caption,
               textAlign: "center",
@@ -492,6 +448,66 @@ export default function PaywallScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {showCta && selected ? (
+        <View
+          style={{
+            gap: theme.spacing.sm,
+            paddingHorizontal: theme.spacing.lg,
+            paddingTop: theme.spacing.md,
+            paddingBottom: Math.max(insets.bottom, theme.spacing.md),
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.background,
+          }}
+        >
+          <Pulse every={3200} scale={1.015}>
+            <PressScale
+              onPress={buy}
+              disabled={busy}
+              scaleTo={0.97}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={ctaLabel}
+              accessibilityState={{ disabled: busy, busy }}
+              style={{
+                minHeight: 56,
+                borderRadius: theme.radius.pill,
+                backgroundColor: theme.colors.primary,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: theme.spacing.sm,
+                paddingHorizontal: theme.spacing.lg,
+              }}
+            >
+              {status === "purchasing" ? (
+                <ActivityIndicator color={theme.colors.onPrimary} />
+              ) : null}
+              <Text
+                style={{
+                  color: theme.colors.onPrimary,
+                  fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
+                {status === "purchasing" ? "Confirming…" : ctaLabel}
+              </Text>
+            </PressScale>
+          </Pulse>
+          {selected.period !== "lifetime" ? (
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontSize: theme.font.size.caption,
+                textAlign: "center",
+              }}
+            >
+              {`Cancel anytime in ${store} settings.`}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }

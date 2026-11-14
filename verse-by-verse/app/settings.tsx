@@ -2,21 +2,27 @@ import { LayoutAnimation, Linking, Pressable, ScrollView, Switch, Text, View } f
 import { Stack } from "expo-router";
 import { useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
+import { Flourish } from "../components/Flourish";
+import { ScreenHeader } from "../components/ScreenHeader";
 import { SettingsCard, SettingsRow, SettingsSection } from "../components/settings/SettingsGroup";
-import { SettingsHeader } from "../components/settings/SettingsHeader";
 import { TextSizeSlider } from "../components/settings/TextSizeSlider";
 import { ThemeSwatches } from "../components/settings/ThemeSwatches";
 import { SupportButton, useSupport } from "../components/support";
-import { PressScale, SkeletonList, Stagger, haptic } from "../components/motion";
+import { SkeletonList, Stagger, haptic } from "../components/motion";
+import {
+  LINE_SPACING,
+  LINE_SPACING_KEY,
+  TEXT_SIZE_KEY,
+  THEME_KEY,
+  useReadingPrefs,
+  useSavedTheme,
+} from "../components/reading";
 import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
 import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
-import { getActiveThemeId, setActiveThemeId } from "../theme/active";
+import { setActiveThemeId } from "../theme/active";
 import { useTheme } from "../theme/ThemeProvider";
-
-const LINE_SPACING = ["Compact", "Comfortable", "Generous"] as const;
 
 /** Suggested times the daily reminder cycles through when tapped. */
 const REMINDER_TIMES: ReadonlyArray<readonly [number, number]> = [
@@ -31,8 +37,8 @@ const REMINDER_TIMES: ReadonlyArray<readonly [number, number]> = [
 ];
 
 const LEGAL = [
-  { label: "Privacy Policy", url: appInfo.privacyUrl },
-  { label: "Terms of Use", url: appInfo.termsUrl },
+  { label: "Privacy policy", url: appInfo.privacyUrl },
+  { label: "Terms of use", url: appInfo.termsUrl },
 ].filter((link) => link.url);
 
 const REMINDER_BODY = "Your last verse is waiting. Take one quiet minute with it.";
@@ -45,7 +51,9 @@ function formatTime(hour: number, minute: number): string {
 export default function SettingsScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { ready, answers, setAnswer } = useAppState();
+  const { ready, setAnswer } = useAppState();
+  const { textSize, lineSpacing } = useReadingPrefs();
+  useSavedTheme();
   const reminder = useReminder();
   const { isPremium, activeOffer, status, error, restorePurchases, openPaywall } =
     usePurchases();
@@ -53,26 +61,22 @@ export default function SettingsScreen() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
 
-  const storedSize = Number(answers["pref.textSize"]);
-  const textSize = Number.isInteger(storedSize) ? Math.min(4, Math.max(0, storedSize)) : 2;
-  const lineSpacing = LINE_SPACING.find((s) => s === answers["pref.lineSpacing"]) ?? "Generous";
-  const activeThemeId = getActiveThemeId();
   const loaded = ready && reminder.ready;
 
   function cycleLineSpacing() {
     haptic("selection");
     const index = LINE_SPACING.indexOf(lineSpacing);
-    void setAnswer("pref.lineSpacing", LINE_SPACING[(index + 1) % LINE_SPACING.length]!);
+    void setAnswer(LINE_SPACING_KEY, LINE_SPACING[(index + 1) % LINE_SPACING.length]!);
   }
 
   function pickTheme(id: string) {
     haptic("selection");
     setActiveThemeId(id);
-    void setAnswer("pref.theme", id);
+    void setAnswer(THEME_KEY, id);
   }
 
   function setTextSize(index: number) {
-    void setAnswer("pref.textSize", String(index));
+    void setAnswer(TEXT_SIZE_KEY, String(index));
   }
 
   async function toggleReminder(on: boolean) {
@@ -113,16 +117,17 @@ export default function SettingsScreen() {
         text: activeOffer ? `Premium · ${activeOffer.label}` : "Premium",
         color: theme.colors.success,
       }
-    : { text: "Inactive (Go Premium)", color: theme.colors.warning };
+    : { text: "Inactive", color: theme.colors.warning };
+  const reminderTime = formatTime(reminder.hour, reminder.minute);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <Stack.Screen options={{ title: "Settings", headerShown: false }} />
-      <SettingsHeader title="Settings" />
+      <ScreenHeader title="Settings" />
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
-          paddingTop: theme.spacing.lg,
+          paddingTop: theme.spacing.md,
           paddingBottom: insets.bottom + theme.spacing.xl,
         }}
       >
@@ -134,7 +139,7 @@ export default function SettingsScreen() {
               <SettingsCard>
                 <SettingsRow
                   icon="text-outline"
-                  label="Text Size"
+                  label="Text size"
                   wide
                   control={<TextSizeSlider value={textSize} onChange={setTextSize} />}
                 />
@@ -142,11 +147,11 @@ export default function SettingsScreen() {
                   icon="color-palette-outline"
                   label="Theme"
                   wide
-                  control={<ThemeSwatches selected={activeThemeId} onSelect={pickTheme} />}
+                  control={<ThemeSwatches selected={theme.id} onSelect={pickTheme} />}
                 />
                 <SettingsRow
                   icon="reorder-three-outline"
-                  label="Line Spacing"
+                  label="Line spacing"
                   value={lineSpacing}
                   chevron
                   onPress={cycleLineSpacing}
@@ -166,51 +171,25 @@ export default function SettingsScreen() {
               <SettingsCard>
                 <SettingsRow
                   icon="notifications-outline"
-                  label="Quiet Reminder"
+                  label="Quiet reminder"
                   accessory={
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: theme.spacing.sm,
-                      }}
-                    >
-                      <Switch
-                        value={reminder.enabled}
-                        onValueChange={(on) => void toggleReminder(on)}
-                        trackColor={{ false: theme.colors.surfaceAlt, true: theme.colors.success }}
-                        thumbColor={theme.colors.onPrimary}
-                        ios_backgroundColor={theme.colors.surfaceAlt}
-                        accessibilityLabel="Quiet reminder"
-                      />
-                      <PressScale
-                        onPress={nextReminderTime}
-                        scaleTo={0.94}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Reminder time, ${formatTime(reminder.hour, reminder.minute)}`}
-                        accessibilityHint="Moves to the next suggested time"
-                        style={{
-                          minHeight: 44,
-                          minWidth: 44,
-                          paddingHorizontal: theme.spacing.md,
-                          justifyContent: "center",
-                          borderRadius: theme.radius.md,
-                          backgroundColor: theme.colors.surfaceAlt,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: theme.colors.text,
-                            fontSize: theme.font.size.body,
-                            fontFamily: theme.font.family,
-                            fontVariant: ["tabular-nums"],
-                          }}
-                        >
-                          {formatTime(reminder.hour, reminder.minute)}
-                        </Text>
-                      </PressScale>
-                    </View>
+                    <Switch
+                      value={reminder.enabled}
+                      onValueChange={(on) => void toggleReminder(on)}
+                      trackColor={{ false: theme.colors.textMuted, true: theme.colors.success }}
+                      thumbColor={theme.colors.onPrimary}
+                      ios_backgroundColor={theme.colors.textMuted}
+                      accessibilityLabel="Quiet reminder"
+                    />
                   }
+                />
+                <SettingsRow
+                  icon="time-outline"
+                  label="Reminder time"
+                  value={reminderTime}
+                  chevron
+                  onPress={nextReminderTime}
+                  accessibilityHint="Moves to the next suggested time"
                 />
               </SettingsCard>
             </SettingsSection>
@@ -220,15 +199,11 @@ export default function SettingsScreen() {
                 <SettingsRow
                   icon="book-outline"
                   label="Translation"
-                  value="World English Bible (WEB)"
-                  chevron
-                  expanded={aboutOpen}
-                  onPress={() => reveal(aboutOpen, setAboutOpen)}
-                  accessibilityHint="Shows what the translation is"
+                  subtitle="World English Bible (WEB)"
                 />
                 <SettingsRow
                   icon="information-circle-outline"
-                  label="About the Translation"
+                  label="About the translation"
                   subtitle="Public-domain status and fidelity"
                   chevron
                   expanded={aboutOpen}
@@ -238,9 +213,9 @@ export default function SettingsScreen() {
                   {aboutOpen ? (
                     <Text
                       style={{
-                        color: theme.colors.textMuted,
-                        fontSize: theme.font.size.caption + 1,
-                        lineHeight: (theme.font.size.caption + 1) * 1.5,
+                        color: theme.colors.text,
+                        fontSize: theme.font.size.body,
+                        lineHeight: theme.font.size.body * 1.5,
                         fontFamily: theme.font.family,
                       }}
                     >
@@ -253,7 +228,7 @@ export default function SettingsScreen() {
                 </SettingsRow>
                 <SettingsRow
                   icon="journal-outline"
-                  label="Study Notes Disclosure"
+                  label="Study notes disclosure"
                   subtitle="Human historical curation without generative AI."
                   chevron
                   expanded={notesOpen}
@@ -263,9 +238,9 @@ export default function SettingsScreen() {
                   {notesOpen ? (
                     <Text
                       style={{
-                        color: theme.colors.textMuted,
-                        fontSize: theme.font.size.caption + 1,
-                        lineHeight: (theme.font.size.caption + 1) * 1.5,
+                        color: theme.colors.text,
+                        fontSize: theme.font.size.body,
+                        lineHeight: theme.font.size.body * 1.5,
                         fontFamily: theme.font.family,
                       }}
                     >
@@ -281,7 +256,8 @@ export default function SettingsScreen() {
             <SettingsSection title="Patronage">
               <SettingsCard>
                 <SettingsRow
-                  label="Restore Purchases"
+                  icon="refresh-outline"
+                  label="Restore purchases"
                   subtitle={
                     status === "restoring"
                       ? "Checking your purchases…"
@@ -291,9 +267,12 @@ export default function SettingsScreen() {
                   accessibilityHint="Restores purchases made with this store account"
                 />
                 <SettingsRow
-                  icon="heart"
-                  label="Patron Status"
+                  icon="heart-outline"
+                  label="Patron status"
+                  subtitle={isPremium ? undefined : "Go Premium"}
+                  chevron
                   onPress={openPaywall}
+                  accessibilityLabel={`Patron status, ${badge.text}`}
                   accessibilityHint="Opens the premium plans"
                   accessory={
                     <View
@@ -331,11 +310,7 @@ export default function SettingsScreen() {
             ) : null}
 
             <View style={{ alignItems: "center", gap: theme.spacing.sm, paddingTop: theme.spacing.md }}>
-              <AiImage
-                prompt="Ornamental flourish divider above the footer text 'Verse by Verse v1.0.0'"
-                fit="contain"
-                style={{ width: 200, height: 28 }}
-              />
+              <Flourish />
               <Text
                 style={{
                   color: theme.colors.text,

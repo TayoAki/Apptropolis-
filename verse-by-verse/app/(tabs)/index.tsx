@@ -1,11 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { FlatList, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmptyState } from "../../components/EmptyState";
 import { ReadHeader } from "../../components/index/ReadHeader";
 import { VerseHero } from "../../components/index/VerseHero";
-import { Appear, haptic, Skeleton, SkeletonList } from "../../components/motion";
+import {
+  Appear,
+  haptic,
+  Skeleton,
+  SkeletonList,
+  useReducedMotion,
+} from "../../components/motion";
 import { useShareImage } from "../../components/share";
 import { VerseCard } from "../../components/VerseCard";
 import { useCollection } from "../../data/repo";
@@ -25,11 +31,20 @@ import { useTheme } from "../../theme/ThemeProvider";
 
 /**
  * Read: one verse at a time as a card, with its chapter below. Tap any verse to read from it;
- * the place you reached is remembered for next time.
+ * the place you reached is remembered for next time. Search, Saved and the chapter view open a
+ * verse here by passing its reference in the link.
  */
 export default function ReadScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
+  const params = useLocalSearchParams<{
+    book?: string;
+    chapter?: string;
+    verse?: string;
+    at?: string;
+  }>();
+  const list = useRef<ComponentRef<typeof FlatList<Verse>>>(null);
   const verses = useCollection<Verse>("verses");
   const notes = useCollection<StudyNote>("study_notes");
   const marks = useCollection<Bookmark>("bookmarks");
@@ -39,6 +54,22 @@ export default function ReadScreen() {
   const [wholeChapter, setWholeChapter] = useState(false);
 
   const ordered = useMemo(() => sortCanonical(verses.items), [verses.items]);
+
+  // A verse opened from another screen: show it, from the top. `at` changes on every jump, so
+  // opening the same verse twice still lands on it.
+  useEffect(() => {
+    if (!params.book) return;
+    const wanted = ordered.find(
+      (v) =>
+        v.book === params.book &&
+        v.chapter === Number(params.chapter) &&
+        v.verse === Number(params.verse),
+    );
+    if (!wanted) return;
+    setSelectedId(wanted.id);
+    setNoteOpen(false);
+    list.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [params.book, params.chapter, params.verse, params.at, ordered]);
   const position = readingPosition(marks.items);
   const current: Verse | undefined =
     ordered.find((v) => v.id === selectedId) ??
@@ -71,6 +102,8 @@ export default function ReadScreen() {
   function choose(verse: Verse) {
     setSelectedId(verse.id);
     setNoteOpen(false);
+    // The chosen verse becomes the card at the top, so bring the top back into view.
+    list.current?.scrollToOffset({ offset: 0, animated: !reduced });
     void remember(verse).catch(() => undefined);
   }
 
@@ -87,9 +120,9 @@ export default function ReadScreen() {
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Skeleton width={170} height={44} radius={theme.radius.pill} />
-          <Skeleton width={96} height={40} />
+          <Skeleton width={110} height={44} radius={theme.radius.pill} />
         </View>
-        <Skeleton height={280} radius={theme.radius.md} />
+        <Skeleton height={260} radius={theme.radius.md} />
         <SkeletonList rows={3} />
       </View>
     );
@@ -161,16 +194,23 @@ export default function ReadScreen() {
     setNoteOpen((value) => !value);
   }
 
+  /** Open the whole chapter as one page, at this verse. */
   function readChapter() {
-    const first = chapter[0];
-    if (!first) return;
+    if (!current) return;
     haptic("light");
-    setWholeChapter(false);
-    choose(first);
+    router.push({
+      pathname: "/chapter",
+      params: {
+        book: current.book,
+        chapter: String(current.chapter),
+        verse: String(current.verse),
+      },
+    });
   }
 
   return (
     <FlatList
+      ref={list}
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       data={listed}
       keyExtractor={(verse) => verse.id}
@@ -188,6 +228,7 @@ export default function ReadScreen() {
               verses={ordered}
               onPick={choose}
               onReadChapter={readChapter}
+              onSettings={() => router.push("/settings")}
             />
             <VerseHero
               verse={current}
@@ -204,15 +245,14 @@ export default function ReadScreen() {
             <Text
               accessibilityRole="header"
               style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
+                marginTop: theme.spacing.sm,
+                color: theme.colors.text,
+                fontFamily: theme.font.family,
+                fontSize: theme.font.size.title,
                 fontWeight: theme.font.weight.bold,
-                letterSpacing: 0.5,
               }}
             >
-              {wholeChapter
-                ? `ALL OF ${chapterLabel.toUpperCase()}`
-                : `CONTINUE IN ${chapterLabel.toUpperCase()}`}
+              {wholeChapter ? `All of ${chapterLabel}` : `Continue in ${chapterLabel}`}
             </Text>
           </View>
         </Appear>
@@ -226,13 +266,14 @@ export default function ReadScreen() {
         <Text
           style={{
             color: theme.colors.textMuted,
-            fontFamily: theme.font.family,
             fontSize: theme.font.size.body,
-            textAlign: "center",
-            paddingVertical: theme.spacing.lg,
+            lineHeight: theme.font.size.body * 1.4,
+            paddingVertical: theme.spacing.sm,
           }}
         >
-          {`That's the last verse in ${chapterLabel}.`}
+          {wholeChapter
+            ? `This is the only verse of ${chapterLabel} in the library.`
+            : `That's the last verse in ${chapterLabel}.`}
         </Text>
       }
     />

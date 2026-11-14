@@ -108,6 +108,8 @@ export function TextSizeSlider({
       }}
     >
       <Text
+        accessibilityElementsHidden
+        importantForAccessibility="no"
         style={{
           color: theme.colors.textMuted,
           fontFamily: theme.font.family,
@@ -136,15 +138,16 @@ export function TextSizeSlider({
         {...pan.panHandlers}
         style={{ flex: 1, height: TOUCH, justifyContent: "center", minWidth: 110 }}
       >
+        {/* The empty part of the track: thin, in textMuted so it can be seen on the card. */}
         <View
           style={{
             position: "absolute",
             left: THUMB / 2,
             right: THUMB / 2,
-            top: TOUCH / 2 - 2,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: theme.colors.border,
+            top: TOUCH / 2 - 1,
+            height: 2,
+            borderRadius: 1,
+            backgroundColor: theme.colors.textMuted,
           }}
         />
         <Animated.View
@@ -169,7 +172,7 @@ export function TextSizeSlider({
                   width: 2,
                   height: 10,
                   borderRadius: 1,
-                  backgroundColor: theme.colors.border,
+                  backgroundColor: theme.colors.textMuted,
                 }}
               />
             ))
@@ -184,7 +187,7 @@ export function TextSizeSlider({
             borderRadius: THUMB / 2,
             backgroundColor: theme.colors.primary,
             borderWidth: 3,
-            borderColor: theme.colors.background,
+            borderColor: theme.colors.surface,
           }}
         />
       </View>
@@ -195,7 +198,7 @@ export function TextSizeSlider({
           fontSize: theme.font.size.title,
         }}
       >
-        AAA
+        A
       </Text>
     </View>
   );

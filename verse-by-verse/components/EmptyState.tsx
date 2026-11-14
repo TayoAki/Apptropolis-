@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Text, View, type ComponentProps } from "react-native";
+import type { ComponentProps } from "react";
+import { Text, View } from "react-native";
 import { useTheme } from "../theme/ThemeProvider";
 import { Appear } from "./motion";
 import { PrimaryButton } from "./PrimaryButton";
@@ -50,6 +51,7 @@ export function EmptyState({
           accessibilityRole="header"
           style={{
             color: theme.colors.text,
+            fontFamily: theme.font.family,
             fontSize: theme.font.size.title,
             fontWeight: theme.font.weight.bold,
             textAlign: "center",

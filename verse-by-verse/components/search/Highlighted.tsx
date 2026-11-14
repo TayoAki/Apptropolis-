@@ -7,7 +7,10 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** One matched word: it warms from the surface tone to the accent, once, when it appears. */
+/**
+ * One matched word: an accent tint warms in behind it, once, when it appears. A tint rather
+ * than the solid accent, so the word (in the text color, bold) stays readable on every theme.
+ */
 function Pill({ children }: { children: string }) {
   const theme = useTheme();
   const reduced = useReducedMotion();
@@ -33,7 +36,7 @@ function Pill({ children }: { children: string }) {
       style={{
         backgroundColor: lit.interpolate({
           inputRange: [0, 1],
-          outputRange: [theme.colors.surfaceAlt, theme.colors.accent],
+          outputRange: [theme.colors.accent + "00", theme.colors.accent + "38"],
         }),
         color: theme.colors.text,
         fontWeight: theme.font.weight.bold,
