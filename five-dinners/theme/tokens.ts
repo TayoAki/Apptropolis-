@@ -7,8 +7,17 @@ const font: Theme["font"] = {
   weight: { regular: "400", medium: "500", bold: "700" },
 };
 
+// Color rules every pack follows (checked with WCAG 2.2 contrast math):
+// - primary, accent, success, warning and danger each reach 4.5:1 as text on background, surface
+//   and surfaceAlt, so any of them can be a label, link or icon on any neutral surface.
+// - onPrimary reaches 4.5:1 on all five of those colors, so it is the label color for any filled
+//   chip, badge or button.
+// - Brand and status hues are kept apart, so a warning or an error is never the brand color.
+// Use textMuted, not border, for the outline of a control (border is a decorative hairline).
 export const themes: Theme[] = [
   {
+    // Terracotta with a herb-green accent. Success is a cooler emerald so it is not the herb
+    // accent; warning is amber-brown.
     id: "larder",
     name: "Larder",
     dark: false,
@@ -18,19 +27,21 @@ export const themes: Theme[] = [
       surfaceAlt: "#E5D3B0",
       border: "#E2D3B3",
       text: "#2A1F16",
-      textMuted: "#6A5C47",
-      primary: "#C0612B",
+      textMuted: "#675946",
+      primary: "#994000",
       onPrimary: "#FFFFFF",
-      accent: "#4F6B2E",
-      success: "#3F7A3A",
-      warning: "#A8691A",
-      danger: "#A93226",
+      accent: "#4D6220",
+      success: "#036752",
+      warning: "#785400",
+      danger: "#AA293C",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Basil green with a tomato accent (complements). Danger is a darker crimson so it is not
+    // the tomato; success is leaf green.
     id: "basil",
     name: "Basil",
     dark: false,
@@ -41,18 +52,19 @@ export const themes: Theme[] = [
       border: "#D3DFD0",
       text: "#162419",
       textMuted: "#51635A",
-      primary: "#2F7D4F",
+      primary: "#2A7749",
       onPrimary: "#FFFFFF",
-      accent: "#C0452F",
-      success: "#2E7D32",
-      warning: "#A66A12",
-      danger: "#B3261E",
+      accent: "#B54518",
+      success: "#5C7203",
+      warning: "#826603",
+      danger: "#980B40",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Ink blue with a rust accent (near-complements). Danger is crimson, clear of the rust.
     id: "receipt",
     name: "Receipt",
     dark: false,
@@ -65,16 +77,17 @@ export const themes: Theme[] = [
       textMuted: "#575A62",
       primary: "#1F4E8C",
       onPrimary: "#FFFFFF",
-      accent: "#A8472A",
-      success: "#2F6F45",
-      warning: "#9A6310",
-      danger: "#A8281F",
+      accent: "#A04A15",
+      success: "#2F6F46",
+      warning: "#795F02",
+      danger: "#97123D",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Orange on warm black with a gold accent. Danger is rose, warning pale yellow.
     id: "castiron",
     name: "Cast Iron",
     dark: true,
@@ -89,14 +102,15 @@ export const themes: Theme[] = [
       onPrimary: "#1A0E07",
       accent: "#F0B35A",
       success: "#7CC48A",
-      warning: "#E8B84A",
-      danger: "#F07167",
+      warning: "#EADB64",
+      danger: "#F27192",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Gold on aubergine (complements). Warning is orange, not the brand gold.
     id: "aubergine",
     name: "Aubergine",
     dark: true,
@@ -111,8 +125,8 @@ export const themes: Theme[] = [
       onPrimary: "#241508",
       accent: "#D98BA8",
       success: "#8CCB93",
-      warning: "#EBC15A",
-      danger: "#F27A86",
+      warning: "#FDA258",
+      danger: "#F47C6E",
     },
     radius,
     spacing,

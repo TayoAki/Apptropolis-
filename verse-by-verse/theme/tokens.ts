@@ -11,9 +11,17 @@ const shape: Omit<Theme, "id" | "name" | "dark" | "colors"> = {
   },
 };
 
+// Color rules every pack follows (checked with WCAG 2.2 contrast math):
+// - primary, accent, success, warning and danger each reach 4.5:1 as text on background, surface
+//   and surfaceAlt, so any of them can be a label, link or icon on any neutral surface.
+// - onPrimary reaches 4.5:1 on all five of those colors, so it is the label color for any filled
+//   chip, badge or button.
+// - Brand and status hues are kept apart, so a warning or an error is never the brand color.
+// Use textMuted, not border, for the outline of a control (border is a decorative hairline).
 export const themes: Theme[] = [
   {
     // Warm paper tones for calm, book-like reading.
+    // Ink brown with a copper accent (analogous). Warning is olive-gold and danger crimson.
     id: "parchment",
     name: "Parchment",
     dark: false,
@@ -23,18 +31,19 @@ export const themes: Theme[] = [
       surfaceAlt: "#E6DBC8",
       border: "#D8CBB4",
       text: "#1F1812",
-      textMuted: "#6E5F4F",
-      primary: "#8B5E34",
+      textMuted: "#6E5D4B",
+      primary: "#835529",
       onPrimary: "#FFF9F0",
-      accent: "#C07A36",
-      success: "#4F7A4A",
-      warning: "#B7862A",
-      danger: "#A8432F",
+      accent: "#9F440F",
+      success: "#3E6A3A",
+      warning: "#6F5F00",
+      danger: "#AA3643",
     },
     ...shape,
   },
   {
     // Deep ink background for late-evening reading.
+    // Gold on blue-black, a complementary pair. Warning is pale yellow, not the brand gold.
     id: "night-watch",
     name: "Night Watch",
     dark: true,
@@ -49,13 +58,14 @@ export const themes: Theme[] = [
       onPrimary: "#1A1408",
       accent: "#C98B5A",
       success: "#7FBF8E",
-      warning: "#E8A94A",
-      danger: "#E07A6A",
+      warning: "#E8D66B",
+      danger: "#E87782",
     },
     ...shape,
   },
   {
     // Soft sage and olive, quiet and grounded.
+    // Olive brand: success is teal-green, the accent ochre-brown, warning olive-gold.
     id: "olive",
     name: "Olive Grove",
     dark: false,
@@ -66,17 +76,19 @@ export const themes: Theme[] = [
       border: "#C7CEB4",
       text: "#1E2519",
       textMuted: "#5A6450",
-      primary: "#5F7A4B",
+      primary: "#4D6938",
       onPrimary: "#F7F9F2",
-      accent: "#A67B3D",
-      success: "#4E7A45",
-      warning: "#A9762A",
-      danger: "#A3482F",
+      accent: "#8F521B",
+      success: "#006D64",
+      warning: "#736000",
+      danger: "#A93C39",
     },
     ...shape,
   },
   {
     // Dark charcoal with a glowing terracotta accent.
+    // Ember orange, light enough to read on its own surfaces. Danger is rose, warning pale
+    // yellow.
     id: "ember",
     name: "Ember",
     dark: true,
@@ -87,17 +99,18 @@ export const themes: Theme[] = [
       border: "#4A433F",
       text: "#F4EDE8",
       textMuted: "#B5A9A1",
-      primary: "#D9694A",
+      primary: "#EE7A5B",
       onPrimary: "#1E1410",
       accent: "#E9B872",
       success: "#8DBB7E",
-      warning: "#E5A852",
-      danger: "#F07A6A",
+      warning: "#E8D66B",
+      danger: "#F17996",
     },
     ...shape,
   },
   {
     // Light, airy blue-grey like early morning.
+    // Blue with an orange accent (complements).
     id: "dawn",
     name: "Dawn",
     dark: false,
@@ -108,12 +121,12 @@ export const themes: Theme[] = [
       border: "#B9CDD8",
       text: "#14262E",
       textMuted: "#4F6672",
-      primary: "#3E7C9C",
+      primary: "#25698A",
       onPrimary: "#F8FCFE",
-      accent: "#D08A4E",
-      success: "#3F8A62",
-      warning: "#B88A22",
-      danger: "#B5503D",
+      accent: "#9D4C14",
+      success: "#1E7049",
+      warning: "#756104",
+      danger: "#AB3D40",
     },
     ...shape,
   },
