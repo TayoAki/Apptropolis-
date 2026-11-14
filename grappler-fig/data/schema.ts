@@ -19,12 +19,25 @@ export interface WorkoutSession {
   topFix: string;
 }
 
+/** A drill the coach wrote with an answer: it runs as a timed round on the Train tab. */
+export interface CoachDrill {
+  title: string;
+  rounds: number;
+  roundSeconds: number;
+  /** Comma-separated callouts, e.g. "jab, cross, pivot". */
+  callouts: string;
+}
+
 /** One message in the chat with the AI coach. */
 export interface CoachMessage {
   id: string;
   role: ChatRole;
   text: string;
   createdAt: string;
+  /** The drill that came with a coach's answer, kept so it can be run later. */
+  drill?: CoachDrill;
+  /** Local URI of the frame sent with a question. */
+  photoUri?: string;
 }
 
 /** A saved scouting report built from photos or frames of an opponent. */
@@ -40,6 +53,14 @@ export interface OpponentScout {
   /** AI-suggested strategy and callout combos. */
   gamePlan: string;
   createdAt: string;
+  /** How sure the read was from its one frame, 0 to 100. */
+  confidence?: number;
+  /** The single opening to attack, in one sentence. */
+  weakness?: string;
+  /** The person's one free read (its game plan stays open without Pro). */
+  sample?: boolean;
+  /** A sample report the app ships with: labelled as one, and removed by the first real read. */
+  example?: boolean;
 }
 
 /** A logged meal, with estimated macros. */

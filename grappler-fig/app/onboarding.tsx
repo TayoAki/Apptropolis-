@@ -434,6 +434,7 @@ export default function OnboardingScreen() {
   const [saveFailed, setSaveFailed] = useState(false);
   const calloutRef = useRef(0);
   const finishing = useRef(false);
+  const leaving = useRef(false);
   const roundDone = answers.firstround === "done";
 
   const [timeIndex, setTimeIndex] = useState(2);
@@ -521,7 +522,8 @@ export default function OnboardingScreen() {
   }
 
   async function finish(skipped: boolean) {
-    if (finishingUp) return;
+    if (leaving.current) return;
+    leaving.current = true;
     setFinishingUp(true);
     completeStep(skipped);
     // A later replay from Settings starts at the first step again.

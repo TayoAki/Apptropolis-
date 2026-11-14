@@ -3,14 +3,13 @@
 import { Text, View } from "react-native";
 import { appInfo } from "../../data/app-info";
 import { formatDay, formatTime, type WorkoutSession } from "../../data/schema";
+import { CALLOUT_MS } from "../../data/training";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Card } from "../card";
 import { Appear, CountUp } from "../motion";
 import { useShareImage } from "../share";
 import { SecondaryButton, displayFace } from "../ui";
 
-/** A rough punch count per minute of work, for the card's "est. punches" figure. */
-const PUNCHES_PER_MINUTE = 20;
 
 function Stat({ value, label }: { value: number; label: string }) {
   const theme = useTheme();
@@ -31,9 +30,15 @@ function Stat({ value, label }: { value: number; label: string }) {
 export function FightNightCard({ session, fix }: { session: WorkoutSession; fix: string }) {
   const theme = useTheme();
   const { ref, share, sharing } = useShareImage();
-  const minutes = Math.round((session.rounds * session.roundSeconds) / 60);
-  const punches = minutes * PUNCHES_PER_MINUTE;
-  const message = `${session.rounds} rounds, ${minutes} minutes on ${appInfo.name}.${
+  const seconds = session.rounds * session.roundSeconds;
+  // Under two minutes the work is told in seconds, so a 30-second round isn't "1 minute".
+  const short = seconds < 120;
+  const worked = short ? seconds : Math.round(seconds / 60);
+  const workedUnit = short ? "seconds" : "minutes";
+  // The timer calls a punch every few seconds: this is how many it called, not a guess.
+  const callouts = Math.floor((seconds * 1000) / CALLOUT_MS);
+  const roundsText = `${session.rounds} ${session.rounds === 1 ? "round" : "rounds"}`;
+  const message = `${roundsText}, ${worked} ${workedUnit} on ${appInfo.name}.${
     fix ? ` Coach fix: ${fix}` : ""
   }`;
 
@@ -63,9 +68,9 @@ export function FightNightCard({ session, fix }: { session: WorkoutSession; fix:
             </View>
 
             <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
-              <Stat value={minutes} label={minutes === 1 ? "minute" : "minutes"} />
+              <Stat value={worked} label={workedUnit} />
               <Stat value={session.rounds} label={session.rounds === 1 ? "round" : "rounds"} />
-              <Stat value={punches} label="est. punches" />
+              <Stat value={callouts} label="callouts" />
             </View>
 
             {fix ? (

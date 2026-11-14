@@ -25,8 +25,10 @@ import { REMINDER_COPY, SETUP_OPTIONS, SKILL_OPTIONS } from "../data/training";
 import { useAppearance, useTheme, type Appearance } from "../theme/ThemeProvider";
 
 type Callouts = "names" | "numbers";
-type Panel = "skill" | "round" | "rest" | "reminder";
+type Panel = "skill" | "rounds" | "round" | "rest" | "reminder";
 
+/** One to twelve rounds. */
+const ROUND_COUNTS = Array.from({ length: 12 }, (_, i) => i + 1);
 /** Round lengths from 1:00 to 5:00, in 15-second steps. */
 const ROUND_SECONDS = Array.from({ length: 17 }, (_, i) => 60 + i * 15);
 /** Rest from 0:15 to 3:00. */
@@ -35,7 +37,7 @@ const REST_SECONDS = Array.from({ length: 12 }, (_, i) => 15 + i * 15);
 const REMINDER_MINUTES = Array.from({ length: 48 }, (_, i) => i * 30);
 
 /** What the timer rows show before anything is chosen (the same starting points Train uses). */
-const DEFAULTS = { round: 180, rest: 60 };
+const DEFAULTS = { rounds: 5, round: 180, rest: 60 };
 
 const STANCES: { value: Stance; label: string }[] = [
   { value: "orthodox", label: "Orthodox" },
@@ -138,7 +140,7 @@ export default function SettingsScreen() {
   const { answers } = app;
   const stance: Stance = answers.stance === "southpaw" ? "southpaw" : "orthodox";
   const callouts: Callouts = answers.callouts === "numbers" ? "numbers" : "names";
-  const ducking = answers.musicducking !== "off";
+  const roundCount = nearest(ROUND_COUNTS, Number(answers.rounds) || DEFAULTS.rounds);
   const roundSeconds = nearest(ROUND_SECONDS, Number(answers.roundseconds) || DEFAULTS.round);
   const restSeconds = nearest(REST_SECONDS, Number(answers.restseconds) || DEFAULTS.rest);
   const reminderMinute = reminder.hour * 60 + reminder.minute;
@@ -271,19 +273,43 @@ export default function SettingsScreen() {
                 />
                 <SettingsRow
                   label="Stance"
+                  detail={
+                    stance === "southpaw"
+                      ? "Built-in combos are mirrored for you: left becomes right."
+                      : "Built-in combos are written for this stance."
+                  }
+                  stacked
                   right={
                     <Segmented
                       accessibilityLabel="Stance"
                       options={STANCES}
                       value={stance}
                       onChange={(next) => void app.setAnswer("stance", next)}
-                      style={{ width: 208 }}
+                      style={{ width: "100%" }}
                     />
                   }
                 />
               </SettingsGroup>
 
               <SettingsGroup title="Timer & callouts">
+                <SettingsRow
+                  label="Rounds"
+                  value={String(roundCount)}
+                  onPress={() => toggle("rounds")}
+                  accessibilityLabel={`Rounds, ${roundCount}`}
+                >
+                  {open === "rounds" ? (
+                    <PickerPanel>
+                      <Wheel
+                        values={ROUND_COUNTS}
+                        value={roundCount}
+                        format={String}
+                        onChange={(next) => void app.setAnswer("rounds", String(next))}
+                        accessibilityLabel="Rounds"
+                      />
+                    </PickerPanel>
+                  ) : null}
+                </SettingsRow>
                 <SettingsRow
                   label="Round duration"
                   value={formatClock(roundSeconds)}
@@ -322,6 +348,11 @@ export default function SettingsScreen() {
                 </SettingsRow>
                 <SettingsRow
                   label="Callout style"
+                  detail={
+                    callouts === "numbers"
+                      ? "1 jab, 2 cross, 3 lead hook, 4 rear hook, 5 lead uppercut, 6 rear uppercut. Footwork and defense stay as words."
+                      : "The timer shows each punch by name."
+                  }
                   stacked
                   right={
                     <Segmented
@@ -330,19 +361,6 @@ export default function SettingsScreen() {
                       value={callouts}
                       onChange={(next) => void app.setAnswer("callouts", next)}
                       style={{ width: "100%" }}
-                    />
-                  }
-                />
-                <SettingsRow
-                  label="Music ducking"
-                  right={
-                    <AppSwitch
-                      label="Music ducking"
-                      value={ducking}
-                      onValueChange={(on) => {
-                        haptic("selection");
-                        void app.setAnswer("musicducking", on ? "on" : "off");
-                      }}
                     />
                   }
                 />

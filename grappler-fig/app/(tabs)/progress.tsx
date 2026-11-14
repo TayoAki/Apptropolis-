@@ -1,16 +1,23 @@
 // Progress: the streak, level, this week's training, the last session's card and today's
 // nutrition. Logging a meal photo is a premium feature; it estimates the meal with the AI.
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { Lottie, Celebrate } from "../../components/lottie";
+import { LoadProblem, useStalled } from "../../components/load-problem";
 import { FightNightCard } from "../../components/progress/fight-night";
 import { goPro } from "../../components/paywall/open";
 import { WeeklyTraining } from "../../components/progress/week";
 import { CountUp, GrowBar, Skeleton, Stagger, haptic } from "../../components/motion";
-import { ScreenHeader, SecondaryButton, StreakBadge, displayFace } from "../../components/ui";
+import {
+  IconButton,
+  ScreenHeader,
+  SecondaryButton,
+  StreakBadge,
+  displayFace,
+} from "../../components/ui";
 import { track } from "../../data/analytics";
 import { useAI } from "../../data/ai";
 import { pickPhoto } from "../../data/photos";
@@ -18,8 +25,10 @@ import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import {
   currentStreak,
+  dayKey,
   dayTotals,
   formatGrams,
+  formatTime,
   levelProgress,
   totalXp,
   weekActivity,
@@ -56,7 +65,7 @@ function parseMeal(text: string): { name: string; calories: number; proteinGrams
   }
 }
 
-export default function ProgressScreen() {
+function ProgressScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const sessions = useCollection<WorkoutSession>("workout_sessions");
   const meals = useCollection<Meal>("meals");
@@ -65,8 +74,10 @@ export default function ProgressScreen() {
   const ai = useAI();
   const [mealError, setMealError] = useState<string | null>(null);
   const [logged, setLogged] = useState(false);
+  const logging = useRef(false);
 
   const loading = sessions.loading || meals.loading;
+  const stalled = useStalled(loading);
   const empty = !loading && sessions.items.length === 0;
   const sorted = useMemo(
     () => [...sessions.items].sort((a, b) => b.date.localeCompare(a.date)),
@@ -76,9 +87,13 @@ export default function ProgressScreen() {
   const fix = sorted.find((session) => session.topFix)?.topFix ?? "";
   const streak = currentStreak(sessions.items);
   const level = levelProgress(totalXp(sessions.items));
-  const title = LEVEL_TITLES[(level.level - 1) % LEVEL_TITLES.length]!;
+  // Past the last title the top one stays (a level 11 boxer is not a newcomer again).
+  const title = LEVEL_TITLES[Math.min(level.level, LEVEL_TITLES.length) - 1]!;
   const week = weekActivity(sessions.items);
   const today = dayTotals(meals.items);
+  const todaysMeals = meals.items
+    .filter((meal) => dayKey(meal.loggedAt) === dayKey(new Date()))
+    .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
   // A real achievement: every full week of training in a row.
   const milestone = streak > 0 && streak % 7 === 0 ? streak : 0;
 
@@ -87,6 +102,16 @@ export default function ProgressScreen() {
       openPaywall();
       return;
     }
+    if (logging.current) return;
+    logging.current = true;
+    try {
+      await readMeal();
+    } finally {
+      logging.current = false;
+    }
+  }
+
+  async function readMeal() {
     setLogged(false);
     setMealError(null);
     const photo = await pickPhoto({ source: "camera" });
@@ -94,20 +119,35 @@ export default function ProgressScreen() {
     const reply = await ai.ask({
       prompt:
         'Estimate this meal for a food log. Reply with JSON only: {"name": a short meal name, "calories": whole number, "proteinGrams": whole number}.',
-      instructions: "You estimate calories and protein from a photo of one meal. Assume a normal adult portion.",
+      instructions:
+        "You estimate calories and protein from a photo of one meal. Assume a normal adult portion. Give the estimate only: no diet, weight-loss or weight-cutting advice.",
       photo,
       json: true,
     });
     if (!reply) return;
     const meal = parseMeal(reply);
     if (!meal) {
-      setMealError("Couldn't read the estimate. Try a clearer photo.");
+      setMealError("Couldn't read the estimate. Try a clearer photo of the whole plate.");
       return;
     }
-    await meals.add({ ...meal, loggedAt: new Date().toISOString() });
+    try {
+      await meals.add({ ...meal, loggedAt: new Date().toISOString() });
+    } catch {
+      setMealError("The estimate came back but couldn't be saved. Check your connection and log it again.");
+      return;
+    }
     haptic("success");
     track("meal_logged");
     setLogged(true);
+  }
+
+  async function removeMeal(id: string) {
+    setMealError(null);
+    try {
+      await meals.remove(id);
+    } catch {
+      setMealError("Couldn't remove that meal. Check your connection and try again.");
+    }
   }
 
   const figure = [
@@ -135,7 +175,9 @@ export default function ProgressScreen() {
           gap: theme.spacing.lg,
         }}
       >
-        {loading ? (
+        {stalled ? (
+          <LoadProblem what="your progress" onRetry={onRetry} />
+        ) : loading ? (
           <View style={{ gap: theme.spacing.lg }}>
             <Skeleton height={112} radius={theme.radius.md} />
             <Skeleton height={176} radius={theme.radius.md} />
@@ -199,7 +241,7 @@ export default function ProgressScreen() {
                   Nutrition log
                 </Text>
                 <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2 }}>
-                  Fighter macros today
+                  Fighter macros today, estimated from your meal photos
                 </Text>
               </View>
               <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
@@ -236,6 +278,51 @@ export default function ProgressScreen() {
                 </Text>
               ) : null}
               {logged ? <Lottie name="success" size={64} /> : null}
+              {todaysMeals.length > 0 ? (
+                <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+                  {todaysMeals.map((meal) => (
+                    <View
+                      key={meal.id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: theme.spacing.sm,
+                        minHeight: 56,
+                        borderBottomWidth: 1,
+                        borderBottomColor: theme.colors.border,
+                      }}
+                    >
+                      <View style={{ flex: 1, paddingVertical: theme.spacing.sm }}>
+                        <Text
+                          style={{
+                            color: theme.colors.text,
+                            fontSize: theme.font.size.body,
+                            lineHeight: 22,
+                          }}
+                        >
+                          {meal.name}
+                        </Text>
+                        <Text
+                          style={{
+                            color: theme.colors.textMuted,
+                            fontSize: theme.font.size.caption + 2,
+                            lineHeight: 20,
+                            fontVariant: ["tabular-nums"],
+                          }}
+                        >
+                          {`${formatTime(meal.loggedAt)} \u00B7 about ${Math.round(meal.calories).toLocaleString()} kcal \u00B7 ${formatGrams(meal.proteinGrams)} protein`}
+                        </Text>
+                      </View>
+                      <IconButton
+                        icon="close-circle-outline"
+                        label={`Remove ${meal.name} from today's log`}
+                        color={theme.colors.textMuted}
+                        onPress={() => void removeMeal(meal.id)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </Card>
           </Stagger>
         )}
@@ -243,4 +330,10 @@ export default function ProgressScreen() {
       <Celebrate trigger={milestone} />
     </View>
   );
+}
+
+/** Retrying a failed load starts the screen afresh, which asks for its data again. */
+export default function ProgressTab() {
+  const [attempt, setAttempt] = useState(0);
+  return <ProgressScreen key={attempt} onRetry={() => setAttempt((n) => n + 1)} />;
 }

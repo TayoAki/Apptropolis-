@@ -27,12 +27,14 @@ import {
 import {
   firstSentence,
   parseCallouts,
+  planIsOpen,
   PlanRow,
   Reticle,
   ScoutCard,
   weaknessOf,
   type ScoutRecord,
 } from "../../components/scout/ScoutCard";
+import { LoadProblem, useStalled } from "../../components/load-problem";
 import { Segmented } from "../../components/settings/controls";
 import { FrameMarks, ScreenHeader, TextButton, displayFace } from "../../components/ui";
 
@@ -136,12 +138,13 @@ function RadarSweep({ height }: { height: number }) {
   );
 }
 
-export default function ScoutScreen() {
+function ScoutScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
-  const { items, loading, add } = useCollection<ScoutRecord>("opponent_scouts");
+  const { items, loading, add, remove } = useCollection<ScoutRecord>("opponent_scouts");
   const { isPremium } = usePurchases();
   const openPaywall = () => goPro("scout");
-  const { answers } = useAppState();
+  const { answers, setAnswer } = useAppState();
+  const stalled = useStalled(loading);
   const { ask, loading: scanning, error: scanError } = useAI();
 
   const [tab, setTab] = useState<"all" | "plans">("all");
@@ -149,6 +152,7 @@ export default function ScoutScreen() {
   const [name, setName] = useState("");
   const [done, setDone] = useState<ScoutRecord | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const analyzing = useRef(false);
 
   const sorted = useMemo(
     () => [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
@@ -158,9 +162,11 @@ export default function ScoutScreen() {
     () => sorted.filter((item) => parseCallouts(item.gamePlan).length > 0),
     [sorted],
   );
-  // Free users get one scouting read; after that, reads and game plans need Go Pro.
-  const freeUsed = !isPremium && items.some((item) => item.sample === true);
-  const readable = (item: ScoutRecord) => isPremium || item.sample === true;
+  // Free users get one scouting read; after that, reads and game plans need Pro. The read is
+  // remembered apart from its report, so deleting the report doesn't hand out another.
+  const freeUsed =
+    !isPremium && (answers.freescoutused === "1" || items.some((item) => item.sample === true));
+  const readable = (item: ScoutRecord) => planIsOpen(item, isPremium);
   const shown = tab === "all" ? sorted : plans;
 
   async function choose(source: "library" | "camera") {
@@ -181,6 +187,16 @@ export default function ScoutScreen() {
   }
 
   async function analyze() {
+    if (analyzing.current) return;
+    analyzing.current = true;
+    try {
+      await readFrame();
+    } finally {
+      analyzing.current = false;
+    }
+  }
+
+  async function readFrame() {
     if (!draft) return;
     if (!draft.base64) {
       setNotice("That photo didn't come through. Choose it again.");
@@ -193,10 +209,11 @@ export default function ScoutScreen() {
     setNotice(null);
     const who = name.trim() || "Opponent";
     const level = answers.skilllevel || "beginner to intermediate";
+    const mine = answers.stance === "southpaw" ? "southpaw" : "orthodox";
     const text = await ask({
-      prompt: `The boxer training is at a ${level} level. Read this photo of an opponent or sparring partner named "${who}". Describe only what the frame shows; if the body or guard is hidden, say so and lower the confidence. Return JSON with these keys: "stance" ("orthodox", "southpaw" or "unclear"); "tendencies" (two or three sentences on guard, footwork and habits you can see); "weakness" (one sentence: the single opening to attack); "confidence" (a whole number from 0 to 100 for how sure you are from this one frame); "gamePlan" (two or three sentences of strategy for a boxer training alone, ending with "Callouts:" and five to seven punch callouts such as jab, cross, hook to the body, slip left).`,
+      prompt: `The boxer training is at a ${level} level and boxes ${mine}. Read this photo of an opponent or sparring partner named "${who}". Describe only what the frame shows; if the body or guard is hidden, say so and lower the confidence. Return JSON with these keys: "stance" ("orthodox", "southpaw" or "unclear"); "tendencies" (two or three sentences on guard, footwork and habits you can see); "weakness" (one sentence: the single opening to attack); "confidence" (a whole number from 0 to 100 for how sure you are from this one frame); "gamePlan" (two or three sentences of strategy for a boxer training alone, ending with "Callouts:" and five to seven punch callouts such as jab, cross, hook to the body, slip left).`,
       instructions:
-        "You are a calm, precise boxing coach. Use plain boxing language a beginner can act on. Never guess at what you cannot see. Reply with JSON only.",
+        "You are a calm, precise boxing coach. Use plain boxing language a beginner can act on. Never guess at what you cannot see. Keep to technique, footwork and tactics for training: no medical or weight advice, and nothing that needs sparring without protective gear. Reply with JSON only.",
       photo: draft,
       json: true,
     });
@@ -223,6 +240,11 @@ export default function ScoutScreen() {
       setDone(record);
       setDraft(null);
       setName("");
+      if (!isPremium) void setAnswer("freescoutused", "1");
+      // The first real read replaces the sample report.
+      for (const item of items) {
+        if (item.example) void remove(item.id).catch(() => undefined);
+      }
     } catch {
       setNotice("Couldn't save this report. Try again.");
     }
@@ -403,6 +425,13 @@ export default function ScoutScreen() {
   const header = (
     <View style={{ gap: theme.spacing.lg, marginBottom: theme.spacing.xs }}>
       <Appear>{analysisPanel}</Appear>
+      {stalled ? (
+        <LoadProblem
+          what="your reports"
+          note="A new read can't be saved until they load."
+          onRetry={onRetry}
+        />
+      ) : null}
       <Appear delay={80}>
         <Segmented
           accessibilityLabel="Reports or game plans"
@@ -418,7 +447,9 @@ export default function ScoutScreen() {
   );
 
   const empty = loading ? (
-    <SkeletonList rows={3} />
+    stalled ? null : (
+      <SkeletonList rows={3} />
+    )
   ) : tab === "all" ? (
     <EmptyState
       icon="eye-outline"
@@ -448,7 +479,7 @@ export default function ScoutScreen() {
           gap: theme.spacing.md,
         }}
         ListHeaderComponent={header}
-        ListEmptyComponent={empty}
+        ListEmptyComponent={empty ?? undefined}
         renderItem={({ item, index }) => (
           <Appear delay={Math.min(index, 8) * 50}>
             {tab === "all" ? (
@@ -457,7 +488,7 @@ export default function ScoutScreen() {
               <PlanRow
                 item={item}
                 readable={readable(item)}
-                onRun={() => router.push(`/opponent/${item.id}`)}
+                onRun={() => router.navigate({ pathname: "/", params: { scout: item.id } })}
                 onUnlock={openPaywall}
               />
             )}
@@ -466,4 +497,10 @@ export default function ScoutScreen() {
       />
     </View>
   );
+}
+
+/** Retrying a failed load starts the screen afresh, which asks for its data again. */
+export default function ScoutTab() {
+  const [attempt, setAttempt] = useState(0);
+  return <ScoutScreen key={attempt} onRetry={() => setAttempt((n) => n + 1)} />;
 }

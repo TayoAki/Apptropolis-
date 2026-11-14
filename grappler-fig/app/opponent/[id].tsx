@@ -15,13 +15,25 @@ import {
   haptic,
   useReducedMotion,
 } from "../../components/motion";
-import { Reticle, stanceLabel, weaknessOf, type ScoutRecord } from "../../components/scout/ScoutCard";
+import { LoadProblem, useStalled } from "../../components/load-problem";
+import {
+  Reticle,
+  SampleTag,
+  parseCallouts,
+  planIsOpen,
+  planText,
+  stanceLabel,
+  toRounds,
+  weaknessOf,
+  type ScoutRecord,
+} from "../../components/scout/ScoutCard";
 import { Segmented } from "../../components/settings/controls";
 import { FrameMarks, Monogram, SecondaryButton, TextButton } from "../../components/ui";
 import { useAppState } from "../../data/app-state";
 import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import { formatDay, type Stance } from "../../data/schema";
+import { levelOf } from "../../data/training";
 import { useTheme } from "../../theme/ThemeProvider";
 
 const STANCE_OPTIONS: { value: Stance; label: string }[] = [
@@ -29,18 +41,6 @@ const STANCE_OPTIONS: { value: Stance; label: string }[] = [
   { value: "southpaw", label: "Southpaw" },
   { value: "unclear", label: "Unclear" },
 ];
-
-/** Splits the stored game plan into its strategy text and its callout list. */
-function parseGamePlan(gamePlan: string): { plan: string; callouts: string[] } {
-  const plan = gamePlan.split(/callouts?:/i)[0]?.trim() ?? "";
-  const listed = /callouts?:\s*(.+)$/i.exec(gamePlan)?.[1] ?? "";
-  const callouts = listed
-    .replace(/\.\s*$/, "")
-    .split(",")
-    .map((callout) => callout.trim())
-    .filter(Boolean);
-  return { plan, callouts };
-}
 
 /** "Rests the rear hand. Steps back." becomes one line per sentence. */
 function sentences(text: string): string[] {
@@ -52,15 +52,6 @@ function sentences(text: string): string[] {
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-/** Callouts split into up to `count` rounds of equal length, in order. */
-function toRounds(callouts: string[], count = 3): string[][] {
-  if (callouts.length === 0) return [];
-  const size = Math.ceil(callouts.length / count);
-  const rounds: string[][] = [];
-  for (let i = 0; i < callouts.length; i += size) rounds.push(callouts.slice(i, i + size));
-  return rounds;
 }
 
 function Heading({ children }: { children: string }) {
@@ -98,7 +89,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export default function OpponentReportScreen() {
+function OpponentReportScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const { colors, spacing, radius, font } = theme;
   const insets = useSafeAreaInsets();
@@ -116,6 +107,8 @@ export default function OpponentReportScreen() {
   const [nameError, setNameError] = useState(false);
   const [savedTick, setSavedTick] = useState(0);
   const [confirming, setConfirming] = useState(false);
+  const [problem, setProblem] = useState<"save" | "delete" | null>(null);
+  const stalled = useStalled(loading);
   const [draft, setDraft] = useState({
     name: "",
     stance: "unclear" as Stance,
@@ -125,6 +118,7 @@ export default function OpponentReportScreen() {
 
   const flash = useRef(new Animated.Value(0)).current;
   const launching = useRef(false);
+  const deleting = useRef(false);
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -136,9 +130,10 @@ export default function OpponentReportScreen() {
       name: scout.name,
       stance: scout.stance,
       read: scout.tendencies,
-      callouts: parseGamePlan(scout.gamePlan).callouts.join(", "),
+      callouts: parseCallouts(scout.gamePlan).join(", "),
     });
     setNameError(false);
+    setProblem(null);
     setConfirming(false);
     setEditing(true);
   }
@@ -155,18 +150,21 @@ export default function OpponentReportScreen() {
       setNameError(true);
       return;
     }
-    const { plan, callouts } = parseGamePlan(scout.gamePlan);
+    const plan = planText(scout.gamePlan);
+    const callouts = parseCallouts(scout.gamePlan);
     const list = draft.callouts
       .split(",")
       .map((callout) => callout.trim())
       .filter(Boolean);
-    const changedCallouts = list.join(", ") !== callouts.join(", ");
+    const changedCallouts =
+      list.join(", ").toLowerCase() !== callouts.join(", ").toLowerCase();
     // Custom callout combos are premium: free users keep the plan's callouts as written.
     const gamePlan =
       isPremium && changedCallouts && list.length > 0
         ? `${plan} Callouts: ${list.join(", ")}.`.trim()
         : scout.gamePlan;
     setSaving(true);
+    setProblem(null);
     try {
       await update(scout.id, {
         name,
@@ -177,6 +175,9 @@ export default function OpponentReportScreen() {
       haptic("success");
       setSavedTick((n) => n + 1);
       setEditing(false);
+    } catch {
+      // The form stays open with what was typed, so nothing is lost.
+      setProblem("save");
     } finally {
       setSaving(false);
     }
@@ -198,7 +199,8 @@ export default function OpponentReportScreen() {
     timers.current.push(
       setTimeout(
         () => {
-          router.navigate({ pathname: "/", params: { scout: scoutId } });
+          // Back to the tabs that are already open (not a second copy on top of this report).
+          router.dismissTo({ pathname: "/", params: { scout: scoutId } });
           launching.current = false;
         },
         reduced ? 0 : 300,
@@ -207,9 +209,17 @@ export default function OpponentReportScreen() {
   }
 
   async function confirmDelete() {
-    if (!scout) return;
+    if (!scout || deleting.current) return;
+    deleting.current = true;
     haptic("warning");
-    await remove(scout.id);
+    setProblem(null);
+    try {
+      await remove(scout.id);
+    } catch {
+      deleting.current = false;
+      setProblem("delete");
+      return;
+    }
     if (router.canGoBack()) router.back();
     else router.replace("/scout");
   }
@@ -234,6 +244,7 @@ export default function OpponentReportScreen() {
         }}
       >
         <Stack.Screen options={{ title: "Opponent report" }} />
+        {stalled ? <LoadProblem what="this report" onRetry={onRetry} /> : null}
         <Skeleton width="60%" height={40} radius={radius.sm} />
         <Skeleton height={96} radius={radius.md} />
         <View style={{ gap: spacing.sm }}>
@@ -260,7 +271,7 @@ export default function OpponentReportScreen() {
         <EmptyState
           icon="eye-off-outline"
           title="This report is gone"
-          body="It was deleted on this phone. Scout a new opponent to build another game plan."
+          body="It was deleted. Scout a new opponent to build another game plan."
           actionLabel="Back to Scout"
           onAction={() => router.replace("/scout")}
         />
@@ -268,20 +279,21 @@ export default function OpponentReportScreen() {
     );
   }
 
-  const { plan, callouts } = parseGamePlan(scout.gamePlan);
-  const rounds = toRounds(callouts);
+  const plan = planText(scout.gamePlan);
+  const rounds = toRounds(parseCallouts(scout.gamePlan));
+  const open = planIsOpen(scout, isPremium);
   const opening = weaknessOf(scout);
   const allTendencies = sentences(scout.tendencies);
   // With no separate weakness on the report, the opening is the first tendency: don't list it twice.
   const tendencies = scout.weakness?.trim() ? allTendencies : allTendencies.slice(1);
   const frameWidth = screenWidth - spacing.lg * 2;
   const frameHeight = Math.round(frameWidth * 0.62);
-  const level = answers["skilllevel"] ?? "";
-  const tip = /beginner/i.test(level)
-    ? "Run each round at half speed first. Get the shape right before you add power."
-    : /intermediate|advanced/i.test(level)
-      ? "Run it at full speed and call your own counter off the first shot."
-      : "";
+  // The tip follows the level chosen in onboarding or Settings; with no level set there is none.
+  const tip = !answers.skilllevel
+    ? ""
+    : levelOf(answers.skilllevel) === "beginner"
+      ? "Run each round at half speed first. Get the shape right before you add power."
+      : "Run it at full speed and call your own counter off the first shot.";
 
   const inputStyle = {
     minHeight: 48,
@@ -300,6 +312,7 @@ export default function OpponentReportScreen() {
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
         {scout.photoUri ? null : <Monogram name={scout.name} size={48} />}
         <View style={{ flex: 1, gap: 2 }}>
+          {scout.example ? <SampleTag /> : null}
           <Text style={{ color: colors.text, fontSize: font.size.body, fontWeight: font.weight.bold }}>
             {stanceLabel(scout.stance)}
           </Text>
@@ -311,11 +324,13 @@ export default function OpponentReportScreen() {
               fontVariant: ["tabular-nums"],
             }}
           >
-            {`Scouted ${formatDay(scout.createdAt).toLowerCase()}${
-              scout.confidence !== undefined
-                ? ` · ${Math.round(scout.confidence)}% read confidence`
-                : ""
-            }`}
+            {scout.example
+              ? "Shows what a read looks like. Your first real read replaces it."
+              : `Scouted ${formatDay(scout.createdAt).toLowerCase()}${
+                  scout.confidence !== undefined
+                    ? ` \u00B7 ${Math.round(scout.confidence)}% read confidence`
+                    : ""
+                }`}
           </Text>
         </View>
         {savedTick > 0 ? <Lottie key={savedTick} name="success" size={36} /> : null}
@@ -423,6 +438,15 @@ export default function OpponentReportScreen() {
         )}
       </Field>
 
+      {problem === "save" ? (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{ color: colors.danger, fontSize: font.size.body, lineHeight: 24 }}
+        >
+          Couldn't save your changes. Check your connection and press Save report again.
+        </Text>
+      ) : null}
+
       <View style={{ flexDirection: "row", gap: spacing.md }}>
         <View style={{ flex: 1 }}>
           <SecondaryButton label="Cancel" onPress={cancelEdit} accessibilityLabel="Cancel changes" />
@@ -469,10 +493,24 @@ export default function OpponentReportScreen() {
   const planSection = (
     <View style={{ gap: spacing.sm }}>
       <Heading>Game plan</Heading>
-      {plan ? (
+      {!open ? (
+        <View style={{ gap: spacing.xs }}>
+          <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 24 }}>
+            Game plans and callout rounds are part of Pro. Your read and its tendencies stay here.
+          </Text>
+          <TextButton
+            label="Unlock game plans"
+            icon="lock-closed"
+            onPress={() => openPaywall()}
+            accessibilityLabel="Unlock game plans with Pro"
+            style={{ alignSelf: "flex-start" }}
+          />
+        </View>
+      ) : null}
+      {open && plan ? (
         <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 24 }}>{plan}</Text>
       ) : null}
-      {rounds.length === 0 ? (
+      {!open ? null : rounds.length === 0 ? (
         <EmptyState
           icon="flash-outline"
           title="No callouts yet"
@@ -552,8 +590,16 @@ export default function OpponentReportScreen() {
         }}
       >
         <Text style={{ color: colors.text, fontSize: font.size.body, lineHeight: 24 }}>
-          Delete this report? Its frame, read and game plan are removed from this phone.
+          Delete this report? Its frame, read and game plan are removed for good.
         </Text>
+        {problem === "delete" ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ color: colors.danger, fontSize: font.size.body, lineHeight: 24 }}
+          >
+            Couldn't delete it. Check your connection and try again.
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", gap: spacing.md }}>
           <View style={{ flex: 1 }}>
             <SecondaryButton
@@ -648,13 +694,22 @@ export default function OpponentReportScreen() {
             borderTopColor: colors.border,
           }}
         >
-          <PrimaryButton
-            label="Drill this game plan (3 × 3 min)"
-            icon="play"
-            disabled={rounds.length === 0}
-            onPress={startRound}
-            accessibilityLabel="Drill this game plan, three rounds of three minutes"
-          />
+          {open ? (
+            <PrimaryButton
+              label={"Drill this game plan (3 \u00D7 3 min)"}
+              icon="play"
+              disabled={rounds.length === 0}
+              onPress={startRound}
+              accessibilityLabel="Drill this game plan: load three rounds of three minutes on the timer"
+            />
+          ) : (
+            <PrimaryButton
+              label="Unlock game plans"
+              icon="lock-closed"
+              onPress={() => openPaywall()}
+              accessibilityLabel="Unlock game plans with Pro"
+            />
+          )}
         </View>
       ) : null}
 
@@ -672,4 +727,10 @@ export default function OpponentReportScreen() {
       />
     </View>
   );
+}
+
+/** Retrying a failed load starts the screen afresh, which asks for its data again. */
+export default function OpponentReportRoute() {
+  const [attempt, setAttempt] = useState(0);
+  return <OpponentReportScreen key={attempt} onRetry={() => setAttempt((n) => n + 1)} />;
 }

@@ -22,6 +22,7 @@ import {
   type Drill,
 } from "../../components/coach/CoachParts";
 import { EmptyState } from "../../components/empty-state";
+import { LoadProblem, useStalled } from "../../components/load-problem";
 import { goPro } from "../../components/paywall/open";
 import { Appear, PressScale, Skeleton, haptic } from "../../components/motion";
 import { FrameMarks, ScreenHeader, TextButton, type IconName } from "../../components/ui";
@@ -47,8 +48,10 @@ const COACH_RULES = [
   "You are Corner Coach, a direct boxing coach for someone training alone at home or in a gym with a bag or shadowboxing.",
   "Answer in at most four short sentences: name the one fault that matters most, the body part causing it, and the fix.",
   'Then give one drill to run as a timed round. Keep callouts short, like "jab, cross, pivot".',
-  'Reply with JSON only: {"answer": string, "drill": {"title": string, "rounds": number, "roundSeconds": number, "callouts": string} | null}.',
+  'Reply with JSON only: {"answer": string, "fix": string | null, "drill": {"title": string, "rounds": number, "roundSeconds": number, "callouts": string} | null}.',
+  '"fix" is the one correction to remember, as a single short sentence, or null when the question has none.',
   "Set drill to null when the question isn't about technique, conditioning or strategy you can drill. Never use emoji.",
+  "Keep to boxing technique, conditioning and training strategy. Give no medical advice and no advice on cutting weight, and never suggest sparring without protective gear and supervision. For pain, injury or weight questions, say in one sentence that a doctor or their own coach is the right person to ask.",
 ].join(" ");
 
 function clamp(value: unknown, min: number, max: number, fallback: number): number {
@@ -56,12 +59,16 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
   return Math.min(max, Math.max(min, n));
 }
 
-/** The coach answers JSON (an answer and an optional drill); plain text is shown as it is. */
-function parseReply(raw: string): { answer: string; drill: Drill | null } {
+/**
+ * The coach answers JSON (an answer, the one fix to remember and an optional drill); plain text
+ * is shown as it is.
+ */
+function parseReply(raw: string): { answer: string; fix: string; drill: Drill | null } {
   const text = raw.trim();
   const body = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   try {
-    const value = JSON.parse(body) as { answer?: unknown; drill?: unknown };
+    const value = JSON.parse(body) as { answer?: unknown; fix?: unknown; drill?: unknown };
+    const fix = typeof value.fix === "string" ? value.fix.trim().slice(0, 160) : "";
     const answer =
       typeof value.answer === "string" && value.answer.trim() ? value.answer.trim() : text;
     const d = value.drill as
@@ -77,9 +84,9 @@ function parseReply(raw: string): { answer: string; drill: Drill | null } {
             callouts: typeof d.callouts === "string" ? d.callouts.trim().slice(0, 120) : "",
           }
         : null;
-    return { answer, drill };
+    return { answer, fix, drill };
   } catch {
-    return { answer: text, drill: null };
+    return { answer: text, fix: "", drill: null };
   }
 }
 
@@ -99,6 +106,8 @@ function Bubble({
 }) {
   const theme = useTheme();
   const coach = role === "coach";
+  // A frame is kept on the phone that sent it; where it can't load, the message shows without it.
+  const [frameGone, setFrameGone] = useState(false);
   return (
     <View
       accessible={!drill}
@@ -127,12 +136,13 @@ function Bubble({
           Coach
         </Text>
       ) : null}
-      {photoUri ? (
+      {photoUri && !frameGone ? (
         <View style={{ borderRadius: theme.radius.sm, overflow: "hidden" }}>
           <Image
             source={{ uri: photoUri }}
             accessibilityLabel="Your frame"
             contentFit="cover"
+            onError={() => setFrameGone(true)}
             style={{ width: 240, maxWidth: "100%", height: 180 }}
           />
           <FrameMarks />
@@ -194,13 +204,15 @@ function Chip({
   );
 }
 
-export default function CoachScreen() {
+function CoachScreen({ onRetry }: { onRetry: () => void }) {
   const theme = useTheme();
   const { answers } = useAppState();
   const { isPremium } = usePurchases();
   const { items: messages, loading, add } = useCollection<CoachMessage>("coach_messages");
-  const { items: sessions } = useCollection<WorkoutSession>("workout_sessions");
+  const { items: sessions, update: updateSession } =
+    useCollection<WorkoutSession>("workout_sessions");
   const { ask, error, reset } = useAI();
+  const stalled = useStalled(loading);
 
   const listRef = useRef<FlatList<CoachMessage>>(null);
   const stick = useRef(true);
@@ -209,8 +221,8 @@ export default function CoachScreen() {
   const [frame, setFrame] = useState<Photo | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [pending, setPending] = useState<{ text: string; photoUri: string | null } | null>(null);
-  const [photos, setPhotos] = useState<Record<string, string>>({});
-  const [drills, setDrills] = useState<Record<string, Drill>>({});
+  // An answer that arrived but couldn't be saved: shown until the next question, then gone.
+  const [unsaved, setUnsaved] = useState<{ answer: string; drill: Drill | null } | null>(null);
 
   const ordered = useMemo(
     () => [...messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -235,7 +247,7 @@ export default function CoachScreen() {
       .map((m) => `${m.role === "user" ? "Boxer" : "Coach"}: ${m.text}`)
       .join("\n");
     return [
-      `Boxer level: ${answers.skilllevel ?? "not set"}. Training setup: ${answers.trainingsetup ?? "not set"}.`,
+      `Boxer level: ${answers.skilllevel || "not set"}. Stance: ${answers.stance === "southpaw" ? "southpaw" : "orthodox"}. Training setup: ${answers.trainingsetup || "not set"}.`,
       `Recent fixes from their sessions: ${fixes.length ? fixes.join(" | ") : "none yet"}.`,
       history ? `Conversation so far:\n${history}` : "",
       photo ? "A frame of their own training is attached: check stance, guard, hands and hips in it." : "",
@@ -253,6 +265,7 @@ export default function CoachScreen() {
       return;
     }
     reset();
+    setUnsaved(null);
     stick.current = true;
     setPending({ text: question, photoUri: photo?.uri ?? null });
     setDraft("");
@@ -271,13 +284,35 @@ export default function CoachScreen() {
       setFrame(photo);
       return;
     }
-    const { answer, drill } = parseReply(reply);
-    const mine = await add({ role: "user", text: question, createdAt: new Date().toISOString() });
-    if (photo) setPhotos((p) => ({ ...p, [mine.id]: photo.uri }));
-    const coach = await add({ role: "coach", text: answer, createdAt: new Date().toISOString() });
-    if (drill) setDrills((d) => ({ ...d, [coach.id]: drill }));
-    setPending(null);
-    track("coach_question", { photo: photo !== null });
+    const { answer, fix, drill } = parseReply(reply);
+    const asked = Date.now();
+    try {
+      // The drill and the frame are saved with their messages, so they are still there later.
+      await add({
+        role: "user",
+        text: question,
+        createdAt: new Date(asked).toISOString(),
+        ...(photo ? { photoUri: photo.uri } : {}),
+      });
+      await add({
+        role: "coach",
+        text: answer,
+        createdAt: new Date(Math.max(asked + 1, Date.now())).toISOString(),
+        ...(drill ? { drill } : {}),
+      });
+      track("coach_question", { photo: photo !== null });
+    } catch {
+      setUnsaved({ answer, drill });
+    } finally {
+      setPending(null);
+    }
+    // The coach's correction becomes the top fix on today's latest session (Progress shows it).
+    if (fix) {
+      const todays = [...sessions]
+        .filter((session) => dayKey(session.date) === dayKey(new Date()))
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      if (todays) void updateSession(todays.id, { topFix: fix }).catch(() => undefined);
+    }
   }
 
   function runDrill(drill: Drill) {
@@ -357,7 +392,13 @@ export default function CoachScreen() {
     </Card>
   );
 
-  const empty = loading ? (
+  const empty = stalled ? (
+    <LoadProblem
+      what="your conversation"
+      note="You can still ask; the answer may not be saved."
+      onRetry={onRetry}
+    />
+  ) : loading ? (
     <View style={{ gap: theme.spacing.md }}>
       <Skeleton width="70%" height={64} radius={theme.radius.md} style={{ alignSelf: "flex-end" }} />
       <Skeleton width="88%" height={120} radius={theme.radius.md} />
@@ -381,7 +422,39 @@ export default function CoachScreen() {
   );
 
   const footer = (
-    <View style={{ gap: theme.spacing.md, marginTop: pending || error ? theme.spacing.md : 0 }}>
+    <View
+      style={{
+        gap: theme.spacing.md,
+        marginTop: pending || error || unsaved ? theme.spacing.md : 0,
+      }}
+    >
+      {unsaved && !pending ? (
+        <>
+          <Bubble
+            role="coach"
+            text={unsaved.answer}
+            drill={unsaved.drill ?? undefined}
+            onRun={runDrill}
+          />
+          <View
+            accessibilityLiveRegion="polite"
+            style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.sm }}
+          >
+            <Ionicons name="cloud-offline-outline" size={20} color={theme.colors.danger} />
+            <Text
+              style={{
+                flex: 1,
+                color: theme.colors.text,
+                fontSize: theme.font.size.caption + 2,
+                lineHeight: 20,
+              }}
+            >
+              This answer couldn't be saved, so it won't be here after you leave. Check your
+              connection before you ask again.
+            </Text>
+          </View>
+        </>
+      ) : null}
       {pending ? (
         <>
           <Appear distance={18}>
@@ -428,8 +501,14 @@ export default function CoachScreen() {
             <Text
               style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption + 2, lineHeight: 20 }}
             >
-              Your question is back in the box. Send it again when you're ready.
+              Nothing was sent or counted. Your question is back in the box.
             </Text>
+            <TextButton
+              label="Try again"
+              icon="refresh"
+              onPress={() => void send(draft, frame)}
+              style={{ alignSelf: "flex-start" }}
+            />
           </View>
         </View>
       ) : null}
@@ -611,8 +690,8 @@ export default function CoachScreen() {
             <Bubble
               role={item.role}
               text={item.text}
-              photoUri={photos[item.id]}
-              drill={drills[item.id]}
+              photoUri={item.photoUri}
+              drill={item.drill}
               onRun={runDrill}
             />
           </Appear>
@@ -642,4 +721,10 @@ export default function CoachScreen() {
       {composer}
     </KeyboardAvoidingView>
   );
+}
+
+/** Retrying a failed load starts the screen afresh, which asks for its data again. */
+export default function CoachTab() {
+  const [attempt, setAttempt] = useState(0);
+  return <CoachScreen key={attempt} onRetry={() => setAttempt((n) => n + 1)} />;
 }

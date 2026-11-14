@@ -52,6 +52,7 @@ export function ComboPanel({
   current,
   restNote,
   locked = false,
+  changeLabel = "Change",
   onPress,
 }: {
   /** The combo or plan these punches belong to. */
@@ -64,6 +65,8 @@ export function ComboPanel({
   restNote?: string;
   /** Other combos are premium: a lock shows beside "Change". */
   locked?: boolean;
+  /** What a press does, e.g. "Change" or "Use my combo". */
+  changeLabel?: string;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -149,7 +152,7 @@ export function ComboPanel({
       scaleTo={0.98}
       accessibilityRole="button"
       accessibilityLabel={`${name}: ${steps.join(", ")}. ${
-        locked ? "Other combos are part of Pro" : "Change the combo"
+        locked ? "Other combos are part of Pro" : changeLabel
       }`}
       style={[box, { gap: theme.spacing.sm }]}
     >
@@ -173,7 +176,7 @@ export function ComboPanel({
             fontWeight: theme.font.weight.bold,
           }}
         >
-          Change
+          {changeLabel}
         </Text>
       </View>
       <Text

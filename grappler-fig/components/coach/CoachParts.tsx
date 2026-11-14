@@ -4,17 +4,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Text, View, type ViewStyle } from "react-native";
 import Svg, { Path, Polyline } from "react-native-svg";
+import type { CoachDrill } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PressScale, useReducedMotion } from "../motion";
 import { tint } from "../ui";
 
 /** A drill the coach wrote for a fix: it runs as a timed round on the Train tab. */
-export interface Drill {
-  title: string;
-  rounds: number;
-  roundSeconds: number;
-  callouts: string;
-}
+export type Drill = CoachDrill;
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
