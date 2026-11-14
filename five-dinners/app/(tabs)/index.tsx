@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
+import { Penny } from "../../components/Penny";
 import { EmptyState, LoadingState } from "../../components/EmptyState";
+import { Meter } from "../../components/Meter";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { useShareImage } from "../../components/share";
 import { DinnerRow, type Candidate, type SwapInfo } from "../../components/index/DinnerRow";
 import { track } from "../../data/analytics";
@@ -40,7 +42,7 @@ import {
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const DAY_NAMES = ["", "MON", "TUE", "WED", "THU", "FRI"];
+const DAY_NAMES = ["", "Mon", "Tue", "Wed", "Thu", "Fri"];
 
 function parseExclusions(raw: string): Diet[] {
   const s = raw.toLowerCase();
@@ -65,7 +67,7 @@ function leftoverNote(recipe: Recipe, servings: number, pantry: PantryItem[]): s
     );
     if (item) {
       const use = Math.min(scaleQty(pack, per, servings), item.quantity);
-      return `uses ${formatQty(pack, use)} leftover ${pack.name.toLowerCase()}`;
+      return `Uses ${formatQty(pack, use)} leftover ${pack.name.toLowerCase()}`;
     }
   }
   return "";
@@ -74,6 +76,7 @@ function leftoverNote(recipe: Recipe, servings: number, pantry: PantryItem[]): s
 export default function WeekScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { answers, setAnswer } = useAppState();
   const { isPremium, openPaywall } = usePurchases();
   const { ref, share, sharing } = useShareImage();
@@ -91,8 +94,12 @@ export default function WeekScreen() {
   const budget = parseBudget(answers.weeklybudget ?? "£25");
   const householdServings = parseServings(answers.servings ?? "2");
   const excluded = useMemo(
-    () => parseExclusions(`${answers.diet ?? ""} ${answers.exclusions ?? ""}`),
-    [answers.diet, answers.exclusions],
+    // "excluded" is what Settings saves ("pork,fish"); the other two are older answer keys.
+    () =>
+      parseExclusions(
+        `${answers.diet ?? ""} ${answers.exclusions ?? ""} ${answers.excluded ?? ""}`,
+      ),
+    [answers.diet, answers.exclusions, answers.excluded],
   );
 
   const dinners = useMemo(
@@ -217,6 +224,7 @@ export default function WeekScreen() {
   const left = round2(budget - total);
   const over = left < 0;
   const pct = budget > 0 ? Math.min(1, total / budget) : 0;
+  const pctLabel = `${budget > 0 ? Math.round((total / budget) * 100) : 0}%`;
   const shownServings = dinners[0]?.servings ?? householdServings;
 
   function shareWeek() {
@@ -245,54 +253,37 @@ export default function WeekScreen() {
         paddingHorizontal: theme.spacing.md,
         paddingBottom: theme.spacing.xl,
         gap: theme.spacing.lg,
+        // On a wide screen the page stays a readable column.
+        width: "100%",
+        maxWidth: 560,
+        alignSelf: "center",
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-        <View style={{ flex: 1 }}>
-          <Text
-            accessibilityRole="header"
-            style={{
-              ...base,
-              fontSize: theme.font.size.display,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            Week
-          </Text>
-          <Text
-            style={{
-              ...base,
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.body,
-              letterSpacing: 1,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            {formatLongDate(weekStart).toUpperCase()} · FOR {shownServings}
-          </Text>
-        </View>
+      <ScreenHeader
+        title="Week"
+        subtitle={`${formatLongDate(weekStart)} · for ${shownServings}`}
+      >
         {dinners.length > 0 ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Share this week"
-            hitSlop={4}
+            accessibilityState={{ disabled: sharing }}
             disabled={sharing}
             onPress={shareWeek}
             style={({ pressed }) => iconButton(pressed)}
           >
-            <Ionicons name="share-social-outline" size={26} color={theme.colors.text} />
+            <Ionicons name="share-social-outline" size={24} color={theme.colors.text} />
           </Pressable>
         ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Settings"
-          hitSlop={4}
           onPress={() => router.push("/settings")}
           style={({ pressed }) => iconButton(pressed)}
         >
-          <Ionicons name="settings-outline" size={26} color={theme.colors.text} />
+          <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
         </Pressable>
-      </View>
+      </ScreenHeader>
 
       {loading ? <LoadingState label="Loading your week" /> : null}
 
@@ -310,195 +301,191 @@ export default function WeekScreen() {
             icon="calendar-outline"
             title="No dinners planned for this week"
             body={`Five dinners for ${householdServings}, priced by full packs against your ${formatPrice(budget)} budget.`}
-            actionLabel={planning ? "Planning…" : "Plan this week"}
-            onAction={planning ? undefined : planWeek}
+            actionLabel="Plan this week"
+            actionLoading={planning}
+            onAction={planWeek}
           />
         )
       ) : null}
 
       {!loading && dinners.length > 0 ? (
         <>
-          <View>
-            <View ref={ref} collapsable={false}>
+          <View ref={ref} collapsable={false}>
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderWidth: 1,
+                borderBottomWidth: 0,
+                borderTopLeftRadius: theme.radius.md,
+                borderTopRightRadius: theme.radius.md,
+                padding: theme.spacing.md,
+                gap: theme.spacing.sm,
+              }}
+            >
+              <Text style={{ ...base, fontSize: theme.font.size.body }}>This week's basket</Text>
               <View
                 style={{
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderWidth: 1,
-                  borderBottomWidth: 0,
-                  borderTopLeftRadius: theme.radius.md,
-                  borderTopRightRadius: theme.radius.md,
-                  padding: theme.spacing.md,
+                  flexDirection: "row",
+                  alignItems: "flex-end",
+                  justifyContent: "space-between",
                   gap: theme.spacing.sm,
                 }}
               >
-                <Text
-                  style={{
-                    ...base,
-                    color: theme.colors.textMuted,
-                    fontSize: theme.font.size.caption,
-                    letterSpacing: 1,
-                  }}
-                >
-                  THIS WEEK'S BASKET
-                </Text>
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "flex-end",
-                    justifyContent: "space-between",
+                    flexShrink: 1,
                     gap: theme.spacing.sm,
                   }}
                 >
-                  <View style={{ flexDirection: "row", alignItems: "flex-end", flexShrink: 1, gap: theme.spacing.sm }}>
-                    <View>
-                      <Text
-                        style={{
-                          ...base,
-                          fontSize: theme.font.size.display,
-                          fontWeight: theme.font.weight.bold,
-                          fontVariant: ["tabular-nums"],
-                        }}
-                      >
-                        {formatPrice(total)}
-                      </Text>
-                      <View
-                        style={{
-                          height: 3,
-                          borderRadius: 2,
-                          backgroundColor: theme.colors.text,
-                          marginTop: -2,
-                        }}
-                      />
-                    </View>
+                  <View>
                     <Text
                       style={{
                         ...base,
-                        color: theme.colors.textMuted,
-                        fontSize: theme.font.size.body,
-                        paddingBottom: 4,
-                        flexShrink: 1,
-                      }}
-                    >
-                      of {formatPrice(budget)} budget
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      borderColor: over ? theme.colors.danger : theme.colors.accent,
-                      borderWidth: 1.5,
-                      borderRadius: theme.radius.pill,
-                      paddingHorizontal: theme.spacing.md,
-                      paddingVertical: theme.spacing.xs,
-                      marginBottom: 4,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        ...base,
-                        color: over ? theme.colors.danger : theme.colors.accent,
-                        fontWeight: theme.font.weight.medium,
+                        fontSize: theme.font.size.display,
+                        fontWeight: theme.font.weight.bold,
                         fontVariant: ["tabular-nums"],
                       }}
                     >
-                      {over ? `${formatPrice(-left)} over` : `${formatPrice(left)} left`}
+                      {formatPrice(total)}
                     </Text>
+                    <View
+                      style={{
+                        height: 2,
+                        borderRadius: 1,
+                        backgroundColor: theme.colors.text,
+                        marginTop: -2,
+                      }}
+                    />
                   </View>
-                </View>
-                <View
-                  accessibilityRole="progressbar"
-                  accessibilityLabel={`${Math.round(pct * 100)} percent of budget`}
-                  style={{
-                    height: 14,
-                    borderRadius: 7,
-                    backgroundColor: theme.colors.surfaceAlt,
-                    overflow: "hidden",
-                  }}
-                >
-                  <View
+                  <Text
                     style={{
-                      width: `${Math.max(pct * 100, 4)}%`,
-                      height: 14,
-                      borderRadius: 7,
-                      backgroundColor: over ? theme.colors.danger : theme.colors.primary,
-                      justifyContent: "center",
-                      alignItems: "flex-end",
-                      paddingRight: 6,
+                      ...base,
+                      color: theme.colors.textMuted,
+                      fontSize: theme.font.size.body,
+                      paddingBottom: 4,
+                      flexShrink: 1,
+                      fontVariant: ["tabular-nums"],
                     }}
                   >
-                    {pct > 0.2 ? (
-                      <Text
-                        style={{
-                          color: theme.colors.onPrimary,
-                          fontSize: 10,
-                          fontWeight: theme.font.weight.bold,
-                          fontVariant: ["tabular-nums"],
-                        }}
-                      >
-                        {Math.round(pct * 100)}%
-                      </Text>
-                    ) : null}
-                  </View>
+                    of {formatPrice(budget)} budget
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.xs,
+                    borderColor: over ? theme.colors.danger : theme.colors.accent,
+                    borderWidth: 1.5,
+                    borderRadius: theme.radius.pill,
+                    paddingHorizontal: theme.spacing.sm + 4,
+                    paddingVertical: theme.spacing.xs,
+                    marginBottom: 4,
+                  }}
+                >
+                  {over ? (
+                    <Ionicons name="alert-circle-outline" size={16} color={theme.colors.danger} />
+                  ) : null}
+                  <Text
+                    style={{
+                      ...base,
+                      color: over ? theme.colors.danger : theme.colors.accent,
+                      fontSize: theme.font.size.body,
+                      fontWeight: theme.font.weight.medium,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                  >
+                    {over ? `${formatPrice(-left)} over` : `${formatPrice(left)} left`}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Meter
+                    value={pct}
+                    color={over ? theme.colors.danger : theme.colors.primary}
+                    accessibilityLabel={`${pctLabel} of budget`}
+                  />
                 </View>
                 <Text
                   style={{
                     ...base,
                     fontSize: theme.font.size.caption + 1,
+                    fontWeight: theme.font.weight.medium,
                     fontVariant: ["tabular-nums"],
                   }}
                 >
-                  {dinners.length} dinners · full packs ·{" "}
-                  {HOME_STORE.replace("–", "·").toUpperCase()}
-                  {lastChecked ? ` · prices checked ${formatShortDate(lastChecked)}` : ""}
+                  {pctLabel}
                 </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: theme.spacing.sm,
-                    marginTop: theme.spacing.xs,
-                  }}
-                >
-                  <AiImage
-                    name={carried.length ? "penny-half-full" : total <= budget ? "penny-happy" : "penny-neutral"}
-                    style={{ width: 44, height: 44, resizeMode: "contain", backgroundColor: theme.colors.surface }}
-                  />
+              </View>
+              <Text
+                style={{
+                  ...base,
+                  color: theme.colors.textMuted,
+                  fontSize: theme.font.size.caption + 1,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {dinners.length} dinners · full packs · {HOME_STORE}
+                {lastChecked ? ` · prices checked ${formatShortDate(lastChecked)}` : ""}
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.sm,
+                  marginTop: theme.spacing.xs,
+                }}
+              >
+                <Penny
+                  mood={carried.length ? "half-full" : total <= budget ? "happy" : "neutral"}
+                  width={44}
+                />
+                {carried.length ? (
                   <Text
                     style={{
                       ...base,
                       flex: 1,
                       fontSize: theme.font.size.body,
                       color: theme.colors.accent,
+                      fontVariant: ["tabular-nums"],
                     }}
                   >
-                    {carried.length ? (
-                      <>
-                        <Text style={{ fontWeight: theme.font.weight.bold }}>Carried over: </Text>
-                        {carriedText}
-                      </>
-                    ) : (
-                      <Text style={{ color: theme.colors.textMuted }}>
-                        Nothing carried over yet. What's left from this shop appears here.
-                      </Text>
-                    )}
+                    <Text style={{ fontWeight: theme.font.weight.bold }}>Carried over: </Text>
+                    {carriedText}
                   </Text>
-                </View>
+                ) : (
+                  <Text
+                    style={{
+                      ...base,
+                      flex: 1,
+                      fontSize: theme.font.size.body,
+                      color: theme.colors.textMuted,
+                    }}
+                  >
+                    Nothing carried over yet. What's left from this shop appears here.
+                  </Text>
+                )}
               </View>
-              <View style={{ height: 7, backgroundColor: theme.colors.surface, overflow: "hidden" }}>
-                <View style={{ flexDirection: "row", position: "absolute", top: 2, left: -5 }}>
-                  {Array.from({ length: 32 }).map((_, i) => (
-                    <View
-                      key={i}
-                      style={{
-                        width: 10,
-                        height: 10,
-                        marginRight: 4,
-                        backgroundColor: theme.colors.background,
-                        transform: [{ rotate: "45deg" }],
-                      }}
-                    />
-                  ))}
-                </View>
+            </View>
+            {/* The torn receipt edge: a row of diamonds in the page color. */}
+            <View style={{ height: 7, backgroundColor: theme.colors.surface, overflow: "hidden" }}>
+              <View style={{ flexDirection: "row", position: "absolute", top: 2, left: -5 }}>
+                {Array.from({ length: Math.ceil(width / 14) + 1 }).map((_, i) => (
+                  <View
+                    key={i}
+                    style={{
+                      width: 10,
+                      height: 10,
+                      marginRight: 4,
+                      backgroundColor: theme.colors.background,
+                      transform: [{ rotate: "45deg" }],
+                    }}
+                  />
+                ))}
               </View>
             </View>
           </View>
@@ -514,7 +501,7 @@ export default function WeekScreen() {
               <Text
                 style={{
                   ...base,
-                  fontSize: theme.font.size.body + 2,
+                  fontSize: theme.font.size.body,
                   padding: theme.spacing.md,
                   paddingBottom: theme.spacing.sm,
                 }}
@@ -527,24 +514,42 @@ export default function WeekScreen() {
                 return (
                   <View
                     key={item.id}
+                    accessibilityRole="radiogroup"
+                    accessibilityLabel={`${item.ingredient}, ${formatPantry(item)}`}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
                       gap: theme.spacing.sm,
                       paddingHorizontal: theme.spacing.md,
                       paddingVertical: theme.spacing.sm,
-                      borderTopColor: theme.colors.border,
+                      borderTopColor: theme.colors.textMuted + "33",
                       borderTopWidth: 1,
                     }}
                   >
-                    <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body }}>
-                      {item.ingredient} · {formatPantry(item)}
-                      {pack ? ` of ${formatPackSize(pack)}` : ""}
-                    </Text>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        style={{
+                          ...base,
+                          fontSize: theme.font.size.body,
+                          fontWeight: theme.font.weight.medium,
+                        }}
+                      >
+                        {item.ingredient}
+                      </Text>
+                      <Text
+                        style={{
+                          ...base,
+                          fontSize: theme.font.size.caption + 1,
+                          fontVariant: ["tabular-nums"],
+                        }}
+                      >
+                        {formatPantry(item)}
+                        {pack ? ` of ${formatPackSize(pack)}` : ""}
+                      </Text>
+                    </View>
                     <CheckPill
                       label="Still there"
                       selected={item.confirmed}
-                      check
                       onPress={() => setConfirmed(item, true)}
                     />
                     <CheckPill
@@ -579,12 +584,14 @@ export default function WeekScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Dinner budget ${formatPrice(budget)}. Change budget`}
+                accessibilityState={{ expanded: editBudget }}
                 hitSlop={10}
                 onPress={() => setEditBudget((v) => !v)}
                 style={({ pressed }) => ({
                   minHeight: 44,
                   flexDirection: "row",
                   alignItems: "center",
+                  gap: 2,
                   opacity: pressed ? 0.6 : 1,
                 })}
               >
@@ -592,14 +599,15 @@ export default function WeekScreen() {
                   style={{
                     ...base,
                     color: theme.colors.primary,
-                    fontSize: theme.font.size.body + 1,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.medium,
                     fontVariant: ["tabular-nums"],
                   }}
                 >
                   Budget {formatPrice(budget)}
                 </Text>
                 <Ionicons
-                  name={editBudget ? "chevron-down" : "chevron-forward"}
+                  name={editBudget ? "chevron-up" : "chevron-down"}
                   size={16}
                   color={theme.colors.primary}
                 />
@@ -619,12 +627,20 @@ export default function WeekScreen() {
                   padding: theme.spacing.sm,
                 }}
               >
-                <Text style={{ ...base, flex: 1, paddingLeft: theme.spacing.sm }}>
+                <Text
+                  style={{
+                    ...base,
+                    flex: 1,
+                    fontSize: theme.font.size.body,
+                    paddingLeft: theme.spacing.sm,
+                  }}
+                >
                   Dinner budget for the week
                 </Text>
                 <StepButton
                   icon="remove"
                   label="Lower budget by £1"
+                  disabled={budget <= 5}
                   onPress={() => setAnswer("weeklybudget", `£${Math.max(5, budget - 1)}`)}
                 />
                 <Text
@@ -653,7 +669,7 @@ export default function WeekScreen() {
               return (
                 <DinnerRow
                   key={d.id}
-                  day={DAY_NAMES[d.dayIndex] ?? `D${d.dayIndex}`}
+                  day={DAY_NAMES[d.dayIndex] ?? `Day ${d.dayIndex}`}
                   recipe={recipe}
                   servings={d.servings}
                   cost={costs[i] ?? d.estimatedCost}
@@ -682,7 +698,7 @@ export default function WeekScreen() {
               }}
             >
               <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.success} />
-              <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body + 1 }}>
+              <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body }}>
                 Leftovers carry into next week
               </Text>
               <Pressable
@@ -690,14 +706,18 @@ export default function WeekScreen() {
                 accessibilityLabel="See leftovers on the Cook tab"
                 hitSlop={10}
                 onPress={() => router.push("/cook")}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                style={({ pressed }) => ({
+                  minHeight: 44,
+                  justifyContent: "center",
+                  opacity: pressed ? 0.6 : 1,
+                })}
               >
                 <Text
                   style={{
                     ...base,
                     color: theme.colors.primary,
-                    textDecorationLine: "underline",
-                    fontSize: theme.font.size.body + 1,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.medium,
                   }}
                 >
                   See leftovers
@@ -717,16 +737,16 @@ export default function WeekScreen() {
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <Ionicons name="lock-closed" size={20} color={theme.colors.warning} />
-              <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body + 1 }}>
+              <Ionicons name="lock-closed" size={18} color={theme.colors.textMuted} />
+              <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body }}>
                 Carry leftovers into next week
               </Text>
               <Text
                 style={{
                   ...base,
                   color: theme.colors.primary,
-                  textDecorationLine: "underline",
-                  fontSize: theme.font.size.body + 1,
+                  fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.medium,
                 }}
               >
                 Unlock
@@ -737,82 +757,89 @@ export default function WeekScreen() {
       ) : null}
     </ScrollView>
   );
+}
 
-  function CheckPill({
-    label,
-    selected,
-    check,
-    onPress,
-  }: {
-    label: string;
-    selected: boolean;
-    check?: boolean;
-    onPress: () => void;
-  }) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ selected }}
-        accessibilityLabel={label}
-        hitSlop={4}
-        onPress={onPress}
-        style={({ pressed }) => ({
-          minHeight: 36,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 4,
-          paddingHorizontal: theme.spacing.sm + 2,
-          borderRadius: theme.radius.pill,
-          borderWidth: 1,
-          borderColor: selected ? theme.colors.accent : theme.colors.border,
-          backgroundColor: selected && check ? theme.colors.surfaceAlt : theme.colors.surface,
-          opacity: pressed ? 0.7 : 1,
-        })}
+/** One of the two answers to "still in the cupboard?". The chosen one carries a tick. */
+function CheckPill({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      accessibilityLabel={label}
+      hitSlop={4}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 36,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        paddingHorizontal: theme.spacing.sm + 2,
+        borderRadius: theme.radius.pill,
+        borderWidth: selected ? 1.5 : 1,
+        borderColor: selected ? theme.colors.accent : theme.colors.textMuted,
+        backgroundColor: selected ? theme.colors.surface : "transparent",
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      {selected ? <Ionicons name="checkmark" size={14} color={theme.colors.accent} /> : null}
+      <Text
+        style={{
+          fontFamily: theme.font.family,
+          fontSize: theme.font.size.caption + 1,
+          color: selected ? theme.colors.accent : theme.colors.text,
+          fontWeight: selected ? theme.font.weight.bold : theme.font.weight.regular,
+        }}
       >
-        <Text
-          style={{
-            ...base,
-            fontSize: theme.font.size.caption + 1,
-            color: selected ? theme.colors.accent : theme.colors.textMuted,
-            fontWeight: selected ? theme.font.weight.bold : theme.font.weight.regular,
-          }}
-        >
-          {label}
-        </Text>
-        {selected && check ? (
-          <Ionicons name="checkmark" size={14} color={theme.colors.accent} />
-        ) : null}
-      </Pressable>
-    );
-  }
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
-  function StepButton({
-    icon,
-    label,
-    onPress,
-  }: {
-    icon: "add" | "remove";
-    label: string;
-    onPress: () => void;
-  }) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        hitSlop={4}
-        onPress={onPress}
-        style={({ pressed }) => ({
-          width: 44,
-          height: 44,
-          borderRadius: 22,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: theme.colors.surfaceAlt,
-          opacity: pressed ? 0.6 : 1,
-        })}
-      >
-        <Ionicons name={icon} size={22} color={theme.colors.text} />
-      </Pressable>
-    );
-  }
+function StepButton({
+  icon,
+  label,
+  disabled,
+  onPress,
+}: {
+  icon: "add" | "remove";
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: disabled ? theme.colors.border : theme.colors.textMuted,
+        backgroundColor: pressed ? theme.colors.surfaceAlt : "transparent",
+      })}
+    >
+      <Ionicons
+        name={icon}
+        size={22}
+        color={disabled ? theme.colors.textMuted : theme.colors.text}
+      />
+    </Pressable>
+  );
 }

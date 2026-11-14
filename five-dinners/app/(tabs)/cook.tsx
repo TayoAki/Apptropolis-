@@ -3,8 +3,9 @@ import { router } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
+import { Penny } from "../../components/Penny";
 import { EmptyState, LoadingState } from "../../components/EmptyState";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { DinnerCard, type LeftLine } from "../../components/cook/DinnerCard";
 import { track } from "../../data/analytics";
 import { useCollection } from "../../data/repo";
@@ -21,7 +22,7 @@ import {
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI"];
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 /** Seasonings and cooking oil: too small to be worth tracking as leftovers. */
 const SKIP = new Set(["oil", "onion", "garlic", "stock", "cumin", "paprika", "curry"]);
 
@@ -76,7 +77,8 @@ export default function CookScreen() {
         if (SKIP.has(key) || available <= 0) continue;
         lines.push({
           key,
-          label: `${pack.name} — ${formatQty(pack, rem)} of ${formatQty(pack, available)} left`,
+          name: pack.name,
+          amount: `${formatQty(pack, rem)} of ${formatQty(pack, available)}`,
           pct: (rem / available) * 100,
         });
       }
@@ -107,55 +109,32 @@ export default function CookScreen() {
     track("dinner_rated", { liked: !d.liked });
   };
 
-  const pennyName = allCooked ? "penny-happy" : carry.length > 0 ? "penny-half-full" : "penny-neutral";
+  const pennyMood = allCooked ? "happy" : carry.length > 0 ? "half-full" : "neutral";
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       contentContainerStyle={{
-        paddingTop: insets.top + theme.spacing.lg,
+        paddingTop: insets.top + theme.spacing.sm,
         paddingHorizontal: theme.spacing.md,
         paddingBottom: theme.spacing.xl,
         gap: theme.spacing.md,
+        // On a wide screen the page stays a readable column.
+        width: "100%",
+        maxWidth: 560,
+        alignSelf: "center",
       }}
     >
-      <View style={{ alignItems: "center", gap: theme.spacing.xs }}>
-        <Text
-          accessibilityRole="header"
-          style={{
-            color: theme.colors.text,
-            fontFamily: theme.font.family,
-            fontSize: theme.font.size.display,
-            fontWeight: theme.font.weight.bold,
-          }}
-        >
-          Cook
-        </Text>
-        <View
-          style={{
-            width: 112,
-            height: 3,
-            borderRadius: 2,
-            backgroundColor: theme.colors.text,
-          }}
-        />
-        {dinners.length > 0 ? (
-          <Text
-            style={{
-              marginTop: theme.spacing.sm,
-              color: theme.colors.text,
-              fontFamily: theme.font.family,
-              fontSize: theme.font.size.body + 2,
-              fontVariant: ["tabular-nums"],
-              textAlign: "center",
-            }}
-          >
-            {allCooked
+      <ScreenHeader
+        title="Cook"
+        subtitle={
+          dinners.length === 0
+            ? undefined
+            : allCooked
               ? "All five cooked. Here's what carries over."
-              : `${cookedCount} of ${dinners.length} cooked this week`}
-          </Text>
-        ) : null}
-      </View>
+              : `${cookedCount} of ${dinners.length} cooked this week`
+        }
+      />
 
       {loading ? (
         <LoadingState label="Loading this week's dinners" />
@@ -174,40 +153,42 @@ export default function CookScreen() {
               flexDirection: "row",
               justifyContent: "space-between",
               paddingHorizontal: theme.spacing.sm,
-              marginBottom: theme.spacing.xs,
+              paddingVertical: theme.spacing.sm,
             }}
           >
             {dinners.map((d, i) => (
               <View
                 key={d.id}
+                accessible
                 accessibilityLabel={`${DAY_LABELS[d.dayIndex - 1] ?? DAY_LABELS[i]}: ${d.cooked ? "cooked" : "not cooked yet"}`}
-                style={{ alignItems: "center", gap: theme.spacing.sm }}
+                style={{ alignItems: "center", gap: theme.spacing.xs + 2 }}
               >
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.font.family,
-                    fontSize: theme.font.size.body,
-                  }}
-                >
-                  {DAY_LABELS[d.dayIndex - 1] ?? DAY_LABELS[i]}
-                </Text>
                 <View
                   style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: d.cooked ? theme.colors.accent : "transparent",
-                    borderWidth: 2,
+                    borderWidth: 1.5,
                     borderColor: d.cooked ? theme.colors.accent : theme.colors.textMuted,
                   }}
                 >
                   {d.cooked ? (
-                    <Ionicons name="checkmark" size={26} color={theme.colors.onPrimary} />
+                    <Ionicons name="checkmark" size={22} color={theme.colors.onPrimary} />
                   ) : null}
                 </View>
+                <Text
+                  style={{
+                    color: d.cooked ? theme.colors.text : theme.colors.textMuted,
+                    fontFamily: theme.font.family,
+                    fontSize: theme.font.size.caption + 1,
+                    fontWeight: d.cooked ? theme.font.weight.bold : theme.font.weight.regular,
+                  }}
+                >
+                  {DAY_LABELS[d.dayIndex - 1] ?? DAY_LABELS[i]}
+                </Text>
               </View>
             ))}
           </View>
@@ -239,16 +220,11 @@ export default function CookScreen() {
               alignItems: "center",
               gap: theme.spacing.md,
               backgroundColor: theme.colors.surfaceAlt,
-              borderColor: theme.colors.border,
-              borderWidth: 1,
               borderRadius: theme.radius.md,
               padding: theme.spacing.md,
             }}
           >
-            <AiImage
-              name={pennyName}
-              style={{ width: 84, height: 112, resizeMode: "contain", backgroundColor: "transparent" }}
-            />
+            <Penny mood={pennyMood} width={72} height={96} />
             <View style={{ flex: 1, gap: theme.spacing.sm }}>
               <Text
                 style={{
@@ -267,8 +243,6 @@ export default function CookScreen() {
                       key={label}
                       style={{
                         borderRadius: theme.radius.pill,
-                        borderWidth: 1,
-                        borderColor: theme.colors.textMuted,
                         backgroundColor: theme.colors.surface,
                         paddingHorizontal: theme.spacing.sm + 2,
                         paddingVertical: theme.spacing.xs + 1,
@@ -278,7 +252,7 @@ export default function CookScreen() {
                         style={{
                           color: theme.colors.text,
                           fontFamily: theme.font.family,
-                          fontSize: theme.font.size.body,
+                          fontSize: theme.font.size.caption + 1,
                           fontVariant: ["tabular-nums"],
                         }}
                       >
@@ -290,7 +264,7 @@ export default function CookScreen() {
               ) : (
                 <Text
                   style={{
-                    color: theme.colors.textMuted,
+                    color: theme.colors.text,
                     fontFamily: theme.font.family,
                     fontSize: theme.font.size.body,
                   }}

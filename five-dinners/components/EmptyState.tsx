@@ -8,12 +8,16 @@ export function EmptyState({
   title,
   body,
   actionLabel,
+  actionLoading,
   onAction,
 }: {
-  icon?: React.ComponentProps<typeof Ionicons>["name"];
+  /** Pass null when a picture already sits above the message. */
+  icon?: React.ComponentProps<typeof Ionicons>["name"] | null;
   title: string;
   body: string;
   actionLabel?: string;
+  /** The action is running: the button stays in place and shows a spinner. */
+  actionLoading?: boolean;
   onAction?: () => void;
 }) {
   const theme = useTheme();
@@ -25,7 +29,7 @@ export function EmptyState({
         padding: theme.spacing.xl,
       }}
     >
-      <Ionicons name={icon} size={36} color={theme.colors.textMuted} />
+      {icon ? <Ionicons name={icon} size={36} color={theme.colors.textMuted} /> : null}
       <Text
         style={{
           color: theme.colors.text,
@@ -48,7 +52,12 @@ export function EmptyState({
         {body}
       </Text>
       {actionLabel && onAction ? (
-        <Button label={actionLabel} onPress={onAction} style={{ marginTop: theme.spacing.sm }} />
+        <Button
+          label={actionLabel}
+          onPress={onAction}
+          loading={actionLoading}
+          style={{ marginTop: theme.spacing.sm, minWidth: 180 }}
+        />
       ) : null}
     </View>
   );

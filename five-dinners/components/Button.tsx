@@ -2,8 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Pressable, Text, type StyleProp, type ViewStyle } from "react-native";
 import { useTheme } from "../theme/ThemeProvider";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 
+/**
+ * The app's one button. primary is the filled call to action, secondary a quiet filled button,
+ * outline the second choice next to a primary, ghost a text button, danger a destructive outline.
+ */
 export function Button({
   label,
   onPress,
@@ -25,27 +29,38 @@ export function Button({
 }) {
   const theme = useTheme();
   const inactive = disabled || loading;
+  // A disabled button goes quiet but stays readable: muted label, no chromatic fill, no opacity.
+  const off = !!disabled && !loading;
 
-  const background =
-    variant === "primary"
+  const background = off
+    ? variant === "primary" || variant === "secondary"
+      ? theme.colors.surfaceAlt
+      : "transparent"
+    : variant === "primary"
       ? theme.colors.primary
       : variant === "secondary"
         ? theme.colors.surfaceAlt
         : "transparent";
-  const foreground =
-    variant === "primary"
+  const foreground = off
+    ? theme.colors.textMuted
+    : variant === "primary"
       ? theme.colors.onPrimary
       : variant === "danger"
         ? theme.colors.danger
-        : variant === "ghost"
+        : variant === "ghost" || variant === "outline"
           ? theme.colors.primary
           : theme.colors.text;
-  const borderColor =
-    variant === "secondary"
+  const borderColor = off
+    ? variant === "ghost"
+      ? "transparent"
+      : theme.colors.border
+    : variant === "secondary"
       ? theme.colors.border
-      : variant === "danger"
-        ? theme.colors.danger
-        : "transparent";
+      : variant === "outline"
+        ? theme.colors.primary
+        : variant === "danger"
+          ? theme.colors.danger
+          : "transparent";
 
   return (
     <Pressable
@@ -54,7 +69,6 @@ export function Button({
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       disabled={inactive}
       onPress={onPress}
-      hitSlop={6}
       style={({ pressed }) => [
         {
           minHeight: 48,
@@ -62,13 +76,13 @@ export function Button({
           alignItems: "center",
           justifyContent: "center",
           gap: theme.spacing.sm,
-          paddingHorizontal: theme.spacing.lg,
+          paddingHorizontal: theme.spacing.md,
           paddingVertical: theme.spacing.sm,
-          borderRadius: theme.radius.pill,
-          borderWidth: 1,
+          borderRadius: theme.radius.md,
+          borderWidth: 1.5,
           borderColor,
           backgroundColor: background,
-          opacity: inactive ? 0.5 : pressed ? 0.8 : 1,
+          opacity: pressed ? 0.8 : 1,
         },
         style,
       ]}
@@ -80,10 +94,12 @@ export function Button({
       ) : null}
       <Text
         style={{
+          flexShrink: 1,
           color: foreground,
           fontSize: theme.font.size.body,
           fontWeight: theme.font.weight.bold,
           fontFamily: theme.font.family,
+          textAlign: "center",
         }}
       >
         {label}

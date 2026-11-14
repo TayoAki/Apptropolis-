@@ -3,8 +3,8 @@ import { Stack } from "expo-router";
 import { Children, useState, type ReactNode } from "react";
 import { Linking, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
 import { LoadingState } from "../components/EmptyState";
+import { Penny } from "../components/Penny";
 import { useAppState } from "../data/app-state";
 import { appInfo } from "../data/app-info";
 import { usePurchases } from "../data/purchases";
@@ -40,10 +40,9 @@ const REMINDER_TIMES: [number, number][] = [
   [19, 0],
 ];
 
+/** 24-hour times, the same way onboarding writes them ("9:30", "17:00"). */
 function formatTime(hour: number, minute: number): string {
-  const suffix = hour >= 12 ? "pm" : "am";
-  const h = hour % 12 === 0 ? 12 : hour % 12;
-  return `${h}:${String(minute).padStart(2, "0")} ${suffix}`;
+  return `${hour}:${String(minute).padStart(2, "0")}`;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -70,8 +69,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
           accessibilityRole="header"
           style={{
             color: theme.colors.text,
-            fontSize: theme.font.size.title,
-            fontWeight: theme.font.weight.medium,
+            fontSize: theme.font.size.body,
+            fontWeight: theme.font.weight.bold,
             fontFamily: theme.font.family,
           }}
         >
@@ -83,7 +82,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
           key={i}
           style={{
             paddingHorizontal: theme.spacing.md,
-            paddingVertical: theme.spacing.sm + 2,
+            paddingVertical: theme.spacing.sm,
             borderTopWidth: i === 0 ? 0 : 1,
             borderTopColor: theme.colors.border,
           }}
@@ -111,7 +110,7 @@ function Body({
     <Text
       style={{
         color: muted ? theme.colors.textMuted : theme.colors.text,
-        fontSize: size ?? theme.font.size.body + 1,
+        fontSize: size ?? theme.font.size.body + 2,
         fontWeight: weight ?? theme.font.weight.regular,
         fontFamily: theme.font.family,
       }}
@@ -143,19 +142,22 @@ function Stepper({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={name}
+      accessibilityState={{ disabled: !enabled }}
       disabled={!enabled}
       onPress={onPress}
-      hitSlop={6}
       style={({ pressed }) => ({
         width: 44,
-        height: 40,
+        height: 44,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: pressed ? theme.colors.surfaceAlt : "transparent",
-        opacity: enabled ? 1 : 0.35,
       })}
     >
-      <Ionicons name={icon} size={18} color={theme.colors.text} />
+      <Ionicons
+        name={icon}
+        size={20}
+        color={enabled ? theme.colors.text : theme.colors.textMuted + "80"}
+      />
     </Pressable>
   );
   return (
@@ -165,7 +167,7 @@ function Stepper({
         flexDirection: "row",
         alignItems: "center",
         borderWidth: 1,
-        borderColor: theme.colors.text,
+        borderColor: theme.colors.textMuted,
         borderRadius: theme.radius.md,
         overflow: "hidden",
       }}
@@ -173,19 +175,20 @@ function Stepper({
       {button("remove", onDecrease, canDecrease, `Decrease ${noun}`)}
       <View
         style={{
-          minWidth: 62,
+          minWidth: 52,
+          paddingHorizontal: theme.spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          height: 40,
+          height: 44,
           borderLeftWidth: 1,
           borderRightWidth: 1,
-          borderColor: theme.colors.text,
+          borderColor: theme.colors.textMuted,
         }}
       >
         <Text
           style={{
             color: theme.colors.text,
-            fontSize: theme.font.size.body + 1,
+            fontSize: theme.font.size.body + 2,
             fontWeight: theme.font.weight.medium,
             fontFamily: theme.font.family,
             fontVariant: ["tabular-nums"],
@@ -216,29 +219,34 @@ function Chip({
 }) {
   const theme = useTheme();
   const active = !!selected;
-  const color = active
-    ? tone === "primary"
-      ? theme.colors.primary
-      : theme.colors.text
-    : theme.colors.textMuted;
-  const border = active && tone === "primary" ? theme.colors.primary : theme.colors.border;
+  const strong = active && tone === "primary";
+  const color = strong
+    ? theme.colors.primary
+    : active
+      ? theme.colors.text
+      : theme.colors.textMuted;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      hitSlop={6}
+      hitSlop={2}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
         gap: 4,
-        minHeight: 36,
+        minHeight: 40,
         paddingHorizontal: theme.spacing.sm + 4,
         borderRadius: theme.radius.pill,
-        borderWidth: active && tone === "primary" ? 1.5 : 1,
-        borderColor: border,
-        backgroundColor: pressed ? theme.colors.surfaceAlt : "transparent",
+        // The outline is what makes a chip a control, so it is never the faint hairline color.
+        borderWidth: strong ? 1.5 : 1,
+        borderColor: strong ? theme.colors.primary : theme.colors.textMuted,
+        backgroundColor: pressed
+          ? theme.colors.surfaceAlt
+          : active
+            ? color + "14"
+            : "transparent",
       })}
     >
       {active ? (
@@ -250,7 +258,7 @@ function Chip({
         style={{
           color,
           fontSize: theme.font.size.body,
-          fontWeight: theme.font.weight.regular,
+          fontWeight: active ? theme.font.weight.medium : theme.font.weight.regular,
           fontFamily: theme.font.family,
         }}
       >
@@ -278,10 +286,10 @@ function NavRow({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? (value ? `${label}, ${value}` : label)}
+      accessibilityState={expanded === undefined ? undefined : { expanded }}
       onPress={onPress}
-      hitSlop={6}
       style={({ pressed }) => ({
-        minHeight: 36,
+        minHeight: 44,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
@@ -293,8 +301,8 @@ function NavRow({
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 }}>
         {value ? <Body muted>{value}</Body> : null}
         <Ionicons
-          name={expanded ? "chevron-down" : "chevron-forward"}
-          size={16}
+          name={expanded === undefined ? "chevron-forward" : expanded ? "chevron-up" : "chevron-down"}
+          size={18}
           color={theme.colors.textMuted}
         />
       </View>
@@ -361,6 +369,11 @@ export default function SettingsScreen() {
   }
 
   const defaultOffer = purchases.offers.find((o) => o.id === purchases.defaultOfferId);
+  // A one-off purchase has nothing to manage in the store's subscription settings.
+  const activeIsOneOff = purchases.activeOffer
+    ? purchases.activeOffer.period === "lifetime" ||
+      /one-?off|one-time/i.test(purchases.activeOffer.label)
+    : false;
   const manageUrl =
     Platform.OS === "ios"
       ? "https://apps.apple.com/account/subscriptions"
@@ -373,27 +386,28 @@ export default function SettingsScreen() {
       accessibilityRole="link"
       accessibilityLabel={label}
       onPress={() => void Linking.openURL(url)}
-      hitSlop={6}
       style={({ pressed }) => ({
-        minHeight: 36,
+        minHeight: 44,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
+        gap: theme.spacing.sm,
         opacity: pressed ? 0.6 : 1,
       })}
     >
       <Body>{label}</Body>
-      <Ionicons name={icon} size={16} color={theme.colors.textMuted} />
+      <Ionicons name={icon} size={18} color={theme.colors.textMuted} />
     </Pressable>
   );
 
-  const small = (text: string, color = theme.colors.textMuted) => (
+  const note = theme.font.size.caption + 1;
+  const small = (text: string) => (
     <Text
       style={{
-        color,
-        fontSize: theme.font.size.body,
+        color: theme.colors.textMuted,
+        fontSize: note,
         fontFamily: theme.font.family,
-        paddingHorizontal: theme.spacing.xs,
+        paddingHorizontal: theme.spacing.md,
       }}
     >
       {text}
@@ -402,17 +416,30 @@ export default function SettingsScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: "Settings" }} />
+      <Stack.Screen
+        options={{ title: "Settings", headerStyle: { backgroundColor: theme.colors.background } }}
+      />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.colors.background }}
         contentContainerStyle={{
           padding: theme.spacing.md,
+          paddingTop: theme.spacing.sm,
           paddingBottom: insets.bottom + theme.spacing.xl,
           gap: theme.spacing.md,
+          width: "100%",
+          maxWidth: 560,
+          alignSelf: "center",
         }}
       >
         <Section title="Household">
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: theme.spacing.sm,
+            }}
+          >
             <Body>Cooking for</Body>
             <Stepper
               noun="household size"
@@ -425,11 +452,20 @@ export default function SettingsScreen() {
             />
           </View>
           <View style={{ gap: theme.spacing.xs }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Body>Default dinner budget</Body>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: theme.spacing.sm,
+              }}
+            >
+              <View style={{ flexShrink: 1 }}>
+                <Body>Dinner budget</Body>
+              </View>
               <Stepper
                 noun="budget"
-                label="Default dinner budget"
+                label="Dinner budget for the week"
                 value={`£${Math.round(budget)}`}
                 canDecrease={budget > 10}
                 canIncrease={budget < 100}
@@ -437,7 +473,7 @@ export default function SettingsScreen() {
                 onIncrease={() => void setAnswer("weeklybudget", `£${Math.min(100, budget + 5)}`)}
               />
             </View>
-            <Body muted size={theme.font.size.body}>
+            <Body muted size={note}>
               For the five dinners, not the whole shop.
             </Body>
           </View>
@@ -554,12 +590,27 @@ export default function SettingsScreen() {
               />
             ))}
           </View>
-          <NavRow
-            label="Vegetarian nights"
-            value={vegNights === 0 ? "None" : `${vegNights} a week`}
-            accessibilityLabel={`Vegetarian nights, ${vegNights === 0 ? "none" : `${vegNights} a week`}. Tap to change.`}
-            onPress={() => void setAnswer("vegnights", String(vegNights >= 3 ? 0 : vegNights + 1))}
-          />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: theme.spacing.sm,
+            }}
+          >
+            <View style={{ flexShrink: 1 }}>
+              <Body>Vegetarian nights</Body>
+            </View>
+            <Stepper
+              noun="vegetarian nights"
+              label="Vegetarian nights a week"
+              value={vegNights === 0 ? "None" : `${vegNights} a week`}
+              canDecrease={vegNights > 0}
+              canIncrease={vegNights < 3}
+              onDecrease={() => void setAnswer("vegnights", String(vegNights - 1))}
+              onIncrease={() => void setAnswer("vegnights", String(vegNights + 1))}
+            />
+          </View>
         </Section>
 
         <Section title="Plan reminder">
@@ -577,8 +628,9 @@ export default function SettingsScreen() {
               value={reminder.enabled}
               disabled={!reminder.ready}
               onValueChange={(v) => void toggleReminder(v)}
-              trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
-              thumbColor={theme.colors.surface}
+              trackColor={{ true: theme.colors.primary, false: theme.colors.textMuted }}
+              ios_backgroundColor={theme.colors.textMuted}
+              thumbColor={theme.colors.onPrimary}
             />
           </View>
           <NavRow
@@ -604,19 +656,19 @@ export default function SettingsScreen() {
             </View>
           ) : null}
           {reminderNote || reminder.permission === "denied" ? (
-            <Body muted size={theme.font.size.body}>
+            <Body muted size={note}>
               {reminderNote ??
                 "Notifications are off for Five Dinners. Allow them in your phone's Settings to get reminders."}
             </Body>
           ) : (
-            <Body muted size={theme.font.size.body}>
+            <Body muted size={note}>
               Repeats every day at this time, so Sunday planning never slips by.
             </Body>
           )}
         </Section>
 
         <Section title="Your plan">
-          <View style={{ gap: theme.spacing.xs }}>
+          <View style={{ minHeight: 44, justifyContent: "center" }}>
             {purchases.isPremium ? (
               <Body weight="500">
                 Premium{purchases.activeOffer ? ` · ${purchases.activeOffer.label}` : ""}
@@ -624,87 +676,83 @@ export default function SettingsScreen() {
             ) : (
               <Body>Free week · ends {freeEnds}</Body>
             )}
-            <View
-              style={{
+          </View>
+          {purchases.isPremium ? (
+            activeIsOneOff ? null : (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Manage subscription"
+                onPress={() => void Linking.openURL(manageUrl)}
+                style={({ pressed }) => ({
+                  minHeight: 44,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: theme.spacing.sm,
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <Body>Manage subscription</Body>
+                <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+              </Pressable>
+            )
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Keep cooking, see the one-off offer"
+              onPress={() => purchases.openPaywall()}
+              style={({ pressed }) => ({
+                minHeight: 44,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: theme.spacing.sm,
-              }}
+                opacity: pressed ? 0.6 : 1,
+              })}
             >
-              {purchases.isPremium ? (
-                <Pressable
-                  accessibilityRole="link"
-                  accessibilityLabel="Manage subscription"
-                  hitSlop={8}
-                  onPress={() => void Linking.openURL(manageUrl)}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, minHeight: 36, justifyContent: "center" })}
-                >
-                  <Text
-                    style={{
-                      color: theme.colors.primary,
-                      fontSize: theme.font.size.body + 1,
-                      fontFamily: theme.font.family,
-                      textDecorationLine: "underline",
-                    }}
-                  >
-                    Manage subscription
-                  </Text>
-                </Pressable>
-              ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Keep cooking, see the one-off offer"
-                  hitSlop={8}
-                  onPress={() => purchases.openPaywall()}
-                  style={({ pressed }) => ({
-                    opacity: pressed ? 0.6 : 1,
-                    minHeight: 36,
-                    justifyContent: "center",
-                    flexShrink: 1,
-                  })}
-                >
-                  <Text
-                    style={{
-                      color: theme.colors.primary,
-                      fontSize: theme.font.size.body + 1,
-                      fontWeight: theme.font.weight.medium,
-                      fontFamily: theme.font.family,
-                      textDecorationLine: "underline",
-                    }}
-                  >
-                    Keep cooking{defaultOffer ? ` — ${defaultOffer.price} one-off` : ""} ›
-                  </Text>
-                </Pressable>
-              )}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Restore purchase"
-                disabled={purchases.status === "restoring"}
-                hitSlop={8}
-                onPress={() => void restore()}
-                style={({ pressed }) => ({
-                  opacity: pressed || purchases.status === "restoring" ? 0.6 : 1,
-                  minHeight: 36,
-                  justifyContent: "center",
-                })}
+              <Text
+                style={{
+                  flexShrink: 1,
+                  color: theme.colors.primary,
+                  fontSize: theme.font.size.body + 2,
+                  fontWeight: theme.font.weight.medium,
+                  fontFamily: theme.font.family,
+                }}
               >
-                <Text
-                  style={{
-                    color: theme.colors.accent,
-                    fontSize: theme.font.size.body,
-                    fontFamily: theme.font.family,
-                    textDecorationLine: "underline",
-                  }}
-                >
-                  {purchases.status === "restoring" ? "Restoring…" : "Restore purchase"}
-                </Text>
-              </Pressable>
-            </View>
-            {restoreNote || purchases.error ? (
-              <Body muted size={theme.font.size.body}>
-                {restoreNote ?? purchases.error}
+                Keep cooking{defaultOffer ? ` — ${defaultOffer.price} one-off` : ""}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
+            </Pressable>
+          )}
+          <View style={{ gap: theme.spacing.xs }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Restore purchase"
+              accessibilityState={{ busy: purchases.status === "restoring" }}
+              disabled={purchases.status === "restoring"}
+              onPress={() => void restore()}
+              style={({ pressed }) => ({
+                minHeight: 44,
+                justifyContent: "center",
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Body muted={purchases.status === "restoring"}>
+                {purchases.status === "restoring" ? "Restoring…" : "Restore purchase"}
               </Body>
+            </Pressable>
+            {restoreNote || purchases.error ? (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{
+                  color: theme.colors.textMuted,
+                  fontSize: note,
+                  fontFamily: theme.font.family,
+                  paddingBottom: theme.spacing.xs,
+                }}
+              >
+                {restoreNote ?? purchases.error}
+              </Text>
             ) : null}
           </View>
         </Section>
@@ -729,9 +777,9 @@ export default function SettingsScreen() {
               ? linkRow("Contact support", "mail-outline", `mailto:${appInfo.supportEmail}`)
               : null}
             {appInfo.privacyUrl
-              ? linkRow("Privacy Policy", "open-outline", appInfo.privacyUrl)
+              ? linkRow("Privacy policy", "open-outline", appInfo.privacyUrl)
               : null}
-            {appInfo.termsUrl ? linkRow("Terms of Use", "open-outline", appInfo.termsUrl) : null}
+            {appInfo.termsUrl ? linkRow("Terms of use", "open-outline", appInfo.termsUrl) : null}
           </Section>
         ) : null}
 
@@ -761,22 +809,15 @@ export default function SettingsScreen() {
           <Text
             style={{
               color: theme.colors.textMuted,
-              fontSize: theme.font.size.body,
+              fontSize: note,
               fontFamily: theme.font.family,
               textAlign: "center",
+              fontVariant: ["tabular-nums"],
             }}
           >
             {appInfo.name} · {RECIPES.length} tested recipes · Version {appInfo.version}
           </Text>
-          <AiImage
-            name={purchases.isPremium ? "penny-happy" : "penny-neutral"}
-            style={{
-              width: 64,
-              height: 72,
-              resizeMode: "contain",
-              backgroundColor: "transparent",
-            }}
-          />
+          <Penny mood={purchases.isPremium ? "happy" : "neutral"} width={64} height={72} />
         </View>
       </ScrollView>
     </>

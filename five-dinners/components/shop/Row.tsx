@@ -4,10 +4,14 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { formatPrice, formatPriceDiff } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
+/** Width of the price column, so estimates and "paid" boxes line up down the list. */
+const PRICE_COLUMN = 76;
+
 export function ShopRow({
   name,
   subtitle,
   ticked,
+  covered,
   onToggle,
   showPrice,
   estimate,
@@ -18,6 +22,8 @@ export function ShopRow({
   name: string;
   subtitle: string;
   ticked: boolean;
+  /** Already in the cupboard: shown as done, and not something to tick. */
+  covered?: boolean;
   onToggle: () => void;
   showPrice: boolean;
   estimate: number;
@@ -44,26 +50,21 @@ export function ShopRow({
   }
 
   const diff = paid > 0 ? Math.round((paid - estimate) * 100) / 100 : 0;
-  const chipBase = {
-    borderRadius: theme.radius.sm,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    backgroundColor: theme.colors.surfaceAlt,
-  };
-  const chipText = {
-    color: theme.colors.text,
-    fontSize: theme.font.size.caption,
-    fontWeight: theme.font.weight.medium,
+  const meta = {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.size.caption + 1,
     fontFamily: theme.font.family,
     fontVariant: ["tabular-nums" as const],
   };
+  const done = ticked || !!covered;
 
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        minHeight: 56,
+        gap: theme.spacing.sm,
+        minHeight: 60,
         backgroundColor: theme.colors.surface,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
@@ -72,104 +73,98 @@ export function ShopRow({
     >
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: ticked }}
+        accessibilityState={{ checked: done, disabled: !!covered }}
         accessibilityLabel={`${name}, ${subtitle}`}
+        disabled={covered}
         onPress={onToggle}
         style={({ pressed }) => ({
           flex: 1,
           flexDirection: "row",
           alignItems: "center",
-          gap: theme.spacing.sm,
-          minHeight: 56,
+          gap: theme.spacing.sm + 2,
+          minHeight: 60,
           paddingLeft: theme.spacing.md,
-          paddingVertical: theme.spacing.sm,
+          paddingVertical: theme.spacing.sm + 2,
           opacity: pressed ? 0.7 : 1,
         })}
       >
         <Ionicons
-          name={ticked ? "checkmark-circle-outline" : "ellipse-outline"}
+          name={done ? "checkmark-circle-outline" : "ellipse-outline"}
           size={28}
-          color={ticked ? theme.colors.text : theme.colors.textMuted}
+          color={covered ? theme.colors.accent : ticked ? theme.colors.text : theme.colors.textMuted}
         />
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, gap: 2 }}>
           <Text
-            numberOfLines={1}
             style={{
               color: theme.colors.text,
-              fontSize: theme.font.size.body + 1,
+              fontSize: theme.font.size.body + 2,
               fontWeight: theme.font.weight.medium,
               fontFamily: theme.font.family,
             }}
           >
             {name}
           </Text>
-          <Text
-            numberOfLines={2}
-            style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
-              fontFamily: theme.font.family,
-            }}
-          >
-            {subtitle}
-          </Text>
+          <Text style={meta}>{subtitle}</Text>
+          {showPrice && ticked ? (
+            <Text style={meta}>
+              {`Estimate\u00A0${formatPrice(estimate)}${dateLabel ? ` · checked\u00A0${dateLabel.replace(/ /g, "\u00A0")}` : ""}`}
+            </Text>
+          ) : null}
         </View>
       </Pressable>
 
       {showPrice ? (
         ticked ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
-            <View style={chipBase}>
-              <Text style={chipText}>{`${formatPrice(estimate)}${dateLabel ? ` · ${dateLabel}` : ""}`}</Text>
-            </View>
+          <View style={{ width: PRICE_COLUMN, alignItems: "flex-end", gap: 2 }}>
             <TextInput
               value={text}
               onChangeText={setText}
               onEndEditing={commit}
               onSubmitEditing={commit}
               keyboardType="decimal-pad"
+              returnKeyType="done"
               placeholder={formatPrice(estimate)}
               placeholderTextColor={theme.colors.textMuted}
               accessibilityLabel={`What you paid for ${name}`}
               selectTextOnFocus
               style={{
-                width: 72,
-                height: 40,
+                width: PRICE_COLUMN,
+                height: 44,
                 textAlign: "center",
                 color: theme.colors.text,
                 fontSize: theme.font.size.body,
                 fontFamily: theme.font.family,
                 fontVariant: ["tabular-nums"],
                 borderWidth: 1,
-                borderColor: theme.colors.text,
+                borderColor: theme.colors.textMuted,
                 borderRadius: theme.radius.md,
                 backgroundColor: theme.colors.surface,
               }}
             />
-            <View
+            <Text
               style={[
-                chipBase,
-                diff > 0 ? { backgroundColor: theme.colors.primary } : null,
+                meta,
+                { fontSize: theme.font.size.caption, fontWeight: theme.font.weight.medium },
+                paid > 0 && diff > 0 ? { color: theme.colors.warning } : null,
+                paid > 0 && diff < 0 ? { color: theme.colors.success } : null,
               ]}
             >
-              <Text
-                style={[
-                  chipText,
-                  diff > 0
-                    ? { color: theme.colors.onPrimary }
-                    : diff < 0
-                      ? { color: theme.colors.success }
-                      : { color: theme.colors.textMuted },
-                ]}
-              >
-                {paid > 0 ? (diff === 0 ? "±£0.00" : formatPriceDiff(diff)) : "–"}
-              </Text>
-            </View>
+              {paid > 0 ? (diff === 0 ? "±£0.00" : formatPriceDiff(diff)) : "Paid?"}
+            </Text>
           </View>
         ) : (
-          <View style={[chipBase, { paddingVertical: theme.spacing.sm }]}>
-            <Text style={[chipText, { fontSize: theme.font.size.body }]}>{formatPrice(estimate)}</Text>
-          </View>
+          <Text
+            style={{
+              textAlign: "right",
+              color: theme.colors.text,
+              fontSize: theme.font.size.body,
+              fontWeight: theme.font.weight.medium,
+              fontFamily: theme.font.family,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {formatPrice(estimate)}
+          </Text>
         )
       ) : null}
     </View>

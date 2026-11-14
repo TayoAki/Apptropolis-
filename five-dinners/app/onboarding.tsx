@@ -2,9 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
+import { AiImage, aiImageUrl } from "../components/AiImage";
 import { Button } from "../components/Button";
 import { LoadingState } from "../components/EmptyState";
+import { PackIcon } from "../components/PackIcon";
+import { Penny } from "../components/Penny";
 import { useAppState } from "../data/app-state";
 import { useCollection } from "../data/repo";
 import { PACK_LIST, todayISO, type PantryItem } from "../data/schema";
@@ -47,6 +49,9 @@ const PICTURES: Record<string, string> = {
   paprika: "a small jar of red paprika, soft hand-drawn illustration",
   curry: "a small jar of yellow curry powder, soft hand-drawn illustration",
 };
+
+const SHELF_PICTURE =
+  "a wooden kitchen shelf with a bottle of olive oil, a bag of rice, a bag of pasta, a tin of tomatoes, a string of onions and a garlic bulb, soft hand-drawn illustration";
 
 const REMINDER_HOURS = [8, 9, 10, 18];
 
@@ -204,12 +209,7 @@ export default function Onboarding() {
     (id === "budget" && !budget) ||
     (id === "staples" && pantry.loading);
 
-  const penny =
-    id === "reminder"
-      ? "penny-happy"
-      : id === "staples"
-        ? "penny-half-full"
-        : "penny-neutral";
+  const penny = id === "reminder" ? "happy" : id === "staples" ? "half-full" : "neutral";
 
   function renderChoice(
     options: { value: string; note: string }[],
@@ -218,14 +218,18 @@ export default function Onboarding() {
     label: string,
   ) {
     return (
-      <View style={{ gap: theme.spacing.sm, marginTop: theme.spacing.lg }} accessibilityLabel={label}>
+      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel={label}
+        style={{ gap: theme.spacing.sm, marginTop: theme.spacing.lg }}
+      >
         {options.map((option) => {
           const on = current === option.value;
           return (
             <Pressable
               key={option.value}
               accessibilityRole="radio"
-              accessibilityState={{ selected: on }}
+              accessibilityState={{ checked: on }}
               accessibilityLabel={`${option.value}, ${option.note}`}
               onPress={() => onPick(option.value)}
               style={({ pressed }) => ({
@@ -238,7 +242,7 @@ export default function Onboarding() {
                 borderRadius: theme.radius.md,
                 borderWidth: 2,
                 borderColor: on ? theme.colors.primary : theme.colors.border,
-                backgroundColor: on ? theme.colors.surface : theme.colors.surfaceAlt,
+                backgroundColor: on ? theme.colors.primary + "14" : theme.colors.surface,
                 opacity: pressed ? 0.85 : 1,
               })}
             >
@@ -264,8 +268,8 @@ export default function Onboarding() {
                 </Text>
               </View>
               <Ionicons
-                name={on ? "checkmark-circle" : "ellipse-outline"}
-                size={28}
+                name={on ? "radio-button-on" : "radio-button-off"}
+                size={26}
                 color={on ? theme.colors.primary : theme.colors.textMuted}
               />
             </Pressable>
@@ -278,21 +282,22 @@ export default function Onboarding() {
   function renderStaples() {
     return (
       <View>
-        <AiImage
-          prompt="a wooden kitchen shelf with a bottle of olive oil, a bag of rice, a bag of pasta, a tin of tomatoes, a string of onions and a garlic bulb, soft hand-drawn illustration"
-          style={{ height: 110, borderRadius: theme.radius.md, marginTop: theme.spacing.md }}
-        />
+        {aiImageUrl(SHELF_PICTURE) ? (
+          <AiImage
+            prompt={SHELF_PICTURE}
+            style={{ height: 110, borderRadius: theme.radius.md, marginTop: theme.spacing.md }}
+          />
+        ) : null}
         <Text
+          accessibilityLiveRegion="polite"
           style={{
             ...textBase,
             color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
+            fontSize: theme.font.size.caption + 1,
             fontWeight: theme.font.weight.medium,
-            textAlign: "right",
-            textTransform: "uppercase",
-            letterSpacing: 1,
+            textAlign: "center",
             fontVariant: ["tabular-nums"],
-            marginTop: theme.spacing.sm,
+            marginTop: theme.spacing.md,
             marginBottom: theme.spacing.md,
           }}
         >
@@ -320,29 +325,25 @@ export default function Onboarding() {
                     paddingHorizontal: theme.spacing.xs,
                     paddingTop: theme.spacing.sm,
                     paddingBottom: theme.spacing.sm,
+                    gap: theme.spacing.xs + 2,
                     borderRadius: theme.radius.md,
                     borderWidth: 2,
-                    borderColor: on ? theme.colors.primary : theme.colors.surface,
-                    backgroundColor: theme.colors.surface,
+                    borderColor: on ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: on ? theme.colors.primary + "14" : theme.colors.surface,
                     opacity: pressed ? 0.85 : 1,
                   })}
                 >
                   <View style={{ position: "absolute", top: 4, right: 4 }}>
                     <Ionicons
-                      name={on ? "checkmark" : "ellipse-outline"}
-                      size={on ? 20 : 18}
+                      name={on ? "checkbox" : "square-outline"}
+                      size={18}
                       color={on ? theme.colors.primary : theme.colors.textMuted}
                     />
                   </View>
-                  <AiImage
+                  <PackIcon
+                    packKey={pack.key}
+                    size={40}
                     prompt={PICTURES[pack.key] ?? `${pack.name}, soft hand-drawn illustration`}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: theme.radius.sm,
-                      marginBottom: theme.spacing.xs,
-                      resizeMode: "contain",
-                    }}
                   />
                   <Text
                     style={{
@@ -376,29 +377,36 @@ export default function Onboarding() {
         >
           Which time suits you?
         </Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Reminder time"
+          style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}
+        >
           {REMINDER_HOURS.map((h) => {
             const on = hour === h;
             return (
               <Pressable
                 key={h}
                 accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
+                accessibilityState={{ checked: on }}
                 accessibilityLabel={`Remind me at ${formatHour(h)}`}
                 onPress={() => setHour(h)}
                 style={({ pressed }) => ({
                   minHeight: 48,
                   minWidth: 76,
+                  flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
+                  gap: theme.spacing.xs,
                   paddingHorizontal: theme.spacing.md,
                   borderRadius: theme.radius.pill,
-                  borderWidth: 2,
-                  borderColor: on ? theme.colors.primary : theme.colors.border,
+                  borderWidth: 1.5,
+                  borderColor: on ? theme.colors.primary : theme.colors.textMuted,
                   backgroundColor: on ? theme.colors.primary : theme.colors.surface,
                   opacity: pressed ? 0.85 : 1,
                 })}
               >
+                {on ? <Ionicons name="checkmark" size={16} color={theme.colors.onPrimary} /> : null}
                 <Text
                   style={{
                     ...textBase,
@@ -416,7 +424,9 @@ export default function Onboarding() {
         </View>
         <View
           style={{
-            backgroundColor: theme.colors.surfaceAlt,
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderWidth: 1,
             borderRadius: theme.radius.md,
             padding: theme.spacing.md,
             gap: theme.spacing.xs,
@@ -426,7 +436,7 @@ export default function Onboarding() {
             style={{
               ...textBase,
               color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
+              fontSize: theme.font.size.caption + 1,
               fontVariant: ["tabular-nums"],
             }}
           >
@@ -597,44 +607,48 @@ export default function Onboarding() {
           alignSelf: "center",
         }}
       >
-        {id === "staples" ? (
-          <Text
-            style={{
-              ...textBase,
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption + 1,
-              maxWidth: "62%",
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            Cooking for {servings || "—"} · {budget || "£—"} a week. Change any time in Settings.
-          </Text>
-        ) : null}
-        <View>
-          <View
-            pointerEvents="none"
-            style={{ position: "absolute", right: theme.spacing.lg, top: -48, width: 76, height: 64 }}
-          >
-            <AiImage
-              name={penny}
-              style={{ width: 76, height: 64, backgroundColor: "transparent", resizeMode: "contain" }}
-            />
+        {/* Penny stands on the button's top edge, clear of its label; on the staples step the
+            summary of the answers so far sits beside her. */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+            gap: theme.spacing.md,
+            marginBottom: -theme.spacing.sm,
+          }}
+        >
+          {id === "staples" ? (
+            <Text
+              style={{
+                ...textBase,
+                flex: 1,
+                color: theme.colors.textMuted,
+                fontSize: theme.font.size.caption + 1,
+                paddingBottom: theme.spacing.sm + 4,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              Cooking for {servings || "—"} · {budget || "£—"} a week. Change any time in Settings.
+            </Text>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
+          <View style={{ marginRight: theme.spacing.md }}>
+            <Penny mood={penny} width={64} />
           </View>
-          <Button
-            label={primaryLabel}
-            onPress={onPrimary}
-            disabled={primaryDisabled}
-            loading={saving || enabling}
-            style={{ alignSelf: "stretch", borderRadius: theme.radius.md }}
-          />
         </View>
+        <Button
+          label={primaryLabel}
+          onPress={onPrimary}
+          disabled={primaryDisabled}
+          loading={saving || enabling}
+        />
         {id === "reminder" && !declined ? (
           <Button
             label="Not now"
             variant="ghost"
             onPress={() => void completeOnboarding()}
             disabled={enabling}
-            style={{ alignSelf: "stretch" }}
           />
         ) : null}
       </View>

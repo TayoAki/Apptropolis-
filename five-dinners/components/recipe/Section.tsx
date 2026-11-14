@@ -18,7 +18,7 @@ export function Section({
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.border,
         borderWidth: 1,
-        borderRadius: theme.radius.sm,
+        borderRadius: theme.radius.md,
         overflow: "hidden",
       }}
     >

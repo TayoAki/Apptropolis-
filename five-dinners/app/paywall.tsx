@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
 import { Button } from "../components/Button";
 import { LoadingState } from "../components/EmptyState";
+import { Penny } from "../components/Penny";
+import { RecipePlate } from "../components/RecipePlate";
 import { useAppState } from "../data/app-state";
 import { appInfo } from "../data/app-info";
 import { usePurchases, type Offer } from "../data/purchases";
@@ -24,17 +25,12 @@ import {
 } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
-const SERIF = Platform.select({ ios: "Georgia", default: "serif" });
-const MONO = Platform.select({ ios: "Menlo", default: "monospace" });
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
 function weekRange(start: string): string {
+  const end = addDays(start, 6);
   const a = parseISODate(start);
-  const b = parseISODate(addDays(start, 6));
-  if (a.getMonth() === b.getMonth()) {
-    return `${a.getDate()}–${b.getDate()} ${MONTHS[b.getMonth()]}`;
-  }
-  return `${formatShortDate(start)} – ${formatShortDate(addDays(start, 6))}`.toUpperCase();
+  const b = parseISODate(end);
+  if (a.getMonth() === b.getMonth()) return `${a.getDate()}–${formatShortDate(end)}`;
+  return `${formatShortDate(start)} – ${formatShortDate(end)}`;
 }
 
 function isOneOff(offer: Offer): boolean {
@@ -73,7 +69,7 @@ export default function Paywall() {
     .filter((d) => d.weekStart === week)
     .sort((a, b) => a.dayIndex - b.dayIndex);
   const total = round2(dinners.reduce((sum, d) => sum + d.estimatedCost, 0));
-  const budget = parseBudget(answers.budget ?? "");
+  const budget = parseBudget(answers.weeklybudget ?? "");
   const leftovers = pantryData.items.filter((p) => !p.isStaple && p.quantity > 0);
   const cardLoading = dinnersData.loading || pantryData.loading;
 
@@ -88,6 +84,12 @@ export default function Paywall() {
     fontFamily: theme.font.family,
   } as const;
   const muted = { ...text, color: theme.colors.textMuted } as const;
+  const small = {
+    ...muted,
+    fontSize: theme.font.size.caption + 1,
+    fontVariant: ["tabular-nums" as const],
+  };
+  const link = { ...small, color: theme.colors.text, textDecorationLine: "underline" as const };
 
   async function onBuy() {
     if (!selected) return;
@@ -123,89 +125,88 @@ export default function Paywall() {
     const first = leftovers[0];
     const carried = leftovers.slice(0, 2).map((p) => `${formatPantry(p)} ${p.ingredient.toLowerCase()}`);
     return (
-      <View style={{ marginTop: theme.spacing.sm, marginBottom: theme.spacing.sm }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginTop: theme.spacing.xs,
+          marginBottom: theme.spacing.sm,
+        }}
+      >
         <View
           style={{
+            flex: 1,
             transform: [{ rotate: "-1.5deg" }],
             backgroundColor: theme.colors.surface,
             borderColor: theme.colors.border,
             borderWidth: 1,
             borderRadius: theme.radius.sm,
-            paddingHorizontal: theme.spacing.md,
-            paddingTop: theme.spacing.md,
-            paddingBottom: theme.spacing.md,
-            marginRight: theme.spacing.xl,
+            padding: theme.spacing.md,
+            gap: theme.spacing.xs,
           }}
         >
+          <Text style={small}>Your free week · {weekRange(week)}</Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
             <Ionicons
-              name="checkmark"
-              size={28}
+              name={under ? "checkmark-circle" : "alert-circle"}
+              size={24}
               color={under ? theme.colors.success : theme.colors.warning}
             />
-            <View>
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: SERIF,
-                  fontSize: theme.font.size.headline,
-                  fontWeight: theme.font.weight.bold,
-                  fontVariant: ["tabular-nums"],
-                }}
-              >
-                {formatPrice(total)} of {formatPrice(budget)}
+            <View style={{ flexDirection: "row", alignItems: "flex-end", flexShrink: 1, gap: theme.spacing.xs + 2 }}>
+              <View>
+                <Text
+                  style={{
+                    ...text,
+                    fontSize: theme.font.size.headline,
+                    fontWeight: theme.font.weight.bold,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                >
+                  {formatPrice(total)}
+                </Text>
+                <View
+                  style={{
+                    height: 2,
+                    borderRadius: 1,
+                    backgroundColor: theme.colors.text,
+                    marginTop: -2,
+                  }}
+                />
+              </View>
+              <Text style={{ ...muted, paddingBottom: 3, fontVariant: ["tabular-nums"] }}>
+                of {formatPrice(budget)}
               </Text>
-              <View
-                style={{
-                  height: 3,
-                  borderRadius: 2,
-                  backgroundColor: theme.colors.accent,
-                  marginTop: 2,
-                }}
-              />
             </View>
           </View>
-          <Text style={{ ...muted, textAlign: "center", marginTop: theme.spacing.xs }}>
-            {dinners.length} dinners
+          <Text style={small}>
+            {dinners.length} dinners · {under ? "within budget" : "over budget"}
           </Text>
           <View
             style={{
               flexDirection: "row",
-              justifyContent: "space-between",
-              marginTop: theme.spacing.sm,
+              gap: theme.spacing.sm,
+              marginVertical: theme.spacing.xs,
             }}
           >
             {dinners.slice(0, 5).map((d) => {
-              const name = getRecipe(d.recipeId)?.name ?? "home cooked dinner";
+              const recipe = getRecipe(d.recipeId);
               return (
-                <AiImage
+                <RecipePlate
                   key={d.id}
-                  prompt={`overhead watercolor of a plate of ${name}`}
-                  style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 23,
-                    borderWidth: 1,
-                    borderColor: theme.colors.border,
-                  }}
+                  prompt={`overhead watercolor of a plate of ${recipe?.name ?? "home cooked dinner"}`}
+                  diet={recipe?.diet}
+                  size={36}
                 />
               );
             })}
           </View>
-          <Text
-            style={{
-              ...muted,
-              fontSize: theme.font.size.caption,
-              textAlign: "center",
-              marginTop: theme.spacing.sm,
-            }}
-          >
+          <Text style={small}>
             {carried.length > 0
               ? `Carried over: ${carried.join(", ")}`
               : "Nothing carried over yet. Cook this week and it appears here."}
           </Text>
+          {/* The torn receipt edge: a row of diamonds in the page color. */}
           <View
-            pointerEvents="none"
             style={{
               position: "absolute",
               left: 0,
@@ -214,9 +215,10 @@ export default function Paywall() {
               height: 14,
               flexDirection: "row",
               overflow: "hidden",
+              pointerEvents: "none",
             }}
           >
-            {Array.from({ length: 40 }).map((_, i) => (
+            {Array.from({ length: 48 }).map((_, i) => (
               <View
                 key={i}
                 style={{
@@ -238,21 +240,13 @@ export default function Paywall() {
             ))}
           </View>
         </View>
-        <View
-          pointerEvents="none"
-          style={{ position: "absolute", right: 0, top: -theme.spacing.md, alignItems: "center" }}
-        >
-          <AiImage
-            name={first ? "penny-half-full" : "penny-happy"}
-            style={{ width: 92, height: 92, backgroundColor: undefined, resizeMode: "contain" }}
-          />
+        <View style={{ alignItems: "center", marginLeft: -theme.spacing.sm }}>
+          <Penny mood={first ? "half-full" : "happy"} width={84} />
           {first ? (
             <View
               style={{
                 transform: [{ rotate: "6deg" }],
                 backgroundColor: theme.colors.surfaceAlt,
-                borderColor: theme.colors.border,
-                borderWidth: 1,
                 borderRadius: theme.radius.sm,
                 paddingHorizontal: theme.spacing.sm,
                 paddingVertical: theme.spacing.xs,
@@ -261,11 +255,10 @@ export default function Paywall() {
             >
               <Text
                 style={{
-                  color: theme.colors.text,
-                  fontFamily: SERIF,
+                  ...text,
+                  fontSize: theme.font.size.caption + 1,
                   fontWeight: theme.font.weight.bold,
-                  fontSize: theme.font.size.body,
-                  textAlign: "center",
+                  fontVariant: ["tabular-nums"],
                 }}
               >
                 {formatPantry(first)} left
@@ -281,46 +274,20 @@ export default function Paywall() {
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <ScrollView
         contentContainerStyle={{
-          paddingHorizontal: theme.spacing.lg,
+          paddingHorizontal: theme.spacing.md,
           paddingBottom: theme.spacing.lg,
+          width: "100%",
+          maxWidth: 560,
+          alignSelf: "center",
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: 48,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: theme.colors.text,
-              borderRadius: theme.radius.sm,
-              paddingHorizontal: theme.spacing.sm,
-              paddingVertical: theme.spacing.xs,
-            }}
-          >
-            <Text
-              style={{
-                color: theme.colors.background,
-                fontFamily: MONO,
-                fontSize: theme.font.size.caption,
-                letterSpacing: 1,
-              }}
-            >
-              YOUR FREE WEEK · {weekRange(week)}
-            </Text>
-          </View>
+        <View style={{ alignItems: "flex-end", marginRight: -theme.spacing.sm }}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close"
             onPress={dismissPaywall}
-            hitSlop={12}
             style={({ pressed }) => ({
-              position: "absolute",
-              right: -theme.spacing.sm,
               width: 44,
               height: 44,
               alignItems: "center",
@@ -328,7 +295,7 @@ export default function Paywall() {
               opacity: pressed ? 0.6 : 1,
             })}
           >
-            <Ionicons name="close" size={28} color={theme.colors.text} />
+            <Ionicons name="close" size={26} color={theme.colors.text} />
           </Pressable>
         </View>
 
@@ -336,11 +303,12 @@ export default function Paywall() {
 
         <View style={{ alignItems: "center", marginTop: theme.spacing.md }}>
           <Text
+            accessibilityRole="header"
             style={{
-              color: theme.colors.text,
-              fontFamily: SERIF,
+              ...text,
               fontSize: theme.font.size.display,
               fontWeight: theme.font.weight.bold,
+              textAlign: "center",
             }}
           >
             {isPremium ? "You're all set" : "Keep cooking"}
@@ -348,7 +316,7 @@ export default function Paywall() {
           <Text
             style={{
               ...muted,
-              fontSize: theme.font.size.title - 2,
+              fontSize: theme.font.size.body + 2,
               textAlign: "center",
               marginTop: theme.spacing.xs,
             }}
@@ -367,32 +335,16 @@ export default function Paywall() {
                 key={feature}
                 style={{
                   flexDirection: "row",
-                  gap: theme.spacing.md,
-                  paddingVertical: theme.spacing.sm,
+                  gap: theme.spacing.sm + 4,
+                  paddingVertical: theme.spacing.sm + 2,
                   borderTopWidth: i === 0 ? 0 : 1,
                   borderTopColor: theme.colors.border,
                 }}
               >
-                <Ionicons
-                  name="checkmark"
-                  size={24}
-                  color={theme.colors.primary}
-                  style={{ marginTop: 1 }}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontFamily: SERIF,
-                      fontSize: theme.font.size.body + 2,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    {title}
-                  </Text>
-                  {body ? (
-                    <Text style={{ ...muted, fontSize: theme.font.size.body - 1 }}>{body}</Text>
-                  ) : null}
+                <Ionicons name="checkmark" size={22} color={theme.colors.primary} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ ...text, fontWeight: theme.font.weight.bold }}>{title}</Text>
+                  {body ? <Text style={small}>{body}</Text> : null}
                 </View>
               </View>
             );
@@ -400,7 +352,7 @@ export default function Paywall() {
         </View>
 
         {isPremium ? (
-          <View style={{ marginTop: theme.spacing.lg }}>
+          <View style={{ marginTop: theme.spacing.md }}>
             <Button label="Back to my week" onPress={dismissPaywall} />
           </View>
         ) : (
@@ -412,22 +364,22 @@ export default function Paywall() {
                 return (
                   <Pressable
                     key={offer.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
                     accessibilityLabel={`${offer.label}, ${offer.price}${oneOff ? ", one-off payment" : `, per ${offer.period}`}`}
                     onPress={() => setSelectedId(offer.id)}
                     style={({ pressed }) => ({
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: theme.spacing.sm,
+                      gap: theme.spacing.md,
                       opacity: pressed ? 0.85 : 1,
                     })}
                   >
                     <View
                       style={{
                         backgroundColor: theme.colors.surface,
-                        borderColor: active ? theme.colors.primary : theme.colors.border,
-                        borderWidth: 2,
+                        borderColor: active ? theme.colors.primary : theme.colors.textMuted,
+                        borderWidth: active ? 2 : 1,
                         borderStyle: "dashed",
                         borderRadius: theme.radius.md,
                         paddingHorizontal: theme.spacing.md,
@@ -436,8 +388,7 @@ export default function Paywall() {
                     >
                       <Text
                         style={{
-                          color: theme.colors.text,
-                          fontFamily: SERIF,
+                          ...text,
                           fontSize: theme.font.size.headline,
                           fontWeight: theme.font.weight.bold,
                           fontVariant: ["tabular-nums"],
@@ -446,37 +397,35 @@ export default function Paywall() {
                         {offer.price}
                       </Text>
                     </View>
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, alignItems: "flex-start", gap: theme.spacing.xs }}>
                       <Text style={text}>
-                        {oneOff ? "one-off · four weeks" : `per ${offer.period}`}
+                        {oneOff ? "One-off · four weeks" : `Per ${offer.period}`}
                       </Text>
                       {offer.trialDays > 0 ? (
-                        <Text style={{ ...muted, fontSize: theme.font.size.caption }}>
-                          {offer.trialDays}-day free trial
-                        </Text>
+                        <Text style={small}>{offer.trialDays}-day free trial</Text>
                       ) : null}
-                    </View>
-                    {offer.badge ? (
-                      <View
-                        style={{
-                          backgroundColor: theme.colors.accent,
-                          borderRadius: theme.radius.sm,
-                          paddingHorizontal: theme.spacing.sm,
-                          paddingVertical: theme.spacing.xs,
-                        }}
-                      >
-                        <Text
+                      {offer.badge ? (
+                        <View
                           style={{
-                            color: theme.colors.onPrimary,
-                            fontSize: theme.font.size.caption,
-                            fontWeight: theme.font.weight.bold,
-                            letterSpacing: 0.5,
+                            backgroundColor: theme.colors.accent,
+                            borderRadius: theme.radius.pill,
+                            paddingHorizontal: theme.spacing.sm + 2,
+                            paddingVertical: theme.spacing.xs,
                           }}
                         >
-                          {offer.badge.toUpperCase()}
-                        </Text>
-                      </View>
-                    ) : null}
+                          <Text
+                            style={{
+                              color: theme.colors.onPrimary,
+                              fontFamily: theme.font.family,
+                              fontSize: theme.font.size.caption,
+                              fontWeight: theme.font.weight.bold,
+                            }}
+                          >
+                            {offer.badge}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </Pressable>
                 );
               })}
@@ -488,7 +437,6 @@ export default function Paywall() {
                 onPress={onBuy}
                 loading={busy}
                 disabled={!selected || restoring}
-                style={{ borderRadius: theme.radius.md }}
               />
             </View>
 
@@ -506,14 +454,7 @@ export default function Paywall() {
               </Text>
             ) : null}
 
-            <Text
-              style={{
-                ...muted,
-                fontSize: theme.font.size.caption,
-                textAlign: "center",
-                marginTop: theme.spacing.sm,
-              }}
-            >
+            <Text style={{ ...small, textAlign: "center", marginTop: theme.spacing.sm }}>
               {smallPrint}
             </Text>
           </>
@@ -531,7 +472,7 @@ export default function Paywall() {
           {isPremium ? null : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Restore Purchases"
+              accessibilityLabel="Restore purchases"
               onPress={onRestore}
               disabled={restoring || busy}
               hitSlop={8}
@@ -542,9 +483,7 @@ export default function Paywall() {
                 opacity: pressed || restoring ? 0.6 : 1,
               })}
             >
-              <Text style={{ ...text, textDecorationLine: "underline" }}>
-                {restoring ? "Restoring…" : "Restore Purchases"}
-              </Text>
+              <Text style={link}>{restoring ? "Restoring…" : "Restore purchases"}</Text>
             </Pressable>
           )}
           {appInfo.termsUrl ? (
@@ -559,7 +498,7 @@ export default function Paywall() {
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <Text style={{ ...text, textDecorationLine: "underline" }}>Terms of Use</Text>
+              <Text style={link}>Terms of use</Text>
             </Pressable>
           ) : null}
           {appInfo.privacyUrl ? (
@@ -574,20 +513,13 @@ export default function Paywall() {
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <Text style={{ ...text, textDecorationLine: "underline" }}>Privacy Policy</Text>
+              <Text style={link}>Privacy policy</Text>
             </Pressable>
           ) : null}
         </View>
 
         {testMode ? (
-          <Text
-            style={{
-              ...muted,
-              fontSize: theme.font.size.caption,
-              textAlign: "center",
-              marginTop: theme.spacing.xs,
-            }}
-          >
+          <Text style={{ ...small, textAlign: "center", marginTop: theme.spacing.xs }}>
             Test mode: purchases are simulated, nothing is charged.
           </Text>
         ) : null}

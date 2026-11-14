@@ -1,18 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  SectionList,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, SectionList, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { AiImage } from "../../components/AiImage";
+import { Penny } from "../../components/Penny";
 import { Button } from "../../components/Button";
 import { EmptyState, LoadingState } from "../../components/EmptyState";
+import { Meter } from "../../components/Meter";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { ShopRow } from "../../components/shop/Row";
 import { useAppState } from "../../data/app-state";
 import { useCollection } from "../../data/repo";
@@ -144,8 +139,8 @@ export default function ShopScreen() {
 
   const latestCheck = weekChecks.map((c) => c.estimateDate).sort().pop() ?? "";
   const storeLine =
-    HOME_STORE.replace(" – ", " · ").toUpperCase() +
-    (latestCheck ? ` · PRICES CHECKED ${formatShortDate(latestCheck).toUpperCase()}` : "");
+    HOME_STORE.replace(" – ", " · ") +
+    (latestCheck ? ` · prices checked ${formatShortDate(latestCheck)}` : "");
 
   function toggle(key: string) {
     setTicked((prev) => {
@@ -176,10 +171,11 @@ export default function ShopScreen() {
   }
 
   function subtitleFor(line: BasketLine): string {
-    const parts = [`buy ${line.packs} × ${formatPackSize(line.pack)}`, `uses ${formatQty(line.pack, line.needed)}`];
+    const parts = [`Buy ${line.packs} × ${formatPackSize(line.pack)}`, `uses ${formatQty(line.pack, line.needed)}`];
     if (line.inCupboard > 0) parts.push(`${formatQty(line.pack, Math.min(line.inCupboard, line.needed))} from cupboard`);
     if (line.leftover > 0) parts.push(`${formatQty(line.pack, line.leftover)} left`);
-    return parts.join(" · ");
+    // Each part stays whole when the line wraps: only the " · " between parts can break.
+    return parts.map((part) => part.replace(/ /g, "\u00A0")).join(" · ");
   }
 
   const sections: Section[] = useMemo(() => {
@@ -212,7 +208,7 @@ export default function ShopScreen() {
         data.push({
           key: `${d.id}-${key}`,
           line,
-          subtitle: line.packs === 0 ? `uses ${qty} · already in the cupboard` : `uses ${qty} · pack bought for the week`,
+          subtitle: line.packs === 0 ? `Uses ${qty} · already in the cupboard` : `Uses ${qty} · pack bought for the week`,
         });
       }
       return [{ id: d.id, title: `${d.dayIndex}. ${recipe.name}`, data }];
@@ -220,11 +216,15 @@ export default function ShopScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, shoppable.length, dinners, lines]);
 
-  const mono = Platform.select({ ios: "Menlo", default: "monospace" });
+  const screenPad = {
+    paddingTop: insets.top + theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+  };
 
   if (loading) {
     return (
-      <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: theme.colors.background }}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.background, ...screenPad }}>
+        <ScreenHeader title="Shop" />
         <LoadingState label="Loading your list" />
       </View>
     );
@@ -232,22 +232,12 @@ export default function ShopScreen() {
 
   if (dinners.length === 0) {
     return (
-      <View style={{ flex: 1, paddingTop: insets.top + theme.spacing.md, backgroundColor: theme.colors.background }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontSize: theme.font.size.display,
-            fontWeight: theme.font.weight.bold,
-            fontFamily: theme.font.family,
-            paddingHorizontal: theme.spacing.lg,
-          }}
-        >
-          Shop
-        </Text>
+      <View style={{ flex: 1, backgroundColor: theme.colors.background, ...screenPad }}>
+        <ScreenHeader title="Shop" />
         <View style={{ alignItems: "center", marginTop: theme.spacing.lg }}>
-          <AiImage name="penny-half-full" style={{ height: 140, width: 140, backgroundColor: undefined }} />
+          <Penny mood="half-full" width={120} />
           <EmptyState
-            icon="cart-outline"
+            icon={null}
             title="No list until there's a plan"
             body="Pick this Sunday's five dinners and the full-pack shopping list, priced at your home store, appears here."
             actionLabel="Plan the week"
@@ -272,78 +262,58 @@ export default function ShopScreen() {
     .filter((c) => c.paidPrice > 0)
     .sort((a, b) => b.paidDate.localeCompare(a.paidDate));
 
+  const label = {
+    color: theme.colors.text,
+    fontSize: theme.font.size.body,
+    fontFamily: theme.font.family,
+  } as const;
+
   const header = (
-    <View style={{ gap: theme.spacing.md, paddingBottom: theme.spacing.md }}>
-      <View style={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.xs }}>
-        <Text
-          accessibilityRole="header"
-          style={{
-            color: theme.colors.text,
-            fontSize: theme.font.size.display,
-            fontWeight: theme.font.weight.bold,
-            fontFamily: theme.font.family,
-          }}
-        >
-          Shop
-        </Text>
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
-            letterSpacing: 0.6,
-            fontFamily: mono,
-          }}
-        >
-          {storeLine}
-        </Text>
-      </View>
+    <View
+      style={{
+        gap: theme.spacing.md,
+        paddingHorizontal: theme.spacing.md,
+        paddingBottom: theme.spacing.sm,
+      }}
+    >
+      <ScreenHeader title="Shop" subtitle={storeLine} />
 
       <View
         style={{
-          marginHorizontal: theme.spacing.lg,
           backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
           borderWidth: 1,
           borderRadius: theme.radius.md,
           padding: theme.spacing.md,
-          gap: theme.spacing.md,
-          shadowColor: theme.colors.text,
-          shadowOpacity: 0.12,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 2,
+          gap: theme.spacing.sm + 4,
         }}
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
           <View>
-            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body + 2, fontFamily: theme.font.family }}>
-              Estimate
-            </Text>
+            <Text style={label}>Estimate</Text>
             <View style={{ alignSelf: "flex-start" }}>
               <Text
                 style={{
-                  color: theme.colors.text,
+                  ...label,
                   fontSize: theme.font.size.display,
                   fontWeight: theme.font.weight.bold,
-                  fontFamily: theme.font.family,
                   fontVariant: ["tabular-nums"],
                 }}
               >
                 {formatPrice(estimate)}
               </Text>
-              <View style={{ height: 2, backgroundColor: theme.colors.text, marginTop: -4, borderRadius: 1 }} />
+              <View
+                style={{ height: 2, backgroundColor: theme.colors.text, marginTop: -2, borderRadius: 1 }}
+              />
             </View>
           </View>
           <View style={{ alignItems: "flex-end" }}>
-            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body + 2, fontFamily: theme.font.family }}>
-              {receipt !== null ? "Receipt total" : "Paid so far"}
-            </Text>
+            <Text style={label}>{receipt !== null ? "Receipt total" : "Paid so far"}</Text>
             <Text
               style={{
-                color: theme.colors.text,
+                ...label,
                 fontSize: theme.font.size.headline,
                 fontWeight: theme.font.weight.bold,
-                fontFamily: theme.font.family,
                 fontVariant: ["tabular-nums"],
               }}
             >
@@ -352,34 +322,18 @@ export default function ShopScreen() {
           </View>
         </View>
 
-        <View
-          accessibilityLabel={`${tickedLines.length} of ${shoppable.length} ticked`}
-          style={{
-            height: 26,
-            borderRadius: theme.radius.pill,
-            backgroundColor: theme.colors.surfaceAlt,
-            overflow: "hidden",
-            justifyContent: "center",
-          }}
-        >
-          <View
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: `${Math.round(pct * 100)}%`,
-              backgroundColor: theme.colors.primary,
-              borderRadius: theme.radius.pill,
-            }}
-          />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <Meter
+              value={pct}
+              accessibilityLabel={`${tickedLines.length} of ${shoppable.length} ticked`}
+            />
+          </View>
           <Text
             style={{
-              alignSelf: "flex-end",
-              marginRight: theme.spacing.md,
-              color: pct > 0.85 ? theme.colors.onPrimary : theme.colors.text,
+              ...label,
               fontSize: theme.font.size.caption + 1,
-              fontFamily: theme.font.family,
+              fontWeight: theme.font.weight.medium,
               fontVariant: ["tabular-nums"],
             }}
           >
@@ -390,9 +344,9 @@ export default function ShopScreen() {
         {paidSoFar > 0 && (receipt !== null || tickedLines.length > 0) ? (
           <Text
             style={{
-              color: difference > 0 ? theme.colors.danger : theme.colors.textMuted,
+              ...label,
+              color: difference > 0 ? theme.colors.warning : theme.colors.textMuted,
               fontSize: theme.font.size.caption + 1,
-              fontFamily: theme.font.family,
               fontVariant: ["tabular-nums"],
             }}
           >
@@ -401,14 +355,18 @@ export default function ShopScreen() {
                 ? "Exactly on the estimate."
                 : "Ticked items are exactly on the estimate."
               : `${formatPriceDiff(difference)} against the estimate${receipt !== null ? "" : " on ticked items"}.`}
-            {budget > 0 && estimate > budget ? ` Estimate is over your ${formatPrice(budget)} budget.` : ""}
+            {budget > 0 && estimate > budget ? (
+              <Text style={{ color: theme.colors.danger }}>
+                {` Estimate is over your ${formatPrice(budget)} budget.`}
+              </Text>
+            ) : null}
           </Text>
         ) : budget > 0 ? (
           <Text
             style={{
+              ...label,
               color: estimate > budget ? theme.colors.danger : theme.colors.textMuted,
               fontSize: theme.font.size.caption + 1,
-              fontFamily: theme.font.family,
               fontVariant: ["tabular-nums"],
             }}
           >
@@ -423,10 +381,11 @@ export default function ShopScreen() {
         accessibilityRole="tablist"
         style={{
           flexDirection: "row",
-          marginHorizontal: theme.spacing.lg,
           padding: 3,
-          borderRadius: theme.radius.pill,
-          backgroundColor: theme.colors.textMuted,
+          borderRadius: theme.radius.md,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surface,
         }}
       >
         {(
@@ -434,7 +393,7 @@ export default function ShopScreen() {
             ["aisle", "By aisle"],
             ["dinner", "By dinner"],
           ] as const
-        ).map(([value, label]) => {
+        ).map(([value, text]) => {
           const on = mode === value;
           return (
             <Pressable
@@ -447,22 +406,21 @@ export default function ShopScreen() {
                 minHeight: 44,
                 alignItems: "center",
                 justifyContent: "center",
-                borderRadius: theme.radius.pill,
-                backgroundColor: on ? theme.colors.surface : "transparent",
-                borderWidth: on ? 1 : 0,
-                borderColor: theme.colors.text,
-                opacity: pressed ? 0.8 : 1,
+                borderRadius: theme.radius.md - 3,
+                borderWidth: 1,
+                borderColor: on ? theme.colors.textMuted : "transparent",
+                backgroundColor: on ? theme.colors.surfaceAlt : "transparent",
+                opacity: pressed ? 0.7 : 1,
               })}
             >
               <Text
                 style={{
-                  color: on ? theme.colors.text : theme.colors.surface,
-                  fontSize: theme.font.size.body + 1,
+                  ...label,
+                  color: on ? theme.colors.text : theme.colors.textMuted,
                   fontWeight: on ? theme.font.weight.bold : theme.font.weight.regular,
-                  fontFamily: theme.font.family,
                 }}
               >
-                {label}
+                {text}
               </Text>
             </Pressable>
           );
@@ -474,6 +432,7 @@ export default function ShopScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${coveredSummary}. ${coveredOpen ? "Hide" : "Show"} details`}
+            accessibilityState={{ expanded: coveredOpen }}
             onPress={() => setCoveredOpen((o) => !o)}
             style={({ pressed }) => ({
               flexDirection: "row",
@@ -481,33 +440,20 @@ export default function ShopScreen() {
               justifyContent: "space-between",
               gap: theme.spacing.sm,
               minHeight: 44,
-              paddingHorizontal: theme.spacing.lg,
               opacity: pressed ? 0.7 : 1,
             })}
           >
-            <Text
-              style={{
-                flex: 1,
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.body + 2,
-                fontFamily: theme.font.family,
-              }}
-            >
-              {coveredSummary}
-            </Text>
-            <Ionicons name={coveredOpen ? "chevron-up" : "chevron-down"} size={20} color={theme.colors.textMuted} />
+            <Text style={{ ...label, flex: 1, color: theme.colors.textMuted }}>{coveredSummary}</Text>
+            <Ionicons
+              name={coveredOpen ? "chevron-up" : "chevron-down"}
+              size={20}
+              color={theme.colors.textMuted}
+            />
           </Pressable>
           {coveredOpen ? (
-            <View style={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.xs }}>
+            <View style={{ gap: theme.spacing.xs, paddingBottom: theme.spacing.sm }}>
               {covered.map((l) => (
-                <Text
-                  key={l.pack.key}
-                  style={{
-                    color: theme.colors.text,
-                    fontSize: theme.font.size.body,
-                    fontFamily: theme.font.family,
-                  }}
-                >
+                <Text key={l.pack.key} style={label}>
                   {l.pack.name}
                   <Text style={{ color: theme.colors.textMuted }}>
                     {` · need ${formatQty(l.pack, l.needed)}, ${formatQty(l.pack, l.leftover)} will be left`}
@@ -524,22 +470,15 @@ export default function ShopScreen() {
   const footer = (
     <View style={{ gap: theme.spacing.md, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xl }}>
       {allTicked ? (
-        <View style={{ alignItems: "center", gap: theme.spacing.xs, paddingHorizontal: theme.spacing.lg }}>
-          <AiImage name="penny-happy" style={{ height: 96, width: 96, backgroundColor: undefined }} />
-          <Text
-            style={{
-              color: theme.colors.text,
-              textAlign: "center",
-              fontSize: theme.font.size.body,
-              fontFamily: theme.font.family,
-            }}
-          >
+        <View style={{ alignItems: "center", gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md }}>
+          <Penny mood="happy" width={96} />
+          <Text style={{ ...label, textAlign: "center" }}>
             Whole list ticked. Log the receipt, then Cook shows what's left in each pack.
           </Text>
         </View>
       ) : null}
 
-      <View style={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.sm }}>
+      <View style={{ paddingHorizontal: theme.spacing.md, gap: theme.spacing.sm }}>
         {receiptOpen ? (
           <View
             style={{
@@ -551,20 +490,12 @@ export default function ShopScreen() {
               padding: theme.spacing.md,
             }}
           >
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.bold,
-                fontFamily: theme.font.family,
-              }}
-            >
-              Total on your receipt
-            </Text>
+            <Text style={{ ...label, fontWeight: theme.font.weight.bold }}>Total on your receipt</Text>
             <TextInput
               value={receiptText}
               onChangeText={setReceiptText}
               keyboardType="decimal-pad"
+              returnKeyType="done"
               placeholder={formatPrice(estimate)}
               placeholderTextColor={theme.colors.textMuted}
               accessibilityLabel="Receipt total in pounds"
@@ -576,9 +507,9 @@ export default function ShopScreen() {
                 fontFamily: theme.font.family,
                 fontVariant: ["tabular-nums"],
                 borderWidth: 1,
-                borderColor: theme.colors.border,
+                borderColor: theme.colors.textMuted,
                 borderRadius: theme.radius.md,
-                backgroundColor: theme.colors.background,
+                backgroundColor: theme.colors.surface,
               }}
             />
             <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
@@ -595,7 +526,7 @@ export default function ShopScreen() {
               />
               <Button
                 label={receipt !== null ? "Clear" : "Cancel"}
-                variant="secondary"
+                variant="outline"
                 onPress={() => {
                   if (receipt !== null) {
                     setReceipt(null);
@@ -607,33 +538,18 @@ export default function ShopScreen() {
             </View>
           </View>
         ) : (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="outline"
+            label={
+              receipt !== null
+                ? `Receipt ${formatPrice(receipt)} · change`
+                : "Enter receipt total instead"
+            }
             onPress={() => {
               setReceiptText(receipt !== null ? receipt.toFixed(2) : "");
               setReceiptOpen(true);
             }}
-            style={({ pressed }) => ({
-              minHeight: 48,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: theme.radius.md,
-              borderWidth: 1.5,
-              borderColor: theme.colors.text,
-              backgroundColor: theme.colors.surface,
-              opacity: pressed ? 0.8 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.body + 1,
-                fontFamily: theme.font.family,
-              }}
-            >
-              {receipt !== null ? `Receipt ${formatPrice(receipt)} · change` : "Enter receipt total instead"}
-            </Text>
-          </Pressable>
+          />
         )}
       </View>
 
@@ -647,7 +563,7 @@ export default function ShopScreen() {
             alignItems: "center",
             gap: theme.spacing.sm,
             minHeight: 52,
-            paddingHorizontal: theme.spacing.lg,
+            paddingHorizontal: theme.spacing.md,
             backgroundColor: theme.colors.surfaceAlt,
             opacity: pressed ? 0.8 : 1,
           })}
@@ -655,28 +571,14 @@ export default function ShopScreen() {
           <Ionicons
             name={isPremium ? "time-outline" : "lock-closed"}
             size={18}
-            color={theme.colors.text}
+            color={isPremium ? theme.colors.text : theme.colors.textMuted}
           />
-          <Text
-            style={{
-              flex: 1,
-              color: theme.colors.text,
-              fontSize: theme.font.size.body + 1,
-              fontFamily: theme.font.family,
-            }}
-          >
-            Price history across shops
-          </Text>
+          <Text style={{ ...label, flex: 1 }}>Price history across shops</Text>
           {isPremium ? (
             <Ionicons name={historyOpen ? "chevron-up" : "chevron-down"} size={20} color={theme.colors.textMuted} />
           ) : (
             <Text
-              style={{
-                color: theme.colors.primary,
-                fontSize: theme.font.size.body + 2,
-                fontWeight: theme.font.weight.medium,
-                fontFamily: theme.font.family,
-              }}
+              style={{ ...label, color: theme.colors.primary, fontWeight: theme.font.weight.medium }}
             >
               Unlock
             </Text>
@@ -689,7 +591,7 @@ export default function ShopScreen() {
                 color: theme.colors.textMuted,
                 fontSize: theme.font.size.body,
                 fontFamily: theme.font.family,
-                padding: theme.spacing.lg,
+                padding: theme.spacing.md,
               }}
             >
               Nothing logged yet. Enter what you paid for an item and it appears here, by store and date.
@@ -705,7 +607,7 @@ export default function ShopScreen() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: theme.spacing.sm,
-                    paddingHorizontal: theme.spacing.lg,
+                    paddingHorizontal: theme.spacing.md,
                     paddingVertical: theme.spacing.sm,
                     borderBottomWidth: 1,
                     borderBottomColor: theme.colors.border,
@@ -726,8 +628,9 @@ export default function ShopScreen() {
                     <Text
                       style={{
                         color: theme.colors.textMuted,
-                        fontSize: theme.font.size.caption,
+                        fontSize: theme.font.size.caption + 1,
                         fontFamily: theme.font.family,
+                        fontVariant: ["tabular-nums"],
                       }}
                     >
                       {c.store} · {formatShortDate(c.paidDate)}
@@ -742,7 +645,16 @@ export default function ShopScreen() {
                     }}
                   >
                     {formatPrice(c.paidPrice)}
-                    <Text style={{ color: d > 0 ? theme.colors.danger : theme.colors.textMuted }}>
+                    <Text
+                      style={{
+                        color:
+                          d > 0
+                            ? theme.colors.warning
+                            : d < 0
+                              ? theme.colors.success
+                              : theme.colors.textMuted,
+                      }}
+                    >
                       {`  ${d === 0 ? "±£0.00" : formatPriceDiff(d)}`}
                     </Text>
                   </Text>
@@ -761,7 +673,17 @@ export default function ShopScreen() {
         sections={sections}
         keyExtractor={(item) => item.key}
         stickySectionHeadersEnabled={false}
-        contentContainerStyle={{ paddingTop: insets.top + theme.spacing.md }}
+        // Keeps the "what you paid" boxes and the receipt total above the keyboard.
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={{
+          paddingTop: insets.top + theme.spacing.sm,
+          // On a wide screen the list stays a readable column.
+          width: "100%",
+          maxWidth: 560,
+          alignSelf: "center",
+        }}
         ListHeaderComponent={header}
         ListFooterComponent={footer}
         renderSectionHeader={({ section }) => {
@@ -780,37 +702,42 @@ export default function ShopScreen() {
               }}
             >
               <Text
+                accessibilityRole="header"
                 style={{
+                  ...label,
                   flex: 1,
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.body + 2,
-                  fontFamily: theme.font.family,
+                  paddingVertical: theme.spacing.sm,
+                  fontWeight: theme.font.weight.medium,
                   fontVariant: ["tabular-nums"],
                 }}
               >
-                {section.title} · {done} of {keys.length}
+                {section.title}
+                <Text style={{ fontWeight: theme.font.weight.regular }}>
+                  {` · ${done} of ${keys.length}`}
+                </Text>
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Tick everything in ${section.title}`}
-                hitSlop={8}
-                onPress={() =>
-                  setTicked((prev) => {
-                    const next = new Set(prev);
-                    tickable.forEach((i) => next.add(i.line.pack.key));
-                    return next;
-                  })
-                }
-                style={({ pressed }) => ({
-                  width: 44,
-                  height: 44,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: pressed ? 0.6 : 1,
-                })}
-              >
-                <Ionicons name="checkmark-done-outline" size={20} color={theme.colors.text} />
-              </Pressable>
+              {tickable.length > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Tick everything in ${section.title}`}
+                  onPress={() =>
+                    setTicked((prev) => {
+                      const next = new Set(prev);
+                      tickable.forEach((i) => next.add(i.line.pack.key));
+                      return next;
+                    })
+                  }
+                  style={({ pressed }) => ({
+                    width: 52,
+                    minHeight: 44,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                >
+                  <Ionicons name="checkmark-done-outline" size={22} color={theme.colors.text} />
+                </Pressable>
+              ) : null}
             </View>
           );
         }}
@@ -822,11 +749,12 @@ export default function ShopScreen() {
             <ShopRow
               name={line.pack.name}
               subtitle={item.subtitle}
-              ticked={covers ? true : ticked.has(line.pack.key)}
-              onToggle={() => (covers ? undefined : toggle(line.pack.key))}
+              ticked={ticked.has(line.pack.key)}
+              covered={covers}
+              onToggle={() => toggle(line.pack.key)}
               showPrice={mode === "aisle" && !covers}
               estimate={line.cost}
-              dateLabel={check ? formatShortDate(check.estimateDate).toUpperCase() : ""}
+              dateLabel={check ? formatShortDate(check.estimateDate) : ""}
               paid={check?.paidPrice ?? 0}
               onPaid={(n) => void savePaid(line, n)}
             />

@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState, type ReactNode } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
+import { aiImageUrl } from "../../components/AiImage";
 import { Button } from "../../components/Button";
 import { EmptyState, LoadingState } from "../../components/EmptyState";
+import { PackIcon } from "../../components/PackIcon";
+import { RecipePlate } from "../../components/RecipePlate";
 import { Section } from "../../components/recipe/Section";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
@@ -16,6 +18,7 @@ import {
   PACKS,
   basketTotal,
   buildBasket,
+  fillSteps,
   formatPackSize,
   formatPrice,
   formatQty,
@@ -34,29 +37,6 @@ import { useTheme } from "../../theme/ThemeProvider";
 
 const MIN_SERVINGS = 1;
 const MAX_SERVINGS = 8;
-
-const PACK_ICONS: Record<string, React.ComponentProps<typeof Ionicons>["name"]> = {
-  oil: "water-outline",
-  coconut: "water-outline",
-  soy: "water-outline",
-  eggs: "egg-outline",
-  salmon: "fish-outline",
-  tuna: "fish-outline",
-  mince: "restaurant-outline",
-  chickenThigh: "restaurant-outline",
-  chickenBreast: "restaurant-outline",
-  sausages: "restaurant-outline",
-  bacon: "restaurant-outline",
-  carrots: "leaf-outline",
-  spinach: "leaf-outline",
-  broccoli: "leaf-outline",
-  courgette: "leaf-outline",
-  peppers: "leaf-outline",
-  ginger: "leaf-outline",
-  onion: "nutrition-outline",
-  garlic: "nutrition-outline",
-  tomatoes: "nutrition-outline",
-};
 
 function stepContent(step: string, recipe: Recipe, servings: number): ReactNode[] {
   return step.split(/(\{\w+\})/).map((part, i) => {
@@ -117,10 +97,13 @@ export default function RecipeScreen() {
       .pop() ?? "";
   }, [recipe, checks.items]);
 
+  // The header sits on the page color, like the tab screens, with the plain back chevron.
+  const headerStyle = { backgroundColor: theme.colors.background };
+
   if (dinners.loading || pantry.loading || checks.loading) {
     return (
       <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.colors.background }}>
-        <Stack.Screen options={{ title: "Recipe" }} />
+        <Stack.Screen options={{ title: "Recipe", headerStyle }} />
         <LoadingState label="Opening the recipe" />
       </View>
     );
@@ -129,7 +112,7 @@ export default function RecipeScreen() {
   if (!recipe) {
     return (
       <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.colors.background }}>
-        <Stack.Screen options={{ title: "Recipe" }} />
+        <Stack.Screen options={{ title: "Recipe", headerStyle }} />
         <EmptyState
           icon="book-outline"
           title="This dinner isn't in your plan"
@@ -142,14 +125,16 @@ export default function RecipeScreen() {
   }
 
   const storeName = HOME_STORE.split(" – ")[0]!;
-  const metaFont = Platform.select({ ios: "Menlo", default: "monospace" });
+  const stepTexts = fillSteps(recipe, servings);
+  const heroPrompt = `${recipe.name}, plated home-cooked dinner seen from above, soft watercolour illustration`;
+  const hasPicture = aiImageUrl(heroPrompt) !== null;
   const cooked = dinner?.cooked ?? false;
   const kept = dinner?.keepNextWeek ?? false;
   const liked = dinner?.liked ?? false;
 
   const chips = [
     `${recipe.minutes} min`,
-    `for ${servings}`,
+    `For ${servings}`,
     `${formatPrice(estimate)}${priceDate ? ` · ${storeName} · ${formatShortDate(priceDate)}` : ` · ${storeName}`}`,
   ];
 
@@ -189,20 +174,26 @@ export default function RecipeScreen() {
         options={{
           title: recipe.name,
           headerTitle: "",
-          headerBackButtonDisplayMode: "default",
-          headerBackTitle: "Cook",
+          headerStyle,
           headerRight: dinner
             ? () => (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={heartLabel}
-                  hitSlop={12}
+                  accessibilityState={{ selected: liked }}
+                  hitSlop={6}
                   onPress={() => void dinners.update(dinner.id, { liked: !liked })}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: theme.spacing.xs })}
+                  style={({ pressed }) => ({
+                    width: 40,
+                    height: 40,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: pressed ? 0.6 : 1,
+                  })}
                 >
                   <Ionicons
                     name={liked ? "heart" : "heart-outline"}
-                    size={26}
+                    size={24}
                     color={theme.colors.primary}
                   />
                 </Pressable>
@@ -213,26 +204,31 @@ export default function RecipeScreen() {
       <ScrollView
         contentContainerStyle={{
           padding: theme.spacing.md,
+          paddingTop: theme.spacing.sm,
           paddingBottom: theme.spacing.lg,
           gap: theme.spacing.lg,
+          width: "100%",
+          maxWidth: 560,
+          alignSelf: "center",
         }}
       >
         <View style={{ alignItems: "center", gap: theme.spacing.md }}>
-          <View
-            style={{
-              width: 220,
-              height: 220,
-              borderRadius: 110,
-              backgroundColor: theme.colors.surface,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <AiImage
-              prompt={`${recipe.name}, plated home-cooked dinner seen from above, soft watercolour illustration`}
-              style={{ width: 168, height: 168, borderRadius: 84 }}
-            />
-          </View>
+          {hasPicture ? (
+            <View
+              style={{
+                width: 220,
+                height: 220,
+                borderRadius: 110,
+                backgroundColor: theme.colors.surface,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <RecipePlate prompt={heroPrompt} diet={recipe.diet} size={168} />
+            </View>
+          ) : (
+            <RecipePlate prompt={heroPrompt} diet={recipe.diet} size={112} />
+          )}
           <Text
             accessibilityRole="header"
             style={{
@@ -269,9 +265,7 @@ export default function RecipeScreen() {
                   style={{
                     color: theme.colors.textMuted,
                     fontSize: theme.font.size.caption + 1,
-                    fontFamily: metaFont,
-                    letterSpacing: 0.5,
-                    textTransform: "uppercase",
+                    fontFamily: theme.font.family,
                     fontVariant: ["tabular-nums"],
                   }}
                 >
@@ -310,24 +304,22 @@ export default function RecipeScreen() {
                   accessibilityLabel={kind === "minus" ? "Fewer servings" : "More servings"}
                   accessibilityState={{ disabled }}
                   disabled={disabled}
-                  hitSlop={4}
                   onPress={() => setOverride(servings + (kind === "minus" ? -1 : 1))}
                   style={({ pressed }) => ({
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: theme.colors.surface,
+                    backgroundColor: pressed ? theme.colors.surfaceAlt : theme.colors.surface,
                     borderWidth: 1,
-                    borderColor: theme.colors.border,
-                    opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
+                    borderColor: disabled ? theme.colors.border : theme.colors.textMuted,
                   })}
                 >
                   <Ionicons
                     name={kind === "minus" ? "remove" : "add"}
-                    size={26}
-                    color={theme.colors.primary}
+                    size={24}
+                    color={disabled ? theme.colors.textMuted : theme.colors.primary}
                   />
                 </Pressable>
               );
@@ -353,22 +345,7 @@ export default function RecipeScreen() {
                 key={pack.key}
                 style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm + 2 }}
               >
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: theme.radius.sm,
-                    backgroundColor: theme.colors.surfaceAlt,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name={PACK_ICONS[pack.key] ?? "basket-outline"}
-                    size={20}
-                    color={theme.colors.primary}
-                  />
-                </View>
+                <PackIcon packKey={pack.key} />
                 <Text
                   style={{
                     flex: 1,
@@ -379,7 +356,7 @@ export default function RecipeScreen() {
                   }}
                 >
                   <Text style={{ fontWeight: theme.font.weight.bold }}>{pack.name}</Text>
-                  {fromCupboard ? ` — ${text}, from cupboard` : ` — ${usesText}${leftText}`}
+                  {fromCupboard ? ` — ${text}` : ` — ${usesText}${leftText}`}
                 </Text>
                 {fromCupboard ? (
                   <View
@@ -393,12 +370,12 @@ export default function RecipeScreen() {
                     <Text
                       style={{
                         color: theme.colors.onPrimary,
-                        fontSize: 10,
+                        fontSize: theme.font.size.caption,
                         fontWeight: theme.font.weight.bold,
-                        letterSpacing: 0.4,
+                        fontFamily: theme.font.family,
                       }}
                     >
-                      IN CUPBOARD
+                      In cupboard
                     </Text>
                   </View>
                 ) : null}
@@ -413,13 +390,15 @@ export default function RecipeScreen() {
             return (
               <Pressable
                 key={index}
-                accessibilityRole="button"
-                accessibilityLabel={`Step ${index + 1}${done ? ", done" : ""}`}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: done }}
+                accessibilityLabel={`Step ${index + 1}. ${stepTexts[index] ?? ""}`}
                 accessibilityHint="Tap to tick this step off"
                 onPress={() => toggleStep(index)}
                 style={({ pressed }) => ({
                   flexDirection: "row",
                   gap: theme.spacing.sm + 2,
+                  minHeight: 44,
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
@@ -429,8 +408,10 @@ export default function RecipeScreen() {
                   ) : (
                     <Text
                       style={{
-                        color: theme.colors.text,
+                        color: theme.colors.textMuted,
                         fontSize: theme.font.size.body,
+                        fontWeight: theme.font.weight.bold,
+                        lineHeight: 22,
                         fontFamily: theme.font.family,
                         fontVariant: ["tabular-nums"],
                       }}
@@ -444,7 +425,7 @@ export default function RecipeScreen() {
                     flex: 1,
                     color: done ? theme.colors.textMuted : theme.colors.text,
                     fontSize: theme.font.size.body,
-                    lineHeight: 21,
+                    lineHeight: 22,
                     fontFamily: theme.font.family,
                     textDecorationLine: done ? "line-through" : "none",
                   }}
@@ -472,9 +453,9 @@ export default function RecipeScreen() {
           <View style={{ flexDirection: "row", gap: theme.spacing.sm + 2 }}>
             <Button
               label={cooked ? "Undo cooked" : "Mark cooked"}
-              icon={cooked ? "arrow-undo-outline" : undefined}
+              variant={cooked ? "outline" : "primary"}
               onPress={() => void toggleCooked()}
-              style={{ flex: 1 }}
+              style={{ flex: 2 }}
             />
             <Button
               label="Keep for next week"
@@ -488,7 +469,7 @@ export default function RecipeScreen() {
                     ? "Kept for next week, tap to remove"
                     : "Keep for next week"
               }
-              style={{ flex: 1.2 }}
+              style={{ flex: 3 }}
             />
           </View>
           <View

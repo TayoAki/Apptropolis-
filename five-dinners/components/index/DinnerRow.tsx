@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link } from "expo-router";
+import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
-import { AiImage } from "../AiImage";
+import { DayTab } from "../DayTab";
+import { RecipePlate } from "../RecipePlate";
 import {
   formatPackSize,
   formatPrice,
@@ -73,78 +74,67 @@ export function DinnerRow({
         minHeight: 76,
       }}
     >
-      <View
-        style={{
-          width: 30,
-          backgroundColor: theme.colors.surfaceAlt,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text
-          style={{
-            width: 60,
-            textAlign: "center",
-            transform: [{ rotate: "-90deg" }],
-            color: theme.colors.textMuted,
-            fontFamily: theme.font.family,
-            fontSize: theme.font.size.caption,
-            fontWeight: theme.font.weight.bold,
-            letterSpacing: 1,
-          }}
-        >
-          {day}
-        </Text>
-      </View>
+      <DayTab
+        day={day}
+        cooked={cooked}
+        width={44}
+        top={open || swap ? theme.spacing.lg + 4 : undefined}
+      />
 
       <View style={{ flex: 1, padding: theme.spacing.sm, gap: theme.spacing.sm }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-          <Link href={`/recipe/${recipe.id}`} asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Open recipe: ${recipe.name}`}
-              style={({ pressed }) => ({
-                flex: 1,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: theme.spacing.sm,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <AiImage
-                prompt={`${recipe.name}, home-cooked dinner on a plate, overhead photo`}
-                style={{ width: 56, height: 56, borderRadius: 28 }}
-              />
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ ...text, fontWeight: theme.font.weight.medium }}>{recipe.name}</Text>
-                {swap ? (
-                  <Text style={{ ...muted, textDecorationLine: "line-through" }}>
-                    {swap.fromName}
-                  </Text>
-                ) : null}
-                <Text style={{ ...muted, fontVariant: ["tabular-nums"] }}>
-                  {recipe.minutes} min · {formatPrice(cost)} · {servings} servings
-                  {note ? ` · ${note}` : ""}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open recipe: ${recipe.name}${cooked ? ", cooked" : ""}`}
+            onPress={() => router.push(`/recipe/${recipe.id}`)}
+            style={({ pressed }) => ({
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: theme.spacing.sm,
+              minHeight: 56,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <RecipePlate
+              prompt={`${recipe.name}, home-cooked dinner on a plate, overhead photo`}
+              diet={recipe.diet}
+              size={44}
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ ...text, fontWeight: theme.font.weight.medium }}>{recipe.name}</Text>
+              {swap ? (
+                <Text style={{ ...muted, textDecorationLine: "line-through" }}>
+                  {swap.fromName}
                 </Text>
-              </View>
-              {cooked ? (
-                <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
               ) : null}
-            </Pressable>
-          </Link>
+              <Text style={{ ...muted, fontVariant: ["tabular-nums"] }}>
+                {recipe.minutes} min · {formatPrice(cost)} · {servings}{" "}
+                {servings === 1 ? "serving" : "servings"}
+              </Text>
+              {note ? (
+                <Text
+                  style={{ ...muted, color: theme.colors.accent, fontVariant: ["tabular-nums"] }}
+                >
+                  {note}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={open ? `Close swap options for ${recipe.name}` : `Swap ${recipe.name}`}
+            accessibilityState={{ expanded: open }}
             hitSlop={8}
             onPress={onToggle}
             style={({ pressed }) => ({
               minHeight: 36,
-              paddingHorizontal: theme.spacing.md,
+              paddingHorizontal: theme.spacing.sm + 4,
               justifyContent: "center",
               borderRadius: theme.radius.pill,
               borderWidth: 1,
-              borderColor: theme.colors.accent,
-              backgroundColor: open ? theme.colors.surfaceAlt : theme.colors.surface,
+              borderColor: theme.colors.primary,
+              backgroundColor: open ? theme.colors.primary + "1F" : "transparent",
               opacity: pressed ? 0.7 : 1,
             })}
           >
@@ -152,7 +142,7 @@ export function DinnerRow({
               style={{
                 ...text,
                 fontSize: theme.font.size.caption + 1,
-                color: theme.colors.accent,
+                color: theme.colors.primary,
                 fontWeight: theme.font.weight.medium,
               }}
             >
@@ -197,9 +187,13 @@ export function DinnerRow({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Undo swap"
-                hitSlop={12}
+                hitSlop={8}
                 onPress={onUndo}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                style={({ pressed }) => ({
+                  minHeight: 32,
+                  justifyContent: "center",
+                  opacity: pressed ? 0.6 : 1,
+                })}
               >
                 <Text style={{ ...muted, textDecorationLine: "underline" }}>Undo swap</Text>
               </Pressable>
@@ -277,11 +271,13 @@ export function DinnerRow({
                   opacity: pressed ? 0.6 : 1,
                 })}
               >
-                <Ionicons name="lock-closed" size={16} color={theme.colors.warning} />
+                <Ionicons name="lock-closed" size={16} color={theme.colors.textMuted} />
                 <Text style={{ ...text, flex: 1 }}>
                   {lockedCount} more tested recipes in the full library
                 </Text>
-                <Text style={{ ...text, color: theme.colors.primary, textDecorationLine: "underline" }}>
+                <Text
+                  style={{ ...text, color: theme.colors.primary, fontWeight: theme.font.weight.medium }}
+                >
                   Unlock
                 </Text>
               </Pressable>
