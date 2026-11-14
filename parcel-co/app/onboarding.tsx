@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AiImage } from "../components/AiImage";
-import { Lottie } from "../components/lottie";
+import { LottieBox } from "../components/LottieBox";
 import { ModeCard, ModeCardSkeleton } from "../components/onboarding/ModeCard";
 import { PipBubble } from "../components/onboarding/PipBubble";
 import { OnboardingTabBar } from "../components/onboarding/TabBar";
@@ -221,6 +221,7 @@ export default function Welcome() {
                   <ModeCardSkeleton imageHeight={cell.imageHeight} />
                 ) : (
                   <ModeCard
+                    mode={cell.mode.key}
                     label={cell.mode.label}
                     caption={cell.mode.caption}
                     product={featuredFor(cell.mode.key, products.items)}
@@ -309,7 +310,7 @@ export default function Welcome() {
         hourChoices
       ) : reminderState === "on" ? (
         <Surface style={{ alignItems: "center", gap: theme.spacing.sm }}>
-          <Lottie name="success" size={64} />
+          <LottieBox name="success" size={64} />
           <Text
             style={{
               color: theme.colors.text,

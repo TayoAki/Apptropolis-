@@ -26,7 +26,7 @@ import {
 } from "../../data/schema";
 import { useCollection } from "../../data/repo";
 import { useTheme } from "../../theme/ThemeProvider";
-import { Lottie } from "../../components/lottie";
+import { LottieBox } from "../../components/LottieBox";
 import {
   Appear,
   CountUp,
@@ -621,7 +621,7 @@ function OrderScreen({ onRetry }: { onRetry: () => void }) {
               style={{
                 flexDirection: "row",
                 justifyContent: "space-between",
-                alignItems: "flex-end",
+                alignItems: "center",
                 marginTop: theme.spacing.md,
                 paddingTop: theme.spacing.md,
                 borderTopWidth: 1,
@@ -631,20 +631,22 @@ function OrderScreen({ onRetry }: { onRetry: () => void }) {
               <View style={{ gap: 2 }}>
                 <Text
                   style={{
-                    color: theme.colors.textMuted,
-                    fontSize: theme.font.size.caption,
-                  }}
-                >
-                  {order.deliverySpeed === "express" ? "Express delivery" : "Standard delivery"}
-                </Text>
-                <Text
-                  style={{
                     color: theme.colors.text,
                     fontSize: theme.font.size.body,
                     fontWeight: theme.font.weight.medium,
                   }}
                 >
                   Total paid
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: theme.font.size.caption,
+                  }}
+                >
+                  {order.deliverySpeed === "express"
+                    ? "With express delivery"
+                    : "With standard delivery"}
                 </Text>
               </View>
               <CountUp
@@ -852,7 +854,7 @@ function OrderScreen({ onRetry }: { onRetry: () => void }) {
                   borderColor: theme.colors.border,
                 }}
               >
-                <Lottie name="success" size={64} />
+                <LottieBox name="success" size={64} />
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text
                     style={{

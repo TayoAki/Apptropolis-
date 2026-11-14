@@ -1,12 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
-import { categoryLabel, formatMoney, type Product } from "../../data/schema";
+import { formatMoney, type Product, type ShopMode } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { PressScale, Skeleton } from "../motion";
-import { ProductImage } from "../ProductArt";
+import { ProductArt, ProductImage, modeIcon } from "../ProductArt";
 
-/** One mood on the onboarding grid: a featured product's picture, name and price. */
+/**
+ * One mood on the onboarding grid. The mood's name is the heading; a featured product's picture,
+ * name and price sit under it. Without a product (the catalog hasn't loaded) it shows the mood's
+ * icon and its one-line description instead.
+ */
 export function ModeCard({
+  mode,
   label,
   caption,
   product,
@@ -14,6 +19,7 @@ export function ModeCard({
   imageHeight,
   onPress,
 }: {
+  mode: ShopMode;
   label: string;
   caption: string;
   product?: Product;
@@ -29,7 +35,11 @@ export function ModeCard({
         haptic="selection"
         scaleTo={0.97}
         accessibilityRole="radio"
-        accessibilityLabel={`${label}. ${product ? product.name : caption}`}
+        accessibilityLabel={
+          product
+            ? `${label}. ${caption}. Featured: ${product.name}, ${formatMoney(product.price)}`
+            : `${label}. ${caption}`
+        }
         accessibilityState={{ checked: selected, selected }}
         style={{
           borderRadius: theme.radius.lg,
@@ -53,7 +63,12 @@ export function ModeCard({
               style={{ width: "100%", height: imageHeight, borderRadius: 0 }}
             />
           ) : (
-            <Ionicons name="bag-handle-outline" size={32} color={theme.colors.textMuted} />
+            <ProductArt
+              prompt={label}
+              icon={modeIcon(mode)}
+              label={label}
+              style={{ width: "100%", height: imageHeight, borderRadius: 0 }}
+            />
           )}
           {selected ? (
             <View
@@ -86,31 +101,23 @@ export function ModeCard({
         >
           <Text
             style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.medium,
-            }}
-          >
-            {label}
-          </Text>
-          <Text
-            numberOfLines={2}
-            style={{
               color: theme.colors.text,
               fontSize: theme.font.size.body,
               fontWeight: theme.font.weight.bold,
             }}
           >
+            {label}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption,
+              lineHeight: 17,
+              paddingBottom: product ? 0 : theme.spacing.xs,
+            }}
+          >
             {product ? product.name : caption}
           </Text>
-          {product ? (
-            <Text
-              numberOfLines={1}
-              style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
-            >
-              {categoryLabel(product.category)}
-            </Text>
-          ) : null}
         </View>
 
         {product ? (

@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Lottie } from "../components/lottie";
+import { LottieBox } from "../components/LottieBox";
 import { Appear, haptic, Skeleton, Stagger } from "../components/motion";
 import { Pip } from "../components/Pip";
 import { ProductArt } from "../components/ProductArt";
@@ -576,78 +576,78 @@ export default function SettingsScreen() {
           <View>
             <SectionTitle title="Account & support" flush />
             <Card>
-                {support.available ? (
-                  <Row
-                    label="Help & concierge desk"
-                    onPress={support.open}
-                    right={
-                      supportUnread > 0 ? (
-                        <View
+              {support.available ? (
+                <Row
+                  label="Help & concierge desk"
+                  onPress={support.open}
+                  right={
+                    supportUnread > 0 ? (
+                      <View
+                        style={{
+                          minWidth: 22,
+                          height: 22,
+                          borderRadius: 11,
+                          paddingHorizontal: 6,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: theme.colors.primary,
+                        }}
+                      >
+                        <Text
                           style={{
-                            minWidth: 22,
-                            height: 22,
-                            borderRadius: 11,
-                            paddingHorizontal: 6,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: theme.colors.primary,
+                            color: theme.colors.onPrimary,
+                            fontSize: theme.font.size.caption,
+                            fontWeight: theme.font.weight.bold,
+                            fontVariant: ["tabular-nums"],
                           }}
                         >
-                          <Text
-                            style={{
-                              color: theme.colors.onPrimary,
-                              fontSize: theme.font.size.caption,
-                              fontWeight: theme.font.weight.bold,
-                              fontVariant: ["tabular-nums"],
-                            }}
-                          >
-                            {supportUnread > 99 ? "99+" : supportUnread}
-                          </Text>
-                        </View>
-                      ) : null
-                    }
-                  />
-                ) : null}
-                {appInfo.termsUrl ? (
-                  <Row label="Terms of service" onPress={() => Linking.openURL(appInfo.termsUrl)} />
-                ) : null}
-                {appInfo.privacyUrl ? (
-                  <Row label="Privacy policy" onPress={() => Linking.openURL(appInfo.privacyUrl)} />
-                ) : null}
-                <Row
-                  label="Restore purchases"
-                  detail={restoreMessage}
-                  disabled={purchases.status !== "idle"}
-                  chevron={false}
-                  onPress={restore}
-                  right={
-                    purchases.status === "restoring" ? (
-                      <Text
-                        style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
-                      >
-                        Checking…
-                      </Text>
+                          {supportUnread > 99 ? "99+" : supportUnread}
+                        </Text>
+                      </View>
                     ) : null
                   }
                 />
-                <Row label="Replay onboarding" onPress={() => resetOnboarding()} />
-                <Row
-                  label="Reset app data"
-                  danger
-                  chevron={false}
-                  last
-                  disabled={products.loading || messages.loading || clearing}
-                  detail={
-                    cleared
-                      ? "Cleared. Your orders are kept."
-                      : armed
-                        ? "Tap again to confirm. This can't be undone."
-                        : "Clears your cart, wishlist and Pip chat. Orders stay."
-                  }
-                  right={cleared ? <Lottie name="success" size={32} /> : null}
-                  onPress={resetData}
-                  accessibilityLabel={armed ? "Confirm reset app data" : "Reset app data"}
-                />
+              ) : null}
+              {appInfo.termsUrl ? (
+                <Row label="Terms of service" onPress={() => Linking.openURL(appInfo.termsUrl)} />
+              ) : null}
+              {appInfo.privacyUrl ? (
+                <Row label="Privacy policy" onPress={() => Linking.openURL(appInfo.privacyUrl)} />
+              ) : null}
+              <Row
+                label="Restore purchases"
+                detail={restoreMessage}
+                disabled={purchases.status !== "idle"}
+                chevron={false}
+                onPress={restore}
+                right={
+                  purchases.status === "restoring" ? (
+                    <Text
+                      style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
+                    >
+                      Checking…
+                    </Text>
+                  ) : null
+                }
+              />
+              <Row label="Replay onboarding" onPress={() => resetOnboarding()} />
+              <Row
+                label="Reset app data"
+                danger
+                chevron={false}
+                last
+                disabled={products.loading || messages.loading || clearing}
+                detail={
+                  cleared
+                    ? "Cleared. Your orders are kept."
+                    : armed
+                      ? "Tap again to confirm. This can't be undone."
+                      : "Clears your cart, wishlist and Pip chat. Orders stay."
+                }
+                right={cleared ? <LottieBox name="success" size={32} /> : null}
+                onPress={resetData}
+                accessibilityLabel={armed ? "Confirm reset app data" : "Reset app data"}
+              />
             </Card>
           </View>
 

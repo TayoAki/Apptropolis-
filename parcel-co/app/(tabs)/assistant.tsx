@@ -657,6 +657,8 @@ function AssistantScreen({ onRetry }: { onRetry: () => void }) {
               borderRadius: theme.radius.pill,
               borderWidth: 1.5,
               borderColor: composing ? theme.colors.primary : theme.colors.textMuted,
+              // Focus shows on the field's own border, not a second ring around it (web).
+              outlineStyle: "solid",
               outlineWidth: 0,
               backgroundColor: theme.colors.surface,
               color: theme.colors.text,

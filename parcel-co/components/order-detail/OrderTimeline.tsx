@@ -74,7 +74,10 @@ export function timelineSteps(order: Order): Step[] {
         : index === current
           ? "current"
           : "todo";
-    return { key, label: LABELS[key], state, detail: detailFor(order, key, state) };
+    // A returned order ends on "Returned", not "Delivered".
+    const label =
+      key === "delivered" && order.status === "returned" ? LABELS.returned : LABELS[key];
+    return { key, label, state, detail: detailFor(order, key, state) };
   });
 }
 

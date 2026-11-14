@@ -13,7 +13,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SlideToPay } from "../components/checkout/SlideToPay";
-import { Celebrate, Lottie } from "../components/lottie";
+import { Celebrate } from "../components/lottie";
+import { LottieBox } from "../components/LottieBox";
 import {
   Appear,
   CountUp,
@@ -271,7 +272,7 @@ function Confirmation({ order }: { order: Placed }) {
         <Pip pose="pip-celebrating" size={180} />
       </Appear>
       <Appear delay={120}>
-        <Lottie name="success" size={72} />
+        <LottieBox name="success" size={72} />
       </Appear>
       <Appear delay={200} style={{ alignItems: "center", gap: theme.spacing.sm }}>
         <ScreenTitle align="center">Order placed</ScreenTitle>

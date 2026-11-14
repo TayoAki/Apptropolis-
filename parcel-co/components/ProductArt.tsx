@@ -54,6 +54,11 @@ const MODE_ICON: Record<Product["mode"], IconName> = {
   pantry: "basket-outline",
 };
 
+/** The icon that stands for a whole shop mode. */
+export function modeIcon(mode: Product["mode"]): IconName {
+  return MODE_ICON[mode] ?? "cube-outline";
+}
+
 /** The icon for a product's category (or its shop mode); a parcel when the product is unknown. */
 export function productIcon(product?: Pick<Product, "category" | "mode"> | null): IconName {
   if (!product) return "cube-outline";

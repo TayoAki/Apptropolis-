@@ -12,7 +12,7 @@ import {
   type OrderStatus,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { Lottie } from "../lottie";
+import { LottieBox } from "../LottieBox";
 import { haptic, useReducedMotion } from "../motion";
 import { Pip } from "../Pip";
 import { PrimaryButton, SecondaryButton, Surface } from "../ui";
@@ -217,7 +217,9 @@ function Timeline({ status }: { status: OrderStatus }) {
                   fontWeight: isActive ? theme.font.weight.bold : theme.font.weight.regular,
                 }}
               >
-                {SHORT_LABEL[step]}
+                {step === "delivered" && status === "returned"
+                  ? SHORT_LABEL.returned
+                  : SHORT_LABEL[step]}
               </Text>
             </View>
           );
@@ -301,18 +303,25 @@ export function TrackCard({
             style={{
               color: theme.colors.text,
               fontSize: theme.font.size.title,
+              lineHeight: 28,
               fontWeight: theme.font.weight.bold,
-              fontVariant: ["tabular-nums"],
             }}
           >
             Order #{order.orderNumber}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.sm }}>
             {order.status === "delivered" ? (
-              <Lottie name="success" size={28} />
+              <LottieBox name="success" size={22} />
             ) : (
+              // Sits beside the first line of the status, however many lines it wraps to.
               <View
-                style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: tone }}
+                style={{
+                  width: 10,
+                  height: 10,
+                  marginTop: 6,
+                  borderRadius: 5,
+                  backgroundColor: tone,
+                }}
               />
             )}
             <Text

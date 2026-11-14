@@ -187,7 +187,6 @@ function OrderChip({ order, products }: { order: Order; products: Product[] }) {
             color: theme.colors.text,
             fontSize: theme.font.size.body,
             fontWeight: theme.font.weight.bold,
-            fontVariant: ["tabular-nums"],
           }}
         >
           Order #{order.orderNumber}

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
 import { SHOP_MODES, type ShopMode } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-import { Lottie } from "../lottie";
+import { LottieBox } from "../LottieBox";
 import { PressScale, haptic, useReducedMotion } from "../motion";
 
 /** The four shop modes as one segmented control; a pill glides under the chosen one. */
@@ -217,7 +217,7 @@ export function WishlistButton({
       </Animated.View>
       {playing ? (
         <View pointerEvents="none" style={{ position: "absolute", left: -6, top: -6 }}>
-          <Lottie
+          <LottieBox
             key={burst}
             name="heart"
             size={56}
@@ -255,7 +255,7 @@ export function CartPill({
         accessibilityLabel={`${quantity} of ${name} in cart. Review cart`}
         hitSlop={4}
         style={({ pressed }) => ({
-          minHeight: 40,
+          minHeight: 44,
           flexDirection: "row",
           gap: theme.spacing.xs,
           paddingHorizontal: theme.spacing.md,
@@ -290,7 +290,7 @@ export function CartPill({
       accessibilityRole="button"
       accessibilityLabel={`Add ${name} to cart`}
       style={{
-        minHeight: 40,
+        minHeight: 44,
         borderRadius: theme.radius.pill,
         backgroundColor: theme.colors.surfaceAlt,
         alignItems: "center",

@@ -284,6 +284,8 @@ function ShopScreen({ onRetry }: { onRetry: () => void }) {
               flex: 1,
               minWidth: 0,
               height: 40,
+              // Focus shows on the pill's border, not a ring inside it (web).
+              outlineStyle: "solid",
               outlineWidth: 0,
               color: theme.colors.text,
               fontSize: theme.font.size.body,
@@ -377,6 +379,7 @@ function ShopScreen({ onRetry }: { onRetry: () => void }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={header}
+        ListHeaderComponentStyle={{ marginBottom: theme.spacing.md }}
         ListEmptyComponent={empty}
         renderItem={({ item, index }) => (
           <Appear delay={Math.min(index, 8) * 50} style={{ flex: 1 }}>

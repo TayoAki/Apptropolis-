@@ -3,7 +3,7 @@ import { Stack } from "expo-router";
 import { useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Lottie } from "../components/lottie";
+import { LottieBox } from "../components/LottieBox";
 import { Float, haptic, PressScale, Pulse, Skeleton, Stagger } from "../components/motion";
 import { Pip } from "../components/Pip";
 import { ProductArt, type IconName } from "../components/ProductArt";
@@ -391,7 +391,7 @@ export default function PaywallScreen() {
         gap: theme.spacing.sm,
       }}
     >
-      <Lottie name="sparkle" size={48} />
+      <LottieBox name="sparkle" size={48} />
       <ScreenTitle align="center" style={{ flexShrink: 1 }}>
         You're in the Club
       </ScreenTitle>
@@ -496,7 +496,7 @@ export default function PaywallScreen() {
 
   const premiumSection = (
     <View style={{ alignItems: "center", gap: theme.spacing.md }}>
-      <Lottie name="success" size={96} />
+      <LottieBox name="success" size={96} />
       <Text
         style={{
           color: theme.colors.textMuted,
@@ -598,7 +598,7 @@ export default function PaywallScreen() {
       </ScrollView>
 
       {/* The offer's button stays in reach under the scrolling content. */}
-      {premiumView ? null : (
+      {premiumView || (purchaseSection === null && !error) ? null : (
         <View
           style={{
             gap: theme.spacing.sm,
