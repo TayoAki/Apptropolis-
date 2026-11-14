@@ -1,0 +1,165 @@
+import { daysFromNow, type AssistantMessage, type Order, type Product } from "./schema";
+
+const products: Product[] = [
+  // Style
+  { id: "p1", name: "Linen Relaxed Shirt", mode: "style", category: "tops", price: 68, description: "Garment-washed linen with a boxy fit and a soft collar.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p2", name: "Merino Crew Knit", mode: "style", category: "knitwear", price: 84, description: "Fine merino in a fitted crew neck that layers without bulk.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p3", name: "Wide-Leg Pleat Trousers", mode: "style", category: "bottoms", price: 92, description: "High rise, soft pleats and a tapered hem.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p4", name: "Heavy Canvas Tote", mode: "style", category: "bags", price: 46, description: "Cotton canvas with leather handles and an inside pocket.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p5", name: "Washed Denim Jacket", mode: "style", category: "outerwear", price: 118, description: "Mid-weight denim with a relaxed shape and a worn-in finish.", isWishlisted: true, cartQuantity: 0 },
+  { id: "p6", name: "Ribbed Square Tank", mode: "style", category: "tops", price: 28, description: "Stretch rib cotton with a square neckline.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p7", name: "Leather Card Holder", mode: "style", category: "accessories", price: 39, description: "Vegetable-tanned leather, slim, holds six cards.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p8", name: "Pleated Midi Skirt", mode: "style", category: "bottoms", price: 74, description: "Light crepe with a knife pleat and an elastic waist.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p9", name: "Canvas Low-Top Sneakers", mode: "style", category: "shoes", price: 64, description: "Vulcanized sole and a cushioned insole for all-day walking.", isWishlisted: true, cartQuantity: 0 },
+  { id: "p10", name: "Silk-Blend Scarf", mode: "style", category: "accessories", price: 52, description: "Lightweight silk and modal in a neutral print.", isWishlisted: false, cartQuantity: 0 },
+
+  // Glow
+  { id: "p11", name: "Vitamin C Brightening Serum", mode: "glow", category: "serums", price: 38, description: "A lightweight daily serum with stabilized vitamin C. Use in the morning under sunscreen.", isWishlisted: false, cartQuantity: 1 },
+  { id: "p12", name: "Water-Gel Moisturizer", mode: "glow", category: "moisturizers", price: 24, description: "A cooling gel cream for normal to oily skin that layers well over serums.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p13", name: "Gentle Foaming Cleanser", mode: "glow", category: "cleansers", price: 18, description: "A low-foam cleanser that removes the day without leaving skin tight.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p14", name: "Mineral Sunscreen SPF 30", mode: "glow", category: "sunscreen", price: 22, description: "Zinc oxide sunscreen with a sheer finish. Reapply every two hours outdoors.", isWishlisted: false, cartQuantity: 2 },
+  { id: "p15", name: "Niacinamide Toner", mode: "glow", category: "toners", price: 26, description: "Alcohol-free toner with niacinamide for a more even-looking tone.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p16", name: "Hyaluronic Hydrating Serum", mode: "glow", category: "serums", price: 32, description: "A hyaluronic acid serum for hydration. Apply to damp skin.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p17", name: "Retinal Night Serum", mode: "glow", category: "serums", price: 46, description: "A gentle retinal serum for evenings. Start two nights a week and build up.", isWishlisted: true, cartQuantity: 0 },
+  { id: "p18", name: "Kaolin Clay Mask", mode: "glow", category: "masks", price: 19, description: "A kaolin and bentonite mask for a weekly clear-up.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p19", name: "Barrier Repair Cream", mode: "glow", category: "moisturizers", price: 34, description: "Ceramides and cholesterol for dry or sensitive skin.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p20", name: "Caffeine Eye Cream", mode: "glow", category: "eye care", price: 28, description: "A light eye cream for puffiness, used morning and night.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p21", name: "Shea Lip Balm", mode: "glow", category: "lips", price: 9, description: "Unscented shea and beeswax balm for dry lips.", isWishlisted: false, cartQuantity: 0 },
+
+  // Home
+  { id: "p22", name: "Hand-Poured Soy Candle", mode: "home", category: "candles", price: 32, description: "Forty-hour soy wax in a ceramic vessel, with notes of cedar and fig.", isWishlisted: true, cartQuantity: 0 },
+  { id: "p23", name: "Ceramic Pour-Over Dripper", mode: "home", category: "kitchen", price: 36, description: "A glazed ceramic dripper for one or two cups.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p24", name: "Stoneware Dinner Plate Set", mode: "home", category: "tableware", price: 98, description: "A set of four matte stoneware plates. Dishwasher safe.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p25", name: "Stonewashed Linen Sheet Set", mode: "home", category: "bedding", price: 135, description: "Queen set in stonewashed linen that softens with every wash.", isWishlisted: true, cartQuantity: 0 },
+  { id: "p26", name: "End-Grain Bamboo Cutting Board", mode: "home", category: "kitchen", price: 42, description: "A large board with a juice groove along the edge.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p27", name: "Woven Seagrass Basket", mode: "home", category: "decor", price: 48, description: "Hand-woven seagrass basket, 14 inches across.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p28", name: "Borosilicate Glass Carafe", mode: "home", category: "kitchen", price: 29, description: "A one-litre carafe with a cork lid.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p29", name: "Sandalwood Reed Diffuser", mode: "home", category: "candles", price: 26, description: "A sandalwood diffuser with six rattan reeds.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p30", name: "Cotton Waffle Towel", mode: "home", category: "bath", price: 21, description: "A quick-drying cotton waffle weave in a soft grey.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p31", name: "Glazed Bud Vase Trio", mode: "home", category: "decor", price: 34, description: "Three small vases in earth-toned glaze.", isWishlisted: false, cartQuantity: 0 },
+
+  // Pantry
+  { id: "p32", name: "Extra Virgin Olive Oil", mode: "pantry", category: "oils", price: 24, description: "Cold-pressed single-estate oil, 500 ml. Good for finishing.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p33", name: "Single-Origin Coffee Beans", mode: "pantry", category: "coffee", price: 19, description: "Whole beans, medium roast, 12 oz, with notes of cocoa and orange.", isWishlisted: false, cartQuantity: 1 },
+  { id: "p34", name: "Sencha Green Tea", mode: "pantry", category: "tea", price: 14, description: "Loose-leaf Japanese sencha in a 100 g tin.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p35", name: "Sea Salt Flakes", mode: "pantry", category: "staples", price: 8, description: "Flaky sea salt for finishing, 150 g.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p36", name: "Oat Milk Barista Edition", mode: "pantry", category: "dairy-free", price: 22, description: "Oat milk that froths well. Six 1-litre cartons.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p37", name: "Wildflower Honey", mode: "pantry", category: "staples", price: 16, description: "Raw honey from spring wildflowers, 340 g.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p38", name: "72% Dark Chocolate Bar", mode: "pantry", category: "snacks", price: 6, description: "Single-origin 72% cacao bar, 80 g.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p39", name: "Garlic Chili Crisp", mode: "pantry", category: "condiments", price: 11, description: "Crunchy chili oil with garlic and shallot.", isWishlisted: false, cartQuantity: 0 },
+  { id: "p40", name: "Aged Basmati Rice", mode: "pantry", category: "staples", price: 15, description: "Aged long-grain basmati rice, 2 kg.", isWishlisted: false, cartQuantity: 0 },
+];
+
+const orders: Order[] = [
+  {
+    id: "o1",
+    orderNumber: "PC-20461",
+    items: "Vitamin C Brightening Serum x1, Water-Gel Moisturizer x1",
+    total: 76.95,
+    shippingAddress: "18 Alder Street, Apt 4B, Portland, OR 97209",
+    deliverySpeed: "express",
+    status: "out_for_delivery",
+    placedAt: daysFromNow(-2, 10),
+    estimatedDelivery: daysFromNow(0, 18),
+  },
+  {
+    id: "o2",
+    orderNumber: "PC-20412",
+    items: "Canvas Low-Top Sneakers x1, Silk-Blend Scarf x1",
+    total: 116,
+    shippingAddress: "18 Alder Street, Apt 4B, Portland, OR 97209",
+    deliverySpeed: "standard",
+    status: "delivered",
+    placedAt: daysFromNow(-12, 14),
+    estimatedDelivery: daysFromNow(-7, 18),
+  },
+  {
+    id: "o3",
+    orderNumber: "PC-20377",
+    items: "Linen Relaxed Shirt x2",
+    total: 136,
+    shippingAddress: "18 Alder Street, Apt 4B, Portland, OR 97209",
+    deliverySpeed: "standard",
+    status: "delivered",
+    placedAt: daysFromNow(-21, 9),
+    estimatedDelivery: daysFromNow(-16, 18),
+  },
+  {
+    id: "o4",
+    orderNumber: "PC-20340",
+    items: "Ceramic Pour-Over Dripper x1, Glass Carafe x1",
+    total: 65,
+    shippingAddress: "18 Alder Street, Apt 4B, Portland, OR 97209",
+    deliverySpeed: "standard",
+    status: "returned",
+    placedAt: daysFromNow(-33, 16),
+    estimatedDelivery: daysFromNow(-27, 18),
+  },
+  {
+    id: "o5",
+    orderNumber: "PC-20298",
+    items: "Extra Virgin Olive Oil x1, Sea Salt Flakes x2, Single-Origin Coffee Beans x1",
+    total: 59,
+    shippingAddress: "18 Alder Street, Apt 4B, Portland, OR 97209",
+    deliverySpeed: "standard",
+    status: "delivered",
+    placedAt: daysFromNow(-52, 11),
+    estimatedDelivery: daysFromNow(-46, 18),
+  },
+  {
+    id: "o6",
+    orderNumber: "PC-20251",
+    items: "Hand-Poured Soy Candle x2",
+    total: 64,
+    shippingAddress: "18 Alder Street, Apt 4B, Portland, OR 97209",
+    deliverySpeed: "standard",
+    status: "delivered",
+    placedAt: daysFromNow(-88, 13),
+    estimatedDelivery: daysFromNow(-81, 18),
+  },
+];
+
+const assistant_messages: AssistantMessage[] = [
+  {
+    id: "m1",
+    role: "user",
+    text: "Where is my latest order?",
+    createdAt: daysFromNow(-2, 10),
+  },
+  {
+    id: "m2",
+    role: "assistant",
+    text: "Order PC-20461 is out for delivery and should arrive today by 6 pm. It includes your Vitamin C Brightening Serum and Water-Gel Moisturizer.",
+    createdAt: daysFromNow(-2, 10),
+  },
+  {
+    id: "m3",
+    role: "user",
+    text: "Does the moisturizer go on before or after the serum?",
+    createdAt: daysFromNow(-1, 8),
+  },
+  {
+    id: "m4",
+    role: "assistant",
+    text: "After. Apply the serum to clean, slightly damp skin, wait a minute, then add the Water-Gel Moisturizer. In the morning, finish with sunscreen.",
+    createdAt: daysFromNow(-1, 8),
+  },
+  {
+    id: "m5",
+    role: "user",
+    text: "Can I return the dripper from my last order?",
+    createdAt: daysFromNow(-33, 19),
+  },
+  {
+    id: "m6",
+    role: "assistant",
+    text: "Order PC-20340 is already marked returned, so the Ceramic Pour-Over Dripper and Glass Carafe are on their way back. Refunds usually land within five to seven business days.",
+    createdAt: daysFromNow(-33, 19),
+  },
+];
+
+export const seed = {
+  products,
+  orders,
+  assistant_messages,
+};
