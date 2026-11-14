@@ -81,7 +81,7 @@ export function RegenerateButton({
           fontWeight: theme.font.weight.bold,
         }}
       >
-        {busy ? "Building your plan…" : isPremium ? "Regenerate plan" : "Regenerate plan (Pro)"}
+        {busy ? "Rebuilding your plan…" : isPremium ? "Regenerate plan" : "Regenerate plan (Pro)"}
       </Text>
     </PressScale>
   );
