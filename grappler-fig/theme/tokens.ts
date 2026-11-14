@@ -9,8 +9,17 @@ const font: Theme["font"] = {
   weight: { regular: "400", medium: "500", bold: "700" },
 };
 
+// Color rules every pack follows (checked with WCAG 2.2 contrast math):
+// - primary, accent, success, warning and danger each reach 4.5:1 as text on background, surface
+//   and surfaceAlt, so any of them can be a label, link or icon on any neutral surface.
+// - onPrimary reaches 4.5:1 on all five of those colors, so it is the label color for any filled
+//   chip, badge or button.
+// - Brand and status hues are kept apart, so a warning or an error is never the brand color.
+// Use textMuted, not border, for the outline of a control (border is a decorative hairline).
 export const themes: Theme[] = [
   {
+    // Red corner, blue corner. The red is light enough to read as text on the dark surfaces and
+    // takes a dark label; danger is rose so an error is never the brand red.
     id: "ringside",
     name: "Ringside",
     dark: true,
@@ -21,18 +30,19 @@ export const themes: Theme[] = [
       border: "#2F3239",
       text: "#FFFFFF",
       textMuted: "#9BA1AA",
-      primary: "#E5262B",
-      onPrimary: "#FFFFFF",
-      accent: "#FF4B4F",
+      primary: "#FB4E4A",
+      onPrimary: "#1F0706",
+      accent: "#67AAED",
       success: "#3DDC84",
       warning: "#F5B301",
-      danger: "#FF3B3B",
+      danger: "#FC5C95",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Brick red with a slate accent. Danger is a darker wine so it is not the brand red.
     id: "canvas",
     name: "Canvas",
     dark: false,
@@ -43,18 +53,19 @@ export const themes: Theme[] = [
       border: "#D5CABB",
       text: "#1E1B18",
       textMuted: "#6B625A",
-      primary: "#C8452D",
+      primary: "#B7351C",
       onPrimary: "#FFFFFF",
       accent: "#2F4858",
-      success: "#2E7D4F",
-      warning: "#B7791F",
-      danger: "#B42318",
+      success: "#217145",
+      warning: "#7D6001",
+      danger: "#95043E",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Gold with a paler gold accent. Warning is orange and danger crimson, clear of the gold.
     id: "gym-gold",
     name: "Gym Gold",
     dark: true,
@@ -69,14 +80,16 @@ export const themes: Theme[] = [
       onPrimary: "#1A1400",
       accent: "#FFD76A",
       success: "#4CAF7A",
-      warning: "#FF9F43",
-      danger: "#FF5C5C",
+      warning: "#FE8F5B",
+      danger: "#F95E7C",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Green with a deeper green accent (one-hue scheme). Success is leaf green so it is not the
+    // brand green.
     id: "tape",
     name: "Hand Wrap",
     dark: false,
@@ -87,18 +100,20 @@ export const themes: Theme[] = [
       border: "#CBD8D0",
       text: "#14201A",
       textMuted: "#5B6B63",
-      primary: "#1F8A5B",
+      primary: "#03794C",
       onPrimary: "#FFFFFF",
       accent: "#0F6B47",
-      success: "#2A9D68",
-      warning: "#B7791F",
-      danger: "#C0392B",
+      success: "#507400",
+      warning: "#846500",
+      danger: "#BE3939",
     },
     radius,
     spacing,
     font,
   },
   {
+    // Orange with a steel-blue accent (complements) and a light label. Warning is olive-gold,
+    // danger crimson.
     id: "steel",
     name: "Steel Bag",
     dark: false,
@@ -108,13 +123,13 @@ export const themes: Theme[] = [
       surfaceAlt: "#DCE2E9",
       border: "#C2CBD5",
       text: "#16202B",
-      textMuted: "#5A6674",
-      primary: "#F26A1B",
-      onPrimary: "#17100A",
+      textMuted: "#586472",
+      primary: "#A84400",
+      onPrimary: "#FFF9F5",
       accent: "#3B5B7A",
-      success: "#2E8B57",
-      warning: "#D98A00",
-      danger: "#C62828",
+      success: "#007240",
+      warning: "#786000",
+      danger: "#BB244C",
     },
     radius,
     spacing,
