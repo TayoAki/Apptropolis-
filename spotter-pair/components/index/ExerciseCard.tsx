@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
-import { count, formatNumber, type Exercise, type SetLog } from "../../data/schema";
+import { count, formatWeight, type Exercise, type SetLog } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Card } from "../Card";
 import { Appear, PressScale } from "../motion";
@@ -12,10 +12,9 @@ export interface Draft {
 
 const WEIGHT_STEP = 5;
 
-/** "185 lbs × 8 reps", or "Bodyweight × 10 reps". */
+/** "185 lb × 8 reps", or "Bodyweight × 10 reps". */
 export function setLabel(weight: number, reps: number): string {
-  const load = weight === 0 ? "Bodyweight" : `${formatNumber(weight)} lbs`;
-  return `${load} × ${count(reps, "rep")}`;
+  return `${formatWeight(weight)} × ${count(reps, "rep")}`;
 }
 
 function StepButton({
@@ -33,20 +32,20 @@ function StepButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      hitSlop={6}
+      hitSlop={4}
       style={({ pressed }) => ({
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: theme.colors.surfaceAlt,
         borderWidth: 1,
-        borderColor: theme.colors.border,
-        opacity: pressed ? 0.7 : 1,
+        borderColor: theme.colors.textMuted,
+        opacity: pressed ? 0.6 : 1,
       })}
     >
-      <Ionicons name={icon} size={18} color={theme.colors.text} />
+      <Ionicons name={icon} size={20} color={theme.colors.text} />
     </Pressable>
   );
 }
@@ -63,33 +62,35 @@ function Stepper({
   onIncrease: () => void;
 }) {
   const theme = useTheme();
+  // One full-width row per value: the name on the left, then minus, the value and plus. The
+  // value's width is fixed so the buttons don't move as the number changes ("Bodyweight" fits).
   return (
-    <View style={{ flex: 1, gap: theme.spacing.xs }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
       <Text
         style={{
+          flex: 1,
           color: theme.colors.textMuted,
-          fontSize: theme.font.size.caption,
-          fontWeight: theme.font.weight.medium,
+          fontSize: theme.font.size.body,
         }}
       >
         {label}
       </Text>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-        <StepButton icon="remove" label={`Decrease ${label.toLowerCase()}`} onPress={onDecrease} />
-        <Text
-          style={{
-            flex: 1,
-            textAlign: "center",
-            color: theme.colors.text,
-            fontSize: theme.font.size.body,
-            fontWeight: theme.font.weight.bold,
-            fontVariant: ["tabular-nums"],
-          }}
-        >
-          {value}
-        </Text>
-        <StepButton icon="add" label={`Increase ${label.toLowerCase()}`} onPress={onIncrease} />
-      </View>
+      <StepButton icon="remove" label={`Decrease ${label.toLowerCase()}`} onPress={onDecrease} />
+      <Text
+        accessibilityLiveRegion="polite"
+        numberOfLines={1}
+        style={{
+          width: 104,
+          textAlign: "center",
+          color: theme.colors.text,
+          fontSize: theme.font.size.body,
+          fontWeight: theme.font.weight.bold,
+          fontVariant: ["tabular-nums"],
+        }}
+      >
+        {value}
+      </Text>
+      <StepButton icon="add" label={`Increase ${label.toLowerCase()}`} onPress={onIncrease} />
     </View>
   );
 }
@@ -191,10 +192,10 @@ export function ExerciseCard({
                 >
                   {setLabel(set.weight, set.reps)}
                 </Text>
-                <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
+                <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
                 <Text
                   style={{
-                    color: theme.colors.primary,
+                    color: theme.colors.success,
                     fontSize: theme.font.size.body,
                     fontWeight: theme.font.weight.medium,
                   }}
@@ -214,40 +215,12 @@ export function ExerciseCard({
             <Text style={{ flex: 1, color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
               Up next
             </Text>
-            <PressScale
-              onPress={onLog}
-              scaleTo={0.94}
-              accessibilityRole="button"
-              accessibilityLabel={`Log set ${logged.length + 1} of ${exercise.name}`}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: theme.spacing.xs,
-                minHeight: 44,
-                paddingHorizontal: theme.spacing.md,
-                borderRadius: theme.radius.pill,
-                backgroundColor: theme.colors.surfaceAlt,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-              }}
-            >
-              <Ionicons name="add" size={18} color={theme.colors.text} />
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.body,
-                  fontWeight: theme.font.weight.bold,
-                }}
-              >
-                Log Set
-              </Text>
-            </PressScale>
           </View>
 
-          <View style={{ flexDirection: "row", gap: theme.spacing.lg, marginTop: theme.spacing.xs }}>
+          <View style={{ gap: theme.spacing.sm }}>
             <Stepper
               label="Weight"
-              value={draft.weight === 0 ? "Bodyweight" : `${formatNumber(draft.weight)} lbs`}
+              value={formatWeight(draft.weight)}
               onDecrease={() => onStep("weight", -WEIGHT_STEP)}
               onIncrease={() => onStep("weight", WEIGHT_STEP)}
             />
@@ -257,6 +230,39 @@ export function ExerciseCard({
               onDecrease={() => onStep("reps", -1)}
               onIncrease={() => onStep("reps", 1)}
             />
+          </View>
+
+          {/* The wrapper stretches so the button fills the card: set the values, then log. */}
+          <View style={{ marginTop: theme.spacing.xs }}>
+            <PressScale
+              onPress={onLog}
+              scaleTo={0.97}
+              accessibilityRole="button"
+              accessibilityLabel={`Log set ${logged.length + 1} of ${exercise.name}`}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: theme.spacing.xs,
+                minHeight: 48,
+                paddingHorizontal: theme.spacing.lg,
+                borderRadius: theme.radius.pill,
+                backgroundColor: theme.colors.surfaceAlt,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <Ionicons name="add" size={20} color={theme.colors.primary} />
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
+                {`Log set ${logged.length + 1}`}
+              </Text>
+            </PressScale>
           </View>
         </View>
       ) : null}

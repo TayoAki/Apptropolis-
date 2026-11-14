@@ -21,6 +21,7 @@ import {
   ExerciseCard,
   HistoryCard,
   PlanHeader,
+  RegenerateButton,
   SplitBadge,
   SummaryCard,
   type DayChipData,
@@ -219,8 +220,19 @@ export default function PlanScreen() {
   const header = (
     <View style={{ paddingBottom: theme.spacing.md }}>
       <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-        <PlanHeader isPremium={isPremium} pose={pose} busy={generating} onRegenerate={onRegenerate} />
-        {split ? <SplitBadge label={split} /> : null}
+        <PlanHeader pose={pose} />
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: theme.spacing.sm,
+          }}
+        >
+          {split ? <SplitBadge label={split} /> : <View />}
+          <RegenerateButton isPremium={isPremium} busy={generating} onPress={onRegenerate} />
+        </View>
         {loading ? (
           <Skeleton height={64} radius={theme.radius.pill} />
         ) : (
@@ -291,8 +303,8 @@ export default function PlanScreen() {
       ListHeaderComponent={header}
       ListEmptyComponent={emptyContent}
       ListFooterComponent={
-        loading ? null : (
-          <View style={{ marginTop: theme.spacing.md }}>
+        loading ? undefined : (
+          <View style={{ marginTop: theme.spacing.xl }}>
             <HistoryCard past={past} />
           </View>
         )
@@ -316,8 +328,8 @@ export default function PlanScreen() {
       }}
       contentContainerStyle={{
         paddingHorizontal: theme.spacing.lg,
-        paddingTop: insets.top + theme.spacing.lg,
-        paddingBottom: insets.bottom + 96,
+        paddingTop: insets.top + theme.spacing.md,
+        paddingBottom: theme.spacing.xl,
       }}
       showsVerticalScrollIndicator={false}
     />

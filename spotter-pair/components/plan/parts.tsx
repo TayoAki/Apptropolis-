@@ -4,106 +4,107 @@ import { Pressable, Text, View } from "react-native";
 import { count, dayLabel, type Exercise, type Workout } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Card } from "../Card";
-import { CountUp, Mascot, PressScale, haptic } from "../motion";
+import { CountUp, PressScale, haptic } from "../motion";
+import { Rocco } from "../Rocco";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-/** Title, the Regenerate (PRO) pill and the app's mascot overlapping its top edge. */
-export function PlanHeader({
-  isPremium,
-  pose,
-  busy,
-  onRegenerate,
-}: {
-  isPremium: boolean;
-  pose: string;
-  busy: boolean;
-  onRegenerate: () => void;
-}) {
+/** The screen's title beside the mascot, the same header the other tabs use. */
+export function PlanHeader({ pose }: { pose: string }) {
   const theme = useTheme();
   return (
-    <View style={{ paddingTop: theme.spacing.md }}>
-      {/* Rendered first so the pill sits on top of the mascot and keeps its taps. */}
-      <Mascot pose={pose} size={80} style={{ position: "absolute", top: -30, right: -4 }} />
-      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-        <Text
-          accessibilityRole="header"
-          numberOfLines={1}
-          style={{
-            flex: 1,
-            color: theme.colors.text,
-            fontSize: theme.font.size.display,
-            fontWeight: theme.font.weight.bold,
-          }}
-        >
-          My Plan
-        </Text>
-        <PressScale
-          onPress={onRegenerate}
-          disabled={busy}
-          haptic="light"
-          scaleTo={0.94}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={isPremium ? "Regenerate plan" : "Regenerate plan, premium feature"}
-          accessibilityState={{ disabled: busy }}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            minHeight: 44,
-            paddingHorizontal: theme.spacing.md,
-            paddingVertical: theme.spacing.sm,
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            borderColor: theme.colors.primary,
-            backgroundColor: theme.colors.surface,
-            opacity: busy ? 0.6 : 1,
-            shadowColor: theme.colors.primary,
-            shadowOpacity: 0.55,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 0 },
-            elevation: 6,
-          }}
-        >
-          <Ionicons
-            name={isPremium ? "refresh" : "lock-closed"}
-            size={16}
-            color={theme.colors.primary}
-          />
-          <Text
-            numberOfLines={1}
-            style={{
-              color: theme.colors.primary,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            {isPremium ? "Regenerate plan" : "Regenerate Plan (PRO)"}
-          </Text>
-        </PressScale>
-      </View>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+      <Text
+        accessibilityRole="header"
+        numberOfLines={1}
+        style={{
+          flex: 1,
+          color: theme.colors.text,
+          fontSize: theme.font.size.display,
+          fontWeight: theme.font.weight.bold,
+          lineHeight: 38,
+        }}
+      >
+        My Plan
+      </Text>
+      <Rocco pose={pose} size={96} />
     </View>
   );
 }
 
+/** The outlined "Regenerate plan" action. Without Pro it carries a lock and opens the paywall. */
+export function RegenerateButton({
+  isPremium,
+  busy,
+  onPress,
+}: {
+  isPremium: boolean;
+  busy: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  // While a plan is being built the button goes neutral (never faded) and says what is happening.
+  const ink = busy ? theme.colors.textMuted : theme.colors.primary;
+  return (
+    <PressScale
+      onPress={onPress}
+      disabled={busy}
+      haptic="light"
+      scaleTo={0.94}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={isPremium ? "Regenerate plan" : "Regenerate plan, a Pro feature"}
+      accessibilityState={{ disabled: busy, busy }}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        minHeight: 44,
+        paddingHorizontal: theme.spacing.md,
+        borderRadius: theme.radius.pill,
+        borderWidth: 1,
+        borderColor: ink,
+        backgroundColor: theme.colors.surface,
+      }}
+    >
+      <Ionicons
+        name={busy ? "hourglass-outline" : isPremium ? "refresh" : "lock-closed"}
+        size={16}
+        color={ink}
+      />
+      <Text
+        numberOfLines={1}
+        style={{
+          color: ink,
+          fontSize: theme.font.size.caption,
+          fontWeight: theme.font.weight.bold,
+        }}
+      >
+        {busy ? "Building your plan…" : isPremium ? "Regenerate plan" : "Regenerate plan (Pro)"}
+      </Text>
+    </PressScale>
+  );
+}
+
+/** The name of the split, as a quiet tag (it is a fact about the plan, not a button). */
 export function SplitBadge({ label }: { label: string }) {
   const theme = useTheme();
   return (
     <View
       style={{
-        alignSelf: "flex-start",
-        borderWidth: 1,
-        borderColor: theme.colors.primary,
+        flexShrink: 1,
+        minHeight: 32,
+        justifyContent: "center",
         borderRadius: theme.radius.pill,
         paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.sm,
+        backgroundColor: theme.colors.surfaceAlt,
       }}
     >
       <Text
+        numberOfLines={1}
         style={{
-          color: theme.colors.primary,
-          fontSize: theme.font.size.body,
+          color: theme.colors.text,
+          fontSize: theme.font.size.caption,
           fontWeight: theme.font.weight.medium,
         }}
       >
@@ -212,7 +213,7 @@ function Stat({ icon, children }: { icon: IconName; children: ReactNode }) {
   );
 }
 
-/** "4 Exercises • 12 Sets • Est. 45 Mins" for the selected day. */
+/** "4 exercises, 12 sets, Est. 45 min" for the selected day, spread across one row. */
 export function SummaryCard({
   exercises,
   sets,
@@ -228,31 +229,32 @@ export function SummaryCard({
     fontSize: theme.font.size.body,
     fontWeight: theme.font.weight.medium,
   } as const;
-  const bullet = <Text style={{ color: theme.colors.textMuted }}>•</Text>;
   return (
-    <Card>
+    <Card style={{ paddingHorizontal: theme.spacing.lg }}>
       <View
+        accessible
+        accessibilityLabel={`${count(exercises, "exercise")}, ${count(sets, "set")}, about ${minutes} minutes`}
         style={{
           flexDirection: "row",
           alignItems: "center",
+          justifyContent: "space-between",
           flexWrap: "wrap",
-          gap: theme.spacing.sm,
+          columnGap: theme.spacing.md,
+          rowGap: theme.spacing.sm,
         }}
       >
         <Stat icon="barbell-outline">
           <CountUp
             value={exercises}
-            format={(n) => count(n, "Exercise", "Exercises")}
+            format={(n) => count(Math.round(n), "exercise")}
             style={text}
           />
         </Stat>
-        {bullet}
         <Stat icon="layers-outline">
-          <CountUp value={sets} format={(n) => count(n, "Set", "Sets")} style={text} />
+          <CountUp value={sets} format={(n) => count(Math.round(n), "set")} style={text} />
         </Stat>
-        {bullet}
         <Stat icon="timer-outline">
-          <CountUp value={minutes} format={(n) => `Est. ${Math.round(n)} Mins`} style={text} />
+          <CountUp value={minutes} format={(n) => `Est. ${Math.round(n)} min`} style={text} />
         </Stat>
       </View>
     </Card>
@@ -263,7 +265,7 @@ function groupLabel(group: string): string {
   return group.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** One exercise of the day: name, muscle-group tag, swap (when there's an alternative), grip. */
+/** One exercise of the day: name, muscle-group tag, and swap when there's an alternative. */
 export function ExerciseCard({
   exercise,
   swapTo,
@@ -275,7 +277,7 @@ export function ExerciseCard({
 }) {
   const theme = useTheme();
   return (
-    <Card>
+    <Card style={{ paddingHorizontal: theme.spacing.lg }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
         <View style={{ flex: 1, gap: theme.spacing.sm }}>
           <Text
@@ -294,12 +296,12 @@ export function ExerciseCard({
               borderRadius: theme.radius.sm,
               paddingHorizontal: theme.spacing.sm,
               paddingVertical: 3,
-              backgroundColor: `${theme.colors.primary}26`,
+              backgroundColor: theme.colors.surfaceAlt,
             }}
           >
             <Text
               style={{
-                color: theme.colors.primary,
+                color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
                 fontWeight: theme.font.weight.medium,
               }}
@@ -317,31 +319,16 @@ export function ExerciseCard({
             style={({ pressed }) => ({
               width: 44,
               height: 44,
+              borderRadius: 22,
               alignItems: "center",
               justifyContent: "center",
+              backgroundColor: theme.colors.surfaceAlt,
               opacity: pressed ? 0.6 : 1,
             })}
           >
-            <Ionicons name="swap-horizontal" size={22} color={theme.colors.primary} />
+            <Ionicons name="swap-horizontal" size={20} color={theme.colors.primary} />
           </Pressable>
         ) : null}
-        <View
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={{ width: 9, flexDirection: "row", flexWrap: "wrap", gap: 3 }}
-        >
-          {Array.from({ length: 6 }, (_, i) => (
-            <View
-              key={i}
-              style={{
-                width: 3,
-                height: 3,
-                borderRadius: 1.5,
-                backgroundColor: theme.colors.textMuted,
-              }}
-            />
-          ))}
-        </View>
       </View>
     </Card>
   );
@@ -351,7 +338,7 @@ export function ExerciseCard({
 export function HistoryCard({ past }: { past: Workout[] }) {
   const theme = useTheme();
   return (
-    <Card>
+    <Card style={{ padding: theme.spacing.lg }}>
       <Text
         accessibilityRole="header"
         style={{
@@ -360,7 +347,7 @@ export function HistoryCard({ past }: { past: Workout[] }) {
           fontWeight: theme.font.weight.bold,
         }}
       >
-        Workout History
+        Workout history
       </Text>
       <Text
         style={{

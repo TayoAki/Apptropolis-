@@ -7,7 +7,8 @@ import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { Lottie } from "../components/lottie";
 import { OfferCard } from "../components/paywall/OfferCard";
-import { haptic, Mascot, PressScale, Skeleton, Stagger } from "../components/motion";
+import { haptic, PressScale, Skeleton, Stagger } from "../components/motion";
+import { Rocco } from "../components/Rocco";
 import { appInfo } from "../data/app-info";
 import { usePurchases, type Offer } from "../data/purchases";
 import { useTheme } from "../theme/ThemeProvider";
@@ -17,22 +18,22 @@ type IconName = ComponentProps<typeof Ionicons>["name"];
 const PERKS: Array<{ icon: IconName; title: string; body: string }> = [
   {
     icon: "barbell-outline",
-    title: "Custom Stakes",
+    title: "Custom stakes",
     body: "Create fun penalties like buying coffee, making dinner, or playlist control.",
   },
   {
     icon: "sparkles-outline",
-    title: "AI Plan Regeneration",
+    title: "AI plan regeneration",
     body: "Adapt splits for new injuries, goals, or hotel gyms on demand.",
   },
   {
     icon: "clipboard-outline",
-    title: "Scorecard Vault",
+    title: "Scorecard vault",
     body: "Full historical charts, streaks, and head-to-head records.",
   },
   {
     icon: "analytics-outline",
-    title: "Private Exercise Analytics",
+    title: "Private exercise analytics",
     body: "Deep volume and estimated 1RM tracking for your eyes only.",
   },
 ];
@@ -43,7 +44,7 @@ function TextLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
+      accessibilityRole="link"
       accessibilityLabel={label}
       hitSlop={10}
       style={({ pressed }) => ({
@@ -116,6 +117,7 @@ export default function PaywallScreen() {
       ? `Start ${selected.trialDays}-day free trial`
       : "Continue";
   const ctaDisabled = !ready || busy || (!isPremium && !selected);
+  const ctaInk = ctaDisabled ? theme.colors.textMuted : theme.colors.onPrimary;
 
   const billing = !selected
     ? null
@@ -135,7 +137,7 @@ export default function PaywallScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Stack.Screen options={{ title: "Go Premium", headerShown: false }} />
+      <Stack.Screen options={{ title: "Spotter Pair Pro", headerShown: false }} />
 
       <View
         style={{
@@ -172,46 +174,47 @@ export default function PaywallScreen() {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              minHeight: 124,
+              gap: theme.spacing.md,
             }}
           >
+            {/* The product's name as a small lockup: the barbell mark, then "Spotter Pair Pro". */}
             <View
               style={{
                 flex: 1,
                 flexDirection: "row",
                 alignItems: "center",
                 gap: theme.spacing.sm,
-                flexWrap: "wrap",
               }}
             >
               <View>
-                <View pointerEvents="none" style={{ position: "absolute", left: -10, top: -16 }}>
-                  <Lottie name="sparkle" size={64} />
-                </View>
-                <Ionicons name="barbell" size={40} color={theme.colors.accent} />
-              </View>
-              <View
-                style={{
-                  paddingHorizontal: theme.spacing.md,
-                  paddingVertical: theme.spacing.xs,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
-                  borderColor: theme.colors.primary,
-                }}
-              >
-                <Text
+                <View
+                  pointerEvents="none"
                   style={{
-                    color: theme.colors.primary,
-                    fontSize: theme.font.size.caption,
-                    fontWeight: theme.font.weight.bold,
-                    letterSpacing: 1,
+                    position: "absolute",
+                    left: -14,
+                    top: -18,
+                    width: 64,
+                    height: 64,
+                    overflow: "hidden",
                   }}
                 >
-                  SPOTTER PAIR PRO
-                </Text>
+                  <Lottie name="sparkle" size={64} />
+                </View>
+                <Ionicons name="barbell" size={36} color={theme.colors.primary} />
               </View>
+              <Text
+                numberOfLines={1}
+                style={{
+                  flexShrink: 1,
+                  color: theme.colors.primary,
+                  fontSize: theme.font.size.title,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
+                Spotter Pair Pro
+              </Text>
             </View>
-            <Mascot pose={mascotPose} size={116} />
+            <Rocco pose={mascotPose} size={112} />
           </View>
 
           <View style={{ gap: theme.spacing.sm, alignItems: "center" }}>
@@ -238,51 +241,48 @@ export default function PaywallScreen() {
             </Text>
           </View>
 
-          <Stagger step={60} style={{ gap: theme.spacing.sm }}>
-            {PERKS.map((perk) => (
-              <Card key={perk.title}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: theme.spacing.md,
-                  }}
-                >
-                  <View
+          <Card style={{ paddingVertical: 0, paddingHorizontal: theme.spacing.lg }}>
+            {PERKS.map((perk, index) => (
+              <View
+                key={perk.title}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: theme.spacing.md,
+                  paddingVertical: theme.spacing.md,
+                  borderTopWidth: index > 0 ? 1 : 0,
+                  borderTopColor: theme.colors.border,
+                }}
+              >
+                <Ionicons
+                  name={perk.icon}
+                  size={24}
+                  color={theme.colors.primary}
+                  style={{ marginTop: 2 }}
+                />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text
                     style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: theme.radius.md,
-                      backgroundColor: theme.colors.surfaceAlt,
-                      alignItems: "center",
-                      justifyContent: "center",
+                      color: theme.colors.text,
+                      fontSize: theme.font.size.body,
+                      fontWeight: theme.font.weight.bold,
                     }}
                   >
-                    <Ionicons name={perk.icon} size={24} color={theme.colors.primary} />
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontSize: theme.font.size.body,
-                        fontWeight: theme.font.weight.bold,
-                      }}
-                    >
-                      {perk.title}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontSize: theme.font.size.body,
-                      }}
-                    >
-                      {perk.body}
-                    </Text>
-                  </View>
+                    {perk.title}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontSize: theme.font.size.body,
+                      lineHeight: 22,
+                    }}
+                  >
+                    {perk.body}
+                  </Text>
                 </View>
-              </Card>
+              </View>
             ))}
-          </Stagger>
+          </Card>
 
           {isPremium ? (
             <Card>
@@ -331,7 +331,7 @@ export default function PaywallScreen() {
               body="The store didn't return any plans. Check your connection and open this screen again."
             />
           ) : (
-            <View style={{ gap: theme.spacing.sm }}>
+            <View accessibilityRole="radiogroup" style={{ gap: theme.spacing.sm }}>
               {offers.map((offer) => (
                 <OfferCard
                   key={offer.id}
@@ -375,7 +375,7 @@ export default function PaywallScreen() {
               alignSelf: "center",
               paddingHorizontal: theme.spacing.md,
               paddingVertical: theme.spacing.xs,
-              borderRadius: theme.radius.pill,
+              borderRadius: theme.radius.sm,
               backgroundColor: theme.colors.surfaceAlt,
             }}
           >
@@ -383,6 +383,7 @@ export default function PaywallScreen() {
               style={{
                 color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
+                textAlign: "center",
               }}
             >
               Test mode: purchases are simulated, nothing is charged.
@@ -417,20 +418,24 @@ export default function PaywallScreen() {
               minHeight: 56,
               paddingHorizontal: theme.spacing.lg,
               borderRadius: theme.radius.pill,
-              backgroundColor: theme.colors.primary,
+              borderWidth: 1,
+              // Disabled goes neutral with a readable label; it never fades.
+              borderColor: ctaDisabled ? theme.colors.border : theme.colors.primary,
+              backgroundColor: ctaDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
               gap: theme.spacing.sm,
-              opacity: ctaDisabled ? 0.6 : 1,
             }}
           >
             {status === "purchasing" ? (
-              <Lottie name="loading" size={28} color={theme.colors.onPrimary} />
+              <View style={{ width: 28, height: 28, overflow: "hidden" }}>
+                <Lottie name="loading" size={28} color={ctaInk} />
+              </View>
             ) : null}
             <Text
               style={{
-                color: theme.colors.onPrimary,
+                color: ctaInk,
                 fontSize: theme.font.size.body,
                 fontWeight: theme.font.weight.bold,
               }}
@@ -449,15 +454,15 @@ export default function PaywallScreen() {
           }}
         >
           <TextLink
-            label={status === "restoring" ? "Restoring…" : "Restore Purchases"}
+            label={status === "restoring" ? "Restoring…" : "Restore purchases"}
             onPress={restore}
           />
           {appInfo.termsUrl ? (
-            <TextLink label="Terms of Use" onPress={() => void Linking.openURL(appInfo.termsUrl)} />
+            <TextLink label="Terms of use" onPress={() => void Linking.openURL(appInfo.termsUrl)} />
           ) : null}
           {appInfo.privacyUrl ? (
             <TextLink
-              label="Privacy Policy"
+              label="Privacy policy"
               onPress={() => void Linking.openURL(appInfo.privacyUrl)}
             />
           ) : null}

@@ -24,12 +24,18 @@ export function Button({
 }) {
   const theme = useTheme();
   const primary = variant === "primary";
-  const ink = primary ? theme.colors.onPrimary : theme.colors.text;
+  // A disabled button goes quiet instead of fading: the label stays readable on a neutral fill.
+  const filled = primary && !disabled;
+  const ink = disabled
+    ? theme.colors.textMuted
+    : primary
+      ? theme.colors.onPrimary
+      : theme.colors.text;
   return (
     <PressScale
       onPress={onPress}
       disabled={disabled}
-      haptic={primary ? "light" : undefined}
+      haptic={filled ? "light" : undefined}
       scaleTo={0.94}
       hitSlop={8}
       accessibilityRole="button"
@@ -44,10 +50,9 @@ export function Button({
           gap: theme.spacing.sm,
           paddingHorizontal: theme.spacing.lg,
           borderRadius: theme.radius.pill,
-          backgroundColor: primary ? theme.colors.primary : theme.colors.surfaceAlt,
-          borderWidth: primary ? 0 : 1,
-          borderColor: theme.colors.border,
-          opacity: disabled ? 0.5 : 1,
+          backgroundColor: filled ? theme.colors.primary : theme.colors.surfaceAlt,
+          borderWidth: 1,
+          borderColor: filled ? theme.colors.primary : theme.colors.border,
         },
         style,
       ]}

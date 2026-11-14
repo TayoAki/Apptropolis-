@@ -3,7 +3,7 @@ import { Stack, router } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Linking, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
+import { Avatar, PARTNER_PHOTO } from "../components/Avatar";
 import { Button } from "../components/Button";
 import { haptic, Mascot, PressScale, Stagger } from "../components/motion";
 import {
@@ -18,18 +18,19 @@ import { appInfo } from "../data/app-info";
 import { useAppState } from "../data/app-state";
 import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
-import { formatClock } from "../data/schema";
-import { getActiveThemeId, setActiveThemeId } from "../theme/active";
+import { DAYS_PER_WEEK_OPTIONS, GOAL_OPTIONS, formatClock } from "../data/schema";
+import { setActiveThemeId } from "../theme/active";
 import { useTheme } from "../theme/ThemeProvider";
 import { themes } from "../theme/tokens";
 
 const PARTNER = { name: "Marcus S.", linkedSince: "Sept 2024" };
-const PARTNER_PHOTO =
-  "close-up portrait of a friendly smiling person in a gym t-shirt, plain studio background";
 
-const GOALS = ["Build Strength", "Build Muscle", "Lose Fat", "Improve Endurance"];
-const FREQUENCIES = ["2 Days / Week", "3 Days / Week", "4 Days / Week", "5 Days / Week"];
-const EQUIPMENT = ["Full Commercial Gym", "Home Dumbbells", "Bodyweight Only", "Resistance Bands"];
+// Goal and days a week are the answers onboarding saved ("goal", "daysperweek"), with the same
+// choices, so changing them here changes what the rest of the app reads.
+const GOALS: string[] = [...GOAL_OPTIONS];
+const FREQUENCIES = DAYS_PER_WEEK_OPTIONS.map((key) => ({ key, label: `${key} a week` }));
+const DEFAULT_FREQUENCY = "4 days";
+const EQUIPMENT = ["Full commercial gym", "Home dumbbells", "Bodyweight only", "Resistance bands"];
 const TIMES: Array<[number, number]> = [
   [6, 0],
   [6, 30],
@@ -89,7 +90,7 @@ function Header() {
           opacity: pressed ? 0.6 : 1,
         })}
       >
-        <Ionicons name="chevron-back" size={28} color={theme.colors.textMuted} />
+        <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
       </Pressable>
       <Text
         accessibilityRole="header"
@@ -147,9 +148,9 @@ export default function SettingsScreen() {
 
   const linked = answers.partner_link !== "unlinked";
   const goal = answers.goal ?? GOALS[0];
-  const frequency = answers.frequency ?? FREQUENCIES[2];
+  const frequencyKey = answers.daysperweek ?? DEFAULT_FREQUENCY;
+  const frequency = FREQUENCIES.find((option) => option.key === frequencyKey)?.label ?? frequencyKey;
   const equipment = answers.equipment ?? EQUIPMENT[0];
-  const activeThemeId = getActiveThemeId();
   const timeKey = `${reminder.hour}:${reminder.minute}`;
   const restoring = purchases.status === "restoring";
   const blocked = reminder.permission === "denied";
@@ -191,7 +192,9 @@ export default function SettingsScreen() {
     setRestoreNote(null);
     const ok = await purchases.restorePurchases();
     setRestoreNote(
-      ok ? "Premium is back on this phone." : "No earlier purchases were found for this account.",
+      ok
+        ? "Spotter Pair Pro is back on this phone."
+        : "No earlier purchases were found for this account.",
     );
   }
 
@@ -226,28 +229,24 @@ export default function SettingsScreen() {
               <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
                   <View style={{ width: 56, height: 56 }}>
-                    <AiImage
-                      prompt={PARTNER_PHOTO}
-                      style={{ width: 56, height: 56, borderRadius: 28 }}
+                    <Avatar prompt={PARTNER_PHOTO} name={PARTNER.name} size={56} />
+                    <View
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        bottom: 0,
+                        width: 14,
+                        height: 14,
+                        borderRadius: 7,
+                        backgroundColor: linked ? theme.colors.success : theme.colors.textMuted,
+                        borderWidth: 2,
+                        borderColor: theme.colors.surface,
+                      }}
                     />
-                    {linked ? (
-                      <View
-                        style={{
-                          position: "absolute",
-                          right: 0,
-                          bottom: 0,
-                          width: 14,
-                          height: 14,
-                          borderRadius: 7,
-                          backgroundColor: theme.colors.success,
-                          borderWidth: 2,
-                          borderColor: theme.colors.surface,
-                        }}
-                      />
-                    ) : null}
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text
+                      numberOfLines={1}
                       style={{
                         color: theme.colors.text,
                         fontSize: theme.font.size.body,
@@ -260,45 +259,48 @@ export default function SettingsScreen() {
                       {linked ? `Linked since ${PARTNER.linkedSince}` : "Not linked right now"}
                     </Text>
                   </View>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+                  {/* The wrapper stretches so the button takes the room the second one leaves. */}
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      label="Share invite code"
+                      icon="share-outline"
+                      variant="secondary"
+                      onPress={shareInvite}
+                    />
+                  </View>
                   <PressScale
                     onPress={togglePartner}
                     scaleTo={0.94}
                     hitSlop={6}
                     accessibilityRole="button"
-                    accessibilityLabel={linked ? "Unlink or re-invite partner" : "Re-invite partner"}
+                    accessibilityLabel={linked ? "Unlink partner" : "Re-invite partner"}
                     style={{
-                      minHeight: 44,
-                      maxWidth: 136,
+                      minHeight: 48,
                       justifyContent: "center",
-                      paddingHorizontal: theme.spacing.md,
+                      paddingHorizontal: theme.spacing.lg,
                       borderRadius: theme.radius.pill,
                       borderWidth: 1,
                       borderColor: theme.colors.textMuted,
                     }}
                   >
                     <Text
-                      numberOfLines={2}
+                      numberOfLines={1}
                       style={{
                         color: theme.colors.text,
-                        fontSize: theme.font.size.caption,
-                        fontWeight: theme.font.weight.medium,
-                        textAlign: "center",
+                        fontSize: theme.font.size.body,
+                        fontWeight: theme.font.weight.bold,
                       }}
                     >
-                      {linked ? "Unlink / Re-invite Partner" : "Re-invite Partner"}
+                      {linked ? "Unlink" : "Re-invite"}
                     </Text>
                   </PressScale>
                 </View>
-                <Button
-                  label="Copy New Invite Link"
-                  icon="link-outline"
-                  variant="secondary"
-                  onPress={shareInvite}
-                />
                 <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
                   {inviteCode
                     ? `Invite code ${inviteCode} is ready to send. Pairing takes about 3 minutes.`
-                    : "Quick pair takes 3 minutes. Share this link to sync your accountability."}
+                    : "Pairing takes about 3 minutes. Share an invite code to sync your accountability."}
                 </Text>
               </View>
             </SettingsCard>
@@ -314,12 +316,12 @@ export default function SettingsScreen() {
               />
               <ChoiceRow
                 title={`Frequency: ${frequency}`}
-                options={asOptions(FREQUENCIES)}
-                selected={frequency}
-                onChoose={(value) => void setAnswer("frequency", value)}
+                options={FREQUENCIES}
+                selected={frequencyKey}
+                onChoose={(value) => void setAnswer("daysperweek", value)}
               />
               <ChoiceRow
-                title={`Exercise Equipment: ${equipment}`}
+                title={`Equipment: ${equipment}`}
                 options={asOptions(EQUIPMENT)}
                 selected={equipment}
                 onChoose={(value) => void setAnswer("equipment", value)}
@@ -348,13 +350,13 @@ export default function SettingsScreen() {
               }
             >
               <ToggleRow
-                title="Daily Workout Nudge"
+                title="Daily workout nudge"
                 value={reminder.enabled}
                 loading={!reminder.ready}
                 onChange={(on) => void toggleNudge(on)}
               />
               <ChoiceRow
-                title="Scheduled Time"
+                title="Scheduled time"
                 trailing={
                   <View
                     style={{
@@ -384,53 +386,66 @@ export default function SettingsScreen() {
           </Section>
 
           <Section label="VISUAL THEME">
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <View
+              accessibilityRole="radiogroup"
+              style={{ flexDirection: "row", gap: theme.spacing.xs }}
+            >
               {themes.map((pack) => {
-                const selected = pack.id === activeThemeId;
+                // The pack on screen, which is the light or dark partner when the phone asks for it.
+                const selected = pack.id === theme.id;
                 return (
                   <View
                     key={pack.id}
                     style={{
                       flex: 1,
-                      borderRadius: theme.radius.sm + 2,
+                      padding: 2,
+                      borderRadius: theme.radius.sm + 4,
                       borderWidth: 2,
-                      borderColor: selected ? theme.colors.primary : theme.colors.background,
+                      borderColor: selected ? theme.colors.text : theme.colors.background,
                     }}
                   >
                     <PressScale
                       onPress={() => chooseTheme(pack.id)}
                       scaleTo={0.94}
                       accessibilityRole="radio"
-                      accessibilityLabel={pack.name}
+                      accessibilityLabel={`${pack.name}, ${pack.dark ? "dark" : "light"} theme`}
                       accessibilityState={{ selected }}
                       style={{
-                        height: 60,
+                        height: 76,
                         borderRadius: theme.radius.sm,
                         backgroundColor: pack.colors.primary,
                         alignItems: "center",
-                        justifyContent: "center",
-                        paddingHorizontal: 4,
+                        justifyContent: "flex-end",
+                        paddingHorizontal: 2,
+                        paddingBottom: theme.spacing.sm,
                       }}
                     >
+                      <Ionicons
+                        name={pack.dark ? "moon" : "sunny"}
+                        size={14}
+                        color={pack.colors.onPrimary}
+                        style={{ position: "absolute", top: 6, left: 6 }}
+                      />
+                      {selected ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={18}
+                          color={pack.colors.onPrimary}
+                          style={{ position: "absolute", top: 4, right: 4 }}
+                        />
+                      ) : null}
                       <Text
                         numberOfLines={2}
                         style={{
                           color: pack.colors.onPrimary,
                           fontSize: theme.font.size.caption,
+                          lineHeight: 16,
                           fontWeight: theme.font.weight.bold,
                           textAlign: "center",
                         }}
                       >
                         {pack.name}
                       </Text>
-                      {selected ? (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={14}
-                          color={pack.colors.onPrimary}
-                          style={{ position: "absolute", top: 4, right: 4 }}
-                        />
-                      ) : null}
                     </PressScale>
                   </View>
                 );
@@ -468,7 +483,7 @@ export default function SettingsScreen() {
                       borderRadius: 14,
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: theme.colors.warning,
+                      backgroundColor: theme.colors.primary,
                     }}
                   >
                     <Ionicons name="star" size={16} color={theme.colors.onPrimary} />
@@ -476,7 +491,7 @@ export default function SettingsScreen() {
                 }
               />
               <NavRow
-                title="Restore Purchases"
+                title="Restore purchases"
                 chevron={false}
                 disabled={restoring}
                 onPress={() => void restore()}
@@ -492,12 +507,10 @@ export default function SettingsScreen() {
               />
               {appInfo.privacyUrl ? (
                 <NavRow
-                  title="Privacy Policy & Weights Vault Guarantee"
+                  title="Privacy policy and weights vault guarantee"
                   chevron={false}
                   onPress={() => openLink(appInfo.privacyUrl)}
-                  trailing={
-                    <Ionicons name="lock-closed-outline" size={18} color={theme.colors.textMuted} />
-                  }
+                  trailing={<Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />}
                 />
               ) : null}
               {support.available ? (
@@ -513,7 +526,7 @@ export default function SettingsScreen() {
           {appInfo.termsUrl ? (
             <Pressable
               accessibilityRole="link"
-              accessibilityLabel="Terms of Use"
+              accessibilityLabel="Terms of use"
               hitSlop={10}
               onPress={() => openLink(appInfo.termsUrl)}
               style={({ pressed }) => ({
@@ -529,7 +542,7 @@ export default function SettingsScreen() {
                   textDecorationLine: "underline",
                 }}
               >
-                Terms of Use
+                Terms of use
               </Text>
             </Pressable>
           ) : null}

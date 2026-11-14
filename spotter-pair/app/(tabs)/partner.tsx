@@ -1,25 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import {
-  Animated,
-  Easing,
-  FlatList,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../../components/AiImage";
+import { Avatar, PARTNER_PHOTO } from "../../components/Avatar";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { Celebrate, Lottie } from "../../components/lottie";
 import {
   Appear,
   GrowBar,
-  Mascot,
   PressScale,
   Skeleton,
   SkeletonList,
@@ -28,12 +18,14 @@ import {
   useReducedMotion,
 } from "../../components/motion";
 import { WeekRing } from "../../components/partner/WeekRing";
+import { Rocco } from "../../components/Rocco";
 import { useShareImage } from "../../components/share";
 import { useAppState } from "../../data/app-state";
 import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import {
   addDays,
+  count,
   dayKey,
   startOfWeek,
   timeAgo,
@@ -47,8 +39,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const PARTNER_PHOTO =
-  "circular headshot of a smiling man with short hair, plain dark studio background, head and shoulders";
+/** The project has no picture for the person using the phone, so their avatar is the drawn fallback. */
 const YOUR_PHOTO =
   "circular headshot of a smiling woman with a ponytail, plain dark studio background, head and shoulders";
 const MASCOT_CALM = "rocco-neutral-ready";
@@ -126,9 +117,9 @@ function weekRange(monday: Date): string {
 }
 
 function headline(s: Summary): string {
-  if (!s.due) return "No sessions due yet";
+  if (!s.due) return "Nothing due yet";
   if (s.percent >= 100) return "Both showed up";
-  if (s.percent >= 75) return "Shared On-Track";
+  if (s.percent >= 75) return "On track together";
   if (s.percent >= 40) return "Catching up together";
   return "Time to show up";
 }
@@ -151,8 +142,8 @@ function SectionLabel({ children }: { children: string }) {
       style={{
         color: theme.colors.textMuted,
         fontSize: theme.font.size.caption,
-        fontWeight: theme.font.weight.bold,
-        letterSpacing: 0.8,
+        fontWeight: theme.font.weight.medium,
+        letterSpacing: 1.1,
       }}
     >
       {children}
@@ -195,7 +186,7 @@ function Chip({
       }}
     >
       <Ionicons
-        name={icon}
+        name={selected ? "checkmark-circle" : icon}
         size={16}
         color={selected ? theme.colors.onPrimary : theme.colors.primary}
       />
@@ -203,12 +194,12 @@ function Chip({
         style={{
           color: selected ? theme.colors.onPrimary : theme.colors.text,
           fontSize: theme.font.size.caption,
-          fontWeight: theme.font.weight.medium,
+          fontWeight: selected ? theme.font.weight.bold : theme.font.weight.medium,
         }}
       >
         {label}
       </Text>
-      {locked ? <Ionicons name="lock-closed" size={13} color={theme.colors.accent} /> : null}
+      {locked ? <Ionicons name="lock-closed" size={13} color={theme.colors.textMuted} /> : null}
     </PressScale>
   );
 }
@@ -297,11 +288,11 @@ function ActivityRow({ update, partnerName }: { update: PartnerUpdate; partnerNa
     >
       <View style={{ width: size, height: size }}>
         {fromPartner ? (
-          <AiImage prompt={PARTNER_PHOTO} style={{ width: size, height: size, borderRadius: size / 2 }} />
+          <Avatar prompt={PARTNER_PHOTO} name={partnerName} size={size} />
         ) : cheer ? (
-          <AiImage prompt={YOUR_PHOTO} style={{ width: size, height: size, borderRadius: size / 2 }} />
+          <Avatar prompt={YOUR_PHOTO} size={size} />
         ) : (
-          <Mascot pose={MASCOT_CALM} size={size} />
+          <Rocco pose={MASCOT_CALM} size={size} />
         )}
         {fromPartner ? (
           <View
@@ -338,14 +329,14 @@ function ActivityRow({ update, partnerName }: { update: PartnerUpdate; partnerNa
         ) : null}
       </View>
       <Text
-        numberOfLines={2}
-        style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body }}
+        numberOfLines={3}
+        style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}
       >
         {text}
       </Text>
       <Text
         style={{
-          minWidth: 64,
+          minWidth: 72,
           textAlign: "right",
           color: theme.colors.textMuted,
           fontSize: theme.font.size.caption,
@@ -447,12 +438,6 @@ export default function PartnerScreen() {
       : partnerActive
         ? "Active today"
         : `Last update ${timeAgo(lastPartner)}`;
-  const pairedLabel = partnerName
-    ? `PAIRED WITH ${partnerName.toUpperCase()}`
-    : lastPartner === null
-      ? "INVITE YOUR PARTNER"
-      : "PAIRED WITH YOUR PARTNER";
-
   const stakes = updates.items
     .filter((u) => u.type === "stake")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -474,6 +459,9 @@ export default function PartnerScreen() {
     .filter((row) => row.summary.due > 0);
 
   const pose = percent >= 75 ? MASCOT_HAPPY : MASCOT_CALM;
+  // While the card is being made (or the week is loading) the share button goes neutral, not faded.
+  const shareOff = sharing || loading;
+  const shareInk = shareOff ? theme.colors.textMuted : theme.colors.onPrimary;
   const shareMessage = due
     ? `Spotter Pair week ${weekNumber(now)}: ${percent}% shared on track. ${yours} of ${due} for me, ${partnerDone} of ${due} for my partner.`
     : "Spotter Pair: our training week starts today.";
@@ -546,148 +534,108 @@ export default function PartnerScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + theme.spacing.md,
           paddingHorizontal: theme.spacing.lg,
-          paddingBottom: theme.spacing.xl * 2,
+          paddingBottom: theme.spacing.xl,
         }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
       >
         <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-          {/* Header: eyebrow row, then the one-line title beside the mascot. */}
-          <View style={{ gap: theme.spacing.xs }}>
-            <View
+          {/* Header: the one-line title beside the mascot. */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: theme.spacing.md,
+            }}
+          >
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              accessibilityRole="header"
               style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
+                flex: 1,
+                color: theme.colors.text,
+                fontSize: theme.font.size.display,
+                fontWeight: theme.font.weight.bold,
+                lineHeight: 38,
               }}
             >
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.bold,
-                  letterSpacing: 1.2,
-                }}
-              >
-                SPOTTER PAIR
-              </Text>
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  opacity: 0.6,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.bold,
-                  letterSpacing: 1.2,
-                }}
-              >
-                PARTNERS
-              </Text>
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: theme.spacing.md,
-              }}
-            >
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                accessibilityRole="header"
-                style={{
-                  flex: 1,
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.headline + 6,
-                  fontWeight: theme.font.weight.bold,
-                }}
-              >
-                Partner Sync
-              </Text>
-              <Mascot pose={pose} size={96} />
-            </View>
+              Partner Sync
+            </Text>
+            <Rocco pose={pose} size={96} />
           </View>
 
           {/* The partner row: avatar with a live dot, name, status, and Manage. */}
-          <View style={{ gap: theme.spacing.sm }}>
-            <View
-              style={{
-                alignSelf: "flex-start",
-                paddingHorizontal: theme.spacing.sm,
-                paddingVertical: theme.spacing.xs,
-                borderRadius: theme.radius.pill,
-                backgroundColor: theme.colors.surfaceAlt,
-              }}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: theme.spacing.md,
+            }}
+          >
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+              <View style={{ width: 56, height: 56 }}>
+                <Avatar
+                  prompt={lastPartner === null ? undefined : PARTNER_PHOTO}
+                  name={partnerName}
+                  size={56}
+                />
+                <View
+                  style={{
+                    position: "absolute",
+                    right: -1,
+                    bottom: -1,
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    borderWidth: 2,
+                    borderColor: theme.colors.background,
+                    backgroundColor: partnerActive ? theme.colors.success : theme.colors.textMuted,
+                  }}
+                />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.title,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                >
+                  {partnerName || "Your partner"}
+                </Text>
+                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                  {partnerStatus}
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={() => router.push("/settings")}
+              accessibilityRole="button"
+              accessibilityLabel="Manage pairing"
+              hitSlop={12}
+              style={({ pressed }) => ({
+                minHeight: 44,
+                justifyContent: "center",
+                opacity: pressed ? 0.6 : 1,
+              })}
             >
               <Text
                 style={{
-                  color: theme.colors.accent,
-                  fontSize: theme.font.size.caption,
+                  color: theme.colors.primary,
+                  fontSize: theme.font.size.body,
                   fontWeight: theme.font.weight.bold,
-                  letterSpacing: 0.8,
                 }}
               >
-                {pairedLabel}
+                Manage
               </Text>
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: theme.spacing.md,
-              }}
-            >
-              <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-                <View style={{ width: 56, height: 56 }}>
-                  <AiImage prompt={PARTNER_PHOTO} style={{ width: 56, height: 56, borderRadius: 28 }} />
-                  <View
-                    style={{
-                      position: "absolute",
-                      right: -1,
-                      bottom: -1,
-                      width: 16,
-                      height: 16,
-                      borderRadius: 8,
-                      borderWidth: 2,
-                      borderColor: theme.colors.background,
-                      backgroundColor: partnerActive ? theme.colors.success : theme.colors.border,
-                    }}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: theme.colors.text,
-                      fontSize: theme.font.size.title,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    {partnerName || "Your partner"}
-                  </Text>
-                  <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                    {partnerStatus}
-                  </Text>
-                </View>
-              </View>
-              <Link href="/settings" asChild>
-                <Pressable
-                  accessibilityRole="link"
-                  accessibilityLabel="Manage pairing"
-                  hitSlop={12}
-                  style={{ minHeight: 44, justifyContent: "center" }}
-                >
-                  <Text
-                    style={{
-                      color: theme.colors.primary,
-                      fontSize: theme.font.size.body,
-                      fontWeight: theme.font.weight.bold,
-                    }}
-                  >
-                    Manage
-                  </Text>
-                </Pressable>
-              </Link>
-            </View>
+            </Pressable>
           </View>
 
           {/* The shared accountability card (also the card that gets shared as an image). */}
@@ -698,27 +646,24 @@ export default function PartnerScreen() {
               gap: theme.spacing.md,
               padding: theme.spacing.lg,
               borderRadius: theme.radius.lg,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
               backgroundColor: theme.colors.surface,
-              shadowColor: theme.colors.primary,
-              shadowOpacity: 0.16,
-              shadowRadius: 24,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 6,
             }}
           >
             <Text
               style={{
                 color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.bold,
-                letterSpacing: 0.8,
+                fontWeight: theme.font.weight.medium,
+                letterSpacing: 1.1,
               }}
             >
               {`WEEK ${weekNumber(now)} ACCOUNTABILITY`}
             </Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.lg }}>
               {loading ? (
-                <Skeleton width={136} height={136} radius={68} />
+                <Skeleton width={124} height={124} radius={62} />
               ) : (
                 <WeekRing percent={percent} />
               )}
@@ -731,11 +676,11 @@ export default function PartnerScreen() {
                 ) : (
                   <>
                     <Text
-                      numberOfLines={2}
                       style={{
                         color: theme.colors.text,
-                        fontSize: theme.font.size.headline,
+                        fontSize: theme.font.size.title,
                         fontWeight: theme.font.weight.bold,
+                        lineHeight: 28,
                       }}
                     >
                       {headline(today)}
@@ -748,52 +693,77 @@ export default function PartnerScreen() {
               </View>
             </View>
             {loading ? (
-              <Skeleton height={16} />
+              <Skeleton height={40} />
             ) : (
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.font.size.body,
-                  fontWeight: theme.font.weight.medium,
-                  fontVariant: ["tabular-nums"],
-                }}
-              >
-                {`You: ${yours}/${due} workouts • ${firstName}: ${partnerDone}/${due} workouts`}
-              </Text>
+              <View style={{ flexDirection: "row", gap: theme.spacing.lg }}>
+                {[
+                  { who: "You", done: yours },
+                  { who: firstName, done: partnerDone },
+                ].map((side) => (
+                  <View
+                    key={side.who}
+                    accessible
+                    accessibilityLabel={`${side.who}: ${side.done} of ${count(due, "workout")}`}
+                    style={{ flex: 1, gap: 2 }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}
+                    >
+                      {side.who}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontSize: theme.font.size.body,
+                        fontWeight: theme.font.weight.medium,
+                        fontVariant: ["tabular-nums"],
+                      }}
+                    >
+                      {`${side.done}/${due} workouts`}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
             <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
               {`Spotter Pair · ${weekRange(startOfWeek(now))}`}
             </Text>
           </View>
 
-          {/* The stake: a glowing amber card with a flame in the corner. */}
+          {/* The stake: the one card outlined in the brand color, with a flame in the corner. */}
           <View
             style={{
               gap: theme.spacing.sm,
               padding: theme.spacing.lg,
-              paddingRight: theme.spacing.xl + theme.spacing.md,
+              paddingRight: theme.spacing.xl + theme.spacing.xl,
               borderRadius: theme.radius.lg,
-              borderWidth: 1.5,
+              borderWidth: 1,
               borderColor: theme.colors.primary,
               backgroundColor: theme.colors.surface,
-              shadowColor: theme.colors.primary,
-              shadowOpacity: 0.45,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 0 },
-              elevation: 8,
             }}
           >
-            <View style={{ position: "absolute", top: theme.spacing.lg, right: theme.spacing.lg }}>
-              <Ionicons name="flame" size={26} color={theme.colors.primary} />
+            <View
+              style={{
+                position: "absolute",
+                top: theme.spacing.md,
+                right: theme.spacing.md,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: theme.colors.primary + "1F",
+              }}
+            >
+              <Ionicons name="flame" size={22} color={theme.colors.primary} />
             </View>
             <Text
               style={{
-                color: theme.colors.accent,
+                color: theme.colors.textMuted,
                 fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.bold,
-                letterSpacing: 0.8,
+                fontWeight: theme.font.weight.medium,
+                letterSpacing: 1.1,
               }}
             >
               THE STAKE
@@ -807,9 +777,10 @@ export default function PartnerScreen() {
               <>
                 <Text
                   style={{
-                    color: theme.colors.accent,
+                    color: theme.colors.text,
                     fontSize: theme.font.size.title,
                     fontWeight: theme.font.weight.bold,
+                    lineHeight: 28,
                   }}
                 >
                   {stakeTitle}
@@ -822,9 +793,10 @@ export default function PartnerScreen() {
               <>
                 <Text
                   style={{
-                    color: theme.colors.accent,
+                    color: theme.colors.text,
                     fontSize: theme.font.size.title,
                     fontWeight: theme.font.weight.bold,
+                    lineHeight: 28,
                   }}
                 >
                   No stake yet
@@ -835,7 +807,9 @@ export default function PartnerScreen() {
               </>
             )}
             {saved ? (
-              <Lottie name="success" size={56} style={{ alignSelf: "flex-end" }} />
+              <View style={{ width: 56, height: 56, alignSelf: "flex-end", overflow: "hidden" }}>
+                <Lottie name="success" size={56} />
+              </View>
             ) : null}
           </View>
 
@@ -845,7 +819,11 @@ export default function PartnerScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: theme.spacing.sm, paddingRight: theme.spacing.lg }}
+              style={{ marginHorizontal: -theme.spacing.lg }}
+              contentContainerStyle={{
+                gap: theme.spacing.sm,
+                paddingHorizontal: theme.spacing.lg,
+              }}
             >
               {STAKES.map((preset) => (
                 <Chip
@@ -857,7 +835,7 @@ export default function PartnerScreen() {
                 />
               ))}
               <Chip
-                label={isPremium ? "Write your own" : "Write your own, Premium"}
+                label={isPremium ? "Write your own" : "Write your own (Pro)"}
                 icon="create-outline"
                 locked={!isPremium}
                 selected={composing && isPremium}
@@ -888,7 +866,11 @@ export default function PartnerScreen() {
                     minHeight: 48,
                     color: theme.colors.text,
                     fontSize: theme.font.size.body,
-                    paddingHorizontal: theme.spacing.sm,
+                    paddingHorizontal: theme.spacing.md,
+                    borderRadius: theme.radius.sm,
+                    borderWidth: 1,
+                    borderColor: theme.colors.textMuted,
+                    backgroundColor: theme.colors.background,
                   }}
                 />
                 <Button label="Set this stake" onPress={saveCustom} disabled={!draft.trim()} />
@@ -908,7 +890,11 @@ export default function PartnerScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: theme.spacing.sm, paddingRight: theme.spacing.lg }}
+                style={{ marginHorizontal: -theme.spacing.lg }}
+                contentContainerStyle={{
+                  gap: theme.spacing.sm,
+                  paddingHorizontal: theme.spacing.lg,
+                }}
               >
                 {CHEERS.map((cheer) => (
                   <Chip
@@ -955,19 +941,16 @@ export default function PartnerScreen() {
                 onAction={() => router.navigate("/")}
               />
             ) : (
-              <FlatList
-                data={activity}
-                keyExtractor={(update) => update.id}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => (
-                  <View style={{ height: 1, backgroundColor: theme.colors.border }} />
-                )}
-                renderItem={({ item, index }) => (
-                  <Appear delay={Math.min(index, 8) * 50}>
+              <View>
+                {activity.map((item, index) => (
+                  <Appear key={item.id} delay={Math.min(index, 8) * 50}>
+                    {index > 0 ? (
+                      <View style={{ height: 1, backgroundColor: theme.colors.border }} />
+                    ) : null}
                     <ActivityRow update={item} partnerName={partnerName} />
                   </Appear>
-                )}
-              />
+                ))}
+              </View>
             )}
           </View>
 
@@ -983,15 +966,15 @@ export default function PartnerScreen() {
               <SectionLabel>SCORE HISTORY</SectionLabel>
               {!isPremium ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
-                  <Ionicons name="lock-closed" size={13} color={theme.colors.accent} />
+                  <Ionicons name="lock-closed" size={13} color={theme.colors.textMuted} />
                   <Text
                     style={{
-                      color: theme.colors.accent,
+                      color: theme.colors.textMuted,
                       fontSize: theme.font.size.caption,
-                      fontWeight: theme.font.weight.bold,
+                      fontWeight: theme.font.weight.medium,
                     }}
                   >
-                    Premium
+                    Past weeks with Pro
                   </Text>
                 </View>
               ) : null}
@@ -1018,7 +1001,7 @@ export default function PartnerScreen() {
               <PressScale
                 onPress={openPaywall}
                 accessibilityRole="button"
-                accessibilityLabel="Unlock past weeks and scorecards with Premium"
+                accessibilityLabel="Unlock past weeks and scorecards with Spotter Pair Pro"
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -1030,7 +1013,7 @@ export default function PartnerScreen() {
                   backgroundColor: theme.colors.surface,
                 }}
               >
-                <Ionicons name="lock-closed" size={20} color={theme.colors.accent} />
+                <Ionicons name="lock-closed" size={20} color={theme.colors.primary} />
                 <View style={{ flex: 1, gap: theme.spacing.xs }}>
                   <Text
                     style={{
@@ -1042,7 +1025,7 @@ export default function PartnerScreen() {
                     Past weeks and scorecards
                   </Text>
                   <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-                    Premium shows every week you've scored, with the scorecards you shared.
+                    Pro shows every week you've scored, with the scorecards you shared.
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
@@ -1059,39 +1042,37 @@ export default function PartnerScreen() {
               })
             }
             haptic="light"
-            disabled={sharing || loading}
+            disabled={shareOff}
             accessibilityRole="button"
             accessibilityLabel="Share weekly scorecard"
-            accessibilityState={{ disabled: sharing || loading }}
+            accessibilityState={{ disabled: shareOff, busy: sharing }}
             style={{
-              height: 80,
-              borderRadius: theme.radius.md,
+              minHeight: 64,
+              paddingVertical: theme.spacing.sm,
+              paddingHorizontal: theme.spacing.lg,
+              borderRadius: theme.radius.pill,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
               gap: theme.spacing.md,
-              backgroundColor: theme.colors.primary,
-              shadowColor: theme.colors.primary,
-              shadowOpacity: 0.4,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 6,
-              opacity: sharing || loading ? 0.6 : 1,
+              borderWidth: 1,
+              borderColor: shareOff ? theme.colors.border : theme.colors.primary,
+              backgroundColor: shareOff ? theme.colors.surfaceAlt : theme.colors.primary,
             }}
           >
-            <Ionicons name="share-outline" size={26} color={theme.colors.onPrimary} />
+            <Ionicons name="share-outline" size={22} color={shareInk} />
             <View style={{ alignItems: "center" }}>
               <Text
                 style={{
-                  color: theme.colors.onPrimary,
-                  fontSize: theme.font.size.title,
+                  color: shareInk,
+                  fontSize: theme.font.size.body,
                   fontWeight: theme.font.weight.bold,
                 }}
               >
-                {sharing ? "Making your card" : "Share Weekly Scorecard"}
+                {sharing ? "Making your card…" : "Share weekly scorecard"}
               </Text>
-              <Text style={{ color: theme.colors.onPrimary, fontSize: theme.font.size.caption }}>
-                Stories / Text
+              <Text style={{ color: shareInk, fontSize: theme.font.size.caption }}>
+                Stories or text
               </Text>
             </View>
           </PressScale>

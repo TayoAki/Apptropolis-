@@ -83,8 +83,8 @@ export function StepSegments({ count, index }: { count: number; index: number })
 }
 
 /**
- * A large answer row. The selected one gets a primary ring, a warm glow and a filled check
- * that snaps in. Unselected rows sit on the surface with a quiet border.
+ * A large answer row. The selected one gets a primary ring and a filled check that snaps in.
+ * Unselected rows sit on the surface with a quiet border and an empty radio.
  */
 export function OptionRow({
   label,
@@ -134,13 +134,9 @@ export function OptionRow({
         paddingVertical: theme.spacing.md,
         borderRadius: theme.radius.md,
         backgroundColor: theme.colors.surface,
-        borderWidth: selected ? 2 : 1,
+        // One border width in both states, so the row's text never shifts when it is picked.
+        borderWidth: 2,
         borderColor: selected ? theme.colors.primary : theme.colors.border,
-        shadowColor: theme.colors.primary,
-        shadowOpacity: selected ? 0.5 : 0,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 0 },
-        elevation: selected ? 6 : 0,
       }}
     >
       <View style={{ flex: 1, gap: 2 }}>
@@ -165,7 +161,7 @@ export function OptionRow({
           height: 24,
           borderRadius: 12,
           borderWidth: 2,
-          borderColor: selected ? theme.colors.primary : theme.colors.border,
+          borderColor: selected ? theme.colors.primary : theme.colors.textMuted,
           alignItems: "center",
           justifyContent: "center",
         }}
@@ -219,19 +215,18 @@ export function LogChip({
         paddingHorizontal: theme.spacing.lg,
         borderRadius: theme.radius.pill,
         backgroundColor: theme.colors.surfaceAlt,
-        opacity: complete ? 0.5 : 1,
       }}
     >
       <Ionicons
         name={complete ? "checkmark" : "add"}
         size={20}
-        color={theme.colors.primary}
+        color={complete ? theme.colors.success : theme.colors.primary}
       />
       <Text
         style={{
           fontSize: theme.font.size.body,
           fontWeight: theme.font.weight.bold,
-          color: theme.colors.text,
+          color: complete ? theme.colors.textMuted : theme.colors.text,
         }}
       >
         {label}
@@ -240,7 +235,7 @@ export function LogChip({
   );
 }
 
-/** "1/3 logged  Partner sees: IN PROGRESS": what the partner will see of this workout. */
+/** "1/3 logged  Partner sees: In progress": what the partner will see of this workout. */
 export function ProgressBadge({
   logged,
   total,
@@ -280,7 +275,7 @@ export function ProgressBadge({
         {`${logged}/${total} logged`}
         <Text style={{ color: theme.colors.textMuted }}>{"  Partner sees: "}</Text>
         <Text style={{ color: tone, fontWeight: theme.font.weight.bold }}>
-          {complete ? "COMPLETE" : "IN PROGRESS"}
+          {complete ? "Complete" : "In progress"}
         </Text>
       </Text>
       {complete ? <Ionicons name="flame" size={14} color={theme.colors.warning} /> : null}

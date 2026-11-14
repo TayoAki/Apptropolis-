@@ -69,6 +69,18 @@ export interface Collections {
 
 export type CollectionName = keyof Collections;
 
+/**
+ * The answers onboarding offers for the "goal" and "daysperweek" questions. Settings edits the
+ * same two answers, so both screens read their choices from here.
+ */
+export const GOAL_OPTIONS = [
+  "Build raw strength",
+  "Lose fat & lean out",
+  "Stay consistent",
+  "Athletic conditioning",
+] as const;
+export const DAYS_PER_WEEK_OPTIONS = ["2 days", "3 days", "4 days", "5 days"] as const;
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_MS = 86_400_000;

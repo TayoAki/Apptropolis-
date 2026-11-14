@@ -1,13 +1,13 @@
-// The shared score as one gradient ring: a soft glow under the arc, a track, and the percentage in
-// the middle. The arc draws in on load and glides when the score changes. Every color comes from
-// the theme (the gradient runs from the primary color to the accent).
+// The shared score as one gradient ring: a track, the arc, and the percentage in the middle. The
+// arc draws in on load and glides when the score changes. Every color comes from the theme (the
+// gradient runs from the primary color to the accent).
 import { useEffect, useRef } from "react";
 import { Animated, Easing, View } from "react-native";
 import Svg, { Circle, Defs, G, LinearGradient, Stop } from "react-native-svg";
 import { useTheme } from "../../theme/ThemeProvider";
 import { CountUp, useReducedMotion } from "../motion";
 
-const SIZE = 136;
+const SIZE = 124;
 const CENTER = SIZE / 2;
 const RADIUS = 56;
 const STROKE = 12;
@@ -64,18 +64,6 @@ export function WeekRing({ percent, label = "Shared score for this week" }: { pe
             fill="none"
             stroke={theme.colors.surfaceAlt}
             strokeWidth={STROKE}
-          />
-          <AnimatedCircle
-            cx={CENTER}
-            cy={CENTER}
-            r={RADIUS}
-            fill="none"
-            stroke={theme.colors.primary}
-            strokeOpacity={0.25}
-            strokeWidth={STROKE + 12}
-            strokeLinecap="round"
-            strokeDasharray={[CIRCUMFERENCE, CIRCUMFERENCE]}
-            strokeDashoffset={offset}
           />
           <AnimatedCircle
             cx={CENTER}

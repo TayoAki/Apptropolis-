@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Children, useState, type ComponentProps, type ReactNode } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";
-import { haptic, PressScale, Skeleton } from "../motion";
+import { haptic, Skeleton } from "../motion";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -97,17 +97,20 @@ export function NavRow({
     </View>
   );
   if (!onPress) return body;
+  // A list row answers a press the way a native one does: the row fills in while held.
   return (
-    <PressScale
+    <Pressable
       onPress={onPress}
       disabled={disabled}
-      scaleTo={0.99}
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityState={{ disabled: Boolean(disabled) }}
+      style={({ pressed }) => ({
+        backgroundColor: pressed ? theme.colors.surfaceAlt : undefined,
+      })}
     >
       {body}
-    </PressScale>
+    </Pressable>
   );
 }
 
@@ -148,9 +151,18 @@ export function ToggleRow({
             haptic("selection");
             onChange(next);
           }}
-          trackColor={{ false: theme.colors.surfaceAlt, true: theme.colors.primary }}
-          thumbColor={theme.colors.text}
-          ios_backgroundColor={theme.colors.surfaceAlt}
+          // The off track is the muted text color (not a surface), so an empty switch is still
+          // visible on the card. On, the knob is the label color for filled controls; off, it is
+          // the light neutral of the pack, as on a native switch.
+          trackColor={{ false: theme.colors.textMuted + "CC", true: theme.colors.primary }}
+          thumbColor={
+            value
+              ? theme.colors.onPrimary
+              : theme.dark
+                ? theme.colors.text
+                : theme.colors.surface
+          }
+          ios_backgroundColor={theme.colors.textMuted + "CC"}
         />
       )}
     </View>
@@ -217,12 +229,14 @@ export function ChoiceRow({
   const [open, setOpen] = useState(false);
   return (
     <View>
-      <PressScale
+      <Pressable
         onPress={() => setOpen((value) => !value)}
-        scaleTo={0.99}
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityState={{ expanded: open }}
+        style={({ pressed }) => ({
+          backgroundColor: pressed ? theme.colors.surfaceAlt : undefined,
+        })}
       >
         <View
           style={{
@@ -239,12 +253,12 @@ export function ChoiceRow({
           </Text>
           {trailing}
           <Ionicons
-            name={open ? "chevron-down" : "chevron-forward"}
+            name={open ? "chevron-up" : "chevron-down"}
             size={18}
             color={theme.colors.textMuted}
           />
         </View>
-      </PressScale>
+      </Pressable>
       {open ? (
         <View
           style={{

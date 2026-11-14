@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Animated, FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Rect } from "react-native-svg";
-import { AiImage } from "../../components/AiImage";
+import { Avatar, PARTNER_PHOTO } from "../../components/Avatar";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -14,7 +14,6 @@ import {
   Appear,
   CountUp,
   GrowBar,
-  Mascot,
   PressScale,
   Pulse,
   Skeleton,
@@ -22,8 +21,8 @@ import {
   haptic,
   useReducedMotion,
 } from "../../components/motion";
+import { Rocco } from "../../components/Rocco";
 import { track } from "../../data/analytics";
-import { appInfo } from "../../data/app-info";
 import { useAppState } from "../../data/app-state";
 import { useCollection } from "../../data/repo";
 import {
@@ -124,6 +123,8 @@ export default function TodayScreen() {
   const partnerDone = updates.find(
     (u) => u.from === "partner" && u.type === "completion" && dayOf(u.createdAt) === today,
   );
+  // Until the partner has sent anything, there is nobody to show a face for.
+  const partnerJoined = updates.some((u) => u.from === "partner");
   const cheeredToday = updates.some(
     (u) => u.from === "you" && u.type === "cheer" && dayOf(u.createdAt) === today,
   );
@@ -235,7 +236,7 @@ export default function TodayScreen() {
           contentContainerStyle={{
             paddingTop: insets.top + theme.spacing.md,
             paddingHorizontal: theme.spacing.lg,
-            paddingBottom: insets.bottom + theme.spacing.xl,
+            paddingBottom: theme.spacing.xl,
             gap: theme.spacing.lg,
           }}
         >
@@ -250,7 +251,7 @@ export default function TodayScreen() {
     );
   }
 
-  const dateLabel = `${WEEKDAY_NAMES[now.getDay()]}, ${MONTH_NAMES[now.getMonth()]} ${now.getDate()}`.toUpperCase();
+  const dateLabel = `${WEEKDAY_NAMES[now.getDay()]}, ${MONTH_NAMES[now.getMonth()]} ${now.getDate()}`;
   const partnerLine = partnerDone
     ? `Finished today's workout at ${formatTime(partnerDone.createdAt)}.`
     : "Not finished today yet. You'll see it here the moment they do.";
@@ -262,7 +263,13 @@ export default function TodayScreen() {
   const traceOpacity = trace.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 0] });
 
   const header = (
-    <View style={{ paddingTop: insets.top + theme.spacing.md, gap: theme.spacing.lg }}>
+    <View
+      style={{
+        paddingTop: insets.top + theme.spacing.sm,
+        paddingBottom: theme.spacing.md,
+        gap: theme.spacing.lg,
+      }}
+    >
       <Appear>
         <View
           style={{
@@ -273,42 +280,29 @@ export default function TodayScreen() {
         >
           <Text
             style={{
-              color: theme.colors.primary,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.bold,
-              letterSpacing: 1.2,
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.body,
+              fontWeight: theme.font.weight.medium,
             }}
           >
             {dateLabel}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.bold,
-                letterSpacing: 1.2,
-              }}
-            >
-              {appInfo.name.toUpperCase()}
-            </Text>
-            <Link href="/settings" asChild>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Settings"
-                hitSlop={12}
-                style={({ pressed }) => ({
-                  width: 44,
-                  height: 44,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: pressed ? 0.6 : 1,
-                })}
-              >
-                <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
-              </Pressable>
-            </Link>
-          </View>
+          <Pressable
+            onPress={() => router.push("/settings")}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            hitSlop={8}
+            style={({ pressed }) => ({
+              width: 44,
+              height: 44,
+              marginRight: -theme.spacing.sm,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
+          </Pressable>
         </View>
       </Appear>
 
@@ -333,7 +327,7 @@ export default function TodayScreen() {
               </Text>
             ) : null}
           </View>
-          <Mascot
+          <Rocco
             pose={completed ? "rocco-fist-bump-spotter" : "rocco-neutral-ready"}
             size={96}
           />
@@ -347,10 +341,7 @@ export default function TodayScreen() {
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
             <View>
-              <AiImage
-                prompt="close-up portrait of a friendly smiling person in a gym t-shirt, plain studio background"
-                style={{ width: 52, height: 52, borderRadius: 26 }}
-              />
+              <Avatar prompt={partnerJoined ? PARTNER_PHOTO : undefined} size={52} />
               <View
                 style={{
                   position: "absolute",
@@ -410,7 +401,9 @@ export default function TodayScreen() {
           {partnerDone ? (
             cheeredToday ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-                <Lottie name="heart" size={40} />
+                <View style={{ width: 40, height: 40, overflow: "hidden" }}>
+                  <Lottie name="heart" size={40} />
+                </View>
                 <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, flex: 1 }}>
                   Cheer sent. They'll see it on their side.
                 </Text>
@@ -423,7 +416,7 @@ export default function TodayScreen() {
       </Appear>
 
       <Appear delay={180}>
-        <View style={{ gap: theme.spacing.sm }}>
+        <View style={{ gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
           <View
             style={{
               flexDirection: "row",
@@ -431,29 +424,20 @@ export default function TodayScreen() {
               justifyContent: "space-between",
             }}
           >
-            <View
+            <Text
+              accessibilityRole="header"
               style={{
-                paddingHorizontal: theme.spacing.md,
-                paddingVertical: theme.spacing.xs,
-                borderRadius: theme.radius.pill,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.surfaceAlt,
+                color: theme.colors.text,
+                fontSize: theme.font.size.title,
+                fontWeight: theme.font.weight.bold,
               }}
             >
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.bold,
-                  letterSpacing: 1.2,
-                }}
-              >
-                ACCOUNTABILITY
-              </Text>
-            </View>
+              Accountability
+            </Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
-              <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>Team:</Text>
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+                Team:
+              </Text>
               <CountUp
                 value={week.percent}
                 format={(n) => `${Math.round(n)}%`}
@@ -466,7 +450,7 @@ export default function TodayScreen() {
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", marginTop: theme.spacing.sm }}>
+          <View style={{ flexDirection: "row", marginTop: theme.spacing.xs }}>
             {weekDays(now).map((key) => {
               const item = byDay.get(key);
               const isToday = key === today;
@@ -540,36 +524,39 @@ export default function TodayScreen() {
         </View>
       </Appear>
 
-      <Appear delay={240}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginTop: theme.spacing.sm,
-          }}
-        >
-          <Text
-            accessibilityRole="header"
+      {/* On a rest day there is no list to title: the empty state below speaks for itself. */}
+      {workout ? (
+        <Appear delay={240}>
+          <View
             style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.title,
-              fontWeight: theme.font.weight.bold,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: theme.spacing.sm,
             }}
           >
-            Exercises
-          </Text>
-          <CountUp
-            value={todaysSets.length}
-            format={(n) => `${Math.round(n)} sets logged`}
-            style={{
-              color: theme.colors.textMuted,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.medium,
-            }}
-          />
-        </View>
-      </Appear>
+            <Text
+              accessibilityRole="header"
+              style={{
+                color: theme.colors.text,
+                fontSize: theme.font.size.title,
+                fontWeight: theme.font.weight.bold,
+              }}
+            >
+              Exercises
+            </Text>
+            <CountUp
+              value={todaysSets.length}
+              format={(n) => `${count(Math.round(n), "set")} logged`}
+              style={{
+                color: theme.colors.textMuted,
+                fontSize: theme.font.size.caption,
+                fontWeight: theme.font.weight.medium,
+              }}
+            />
+          </View>
+        </Appear>
+      ) : null}
     </View>
   );
 
@@ -610,10 +597,14 @@ export default function TodayScreen() {
               }}
             >
               {completed
-                ? "Shared: Completed (Sets Locked & Private)"
+                ? "Shared: completed. Your sets are locked and stay private."
                 : "Set details stay on your device. Your partner only sees completion."}
             </Animated.Text>
-            {completed ? <Lottie name="success" size={32} /> : null}
+            {completed ? (
+              <View style={{ width: 32, height: 32, overflow: "hidden" }}>
+                <Lottie name="success" size={32} />
+              </View>
+            ) : null}
           </Animated.View>
 
           <View
@@ -632,35 +623,31 @@ export default function TodayScreen() {
               accessibilityLabel={completed ? "Workout complete" : "Mark workout complete"}
               accessibilityState={{ disabled: completed }}
               style={{
-                minHeight: 64,
-                borderRadius: theme.radius.md,
+                minHeight: 56,
+                borderRadius: theme.radius.pill,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: theme.spacing.sm,
+                paddingHorizontal: theme.spacing.lg,
                 backgroundColor: completed ? theme.colors.surfaceAlt : theme.colors.primary,
-                borderWidth: completed ? 1 : 0,
-                borderColor: theme.colors.border,
-                shadowColor: theme.colors.primary,
-                shadowOpacity: completed ? 0 : 0.45,
-                shadowRadius: 16,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: completed ? 0 : 6,
+                borderWidth: 1,
+                borderColor: completed ? theme.colors.border : theme.colors.primary,
               }}
             >
               <Ionicons
-                name={completed ? "checkmark-done" : "lock-closed"}
+                name={completed ? "checkmark-done" : "checkmark"}
                 size={22}
                 color={completed ? theme.colors.success : theme.colors.onPrimary}
               />
               <Text
                 style={{
                   color: completed ? theme.colors.text : theme.colors.onPrimary,
-                  fontSize: theme.font.size.title,
+                  fontSize: theme.font.size.body,
                   fontWeight: theme.font.weight.bold,
                 }}
               >
-                {completed ? "Workout complete" : "Mark Workout Complete"}
+                {completed ? "Workout complete" : "Mark workout complete"}
               </Text>
             </PressScale>
             {buttonSize.w > 0 ? (
@@ -681,8 +668,8 @@ export default function TodayScreen() {
                     y={2}
                     width={buttonSize.w - 4}
                     height={buttonSize.h - 4}
-                    rx={theme.radius.md}
-                    ry={theme.radius.md}
+                    rx={(buttonSize.h - 4) / 2}
+                    ry={(buttonSize.h - 4) / 2}
                     fill="none"
                     stroke={theme.colors.primary}
                     strokeWidth={4}
@@ -753,7 +740,7 @@ export default function TodayScreen() {
         ListFooterComponent={footer}
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
-          paddingBottom: insets.bottom + theme.spacing.xl,
+          paddingBottom: theme.spacing.xl,
         }}
         showsVerticalScrollIndicator={false}
         renderItem={({ item, index }) => {

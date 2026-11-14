@@ -7,7 +7,6 @@ import { Celebrate, Lottie } from "../components/lottie";
 import {
   Appear,
   GrowBar,
-  Mascot,
   PressScale,
   Skeleton,
   Stagger,
@@ -23,10 +22,11 @@ import {
   ProgressBadge,
   StepSegments,
 } from "../components/onboarding/Parts";
+import { Rocco } from "../components/Rocco";
 import { useAppState } from "../data/app-state";
 import { useReminder } from "../data/reminders";
 import { useCollection } from "../data/repo";
-import { formatClock, type Exercise } from "../data/schema";
+import { DAYS_PER_WEEK_OPTIONS, GOAL_OPTIONS, formatClock, type Exercise } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -34,13 +34,8 @@ type ReminderState = "idle" | "working" | "on" | "declined";
 
 const STEP_COUNT = 4;
 const MASCOT = 88;
-const GOALS = [
-  "Build raw strength",
-  "Lose fat & lean out",
-  "Stay consistent",
-  "Athletic conditioning",
-];
-const DAYS = [
+const GOALS = GOAL_OPTIONS;
+const DAYS: Array<{ value: (typeof DAYS_PER_WEEK_OPTIONS)[number]; detail: string }> = [
   { value: "2 days", detail: "A solid base you can keep up in a busy week" },
   { value: "3 days", detail: "Full-body sessions with a rest day between" },
   { value: "4 days", detail: "Upper and lower splits, each trained twice" },
@@ -72,7 +67,11 @@ function PeekMascot({ chosen }: { chosen: boolean }) {
   const flex = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (reduced) return;
+    if (reduced) {
+      // Reduce Motion can report after the first render: land in place instead of staying off-screen.
+      slide.setValue(1);
+      return;
+    }
     const run = Animated.spring(slide, {
       toValue: 1,
       useNativeDriver: true,
@@ -102,63 +101,47 @@ function PeekMascot({ chosen }: { chosen: boolean }) {
         ],
       }}
     >
-      <Mascot pose={chosen ? "rocco-fist-bump-spotter" : "rocco-neutral-ready"} size={MASCOT} />
+      <Rocco pose={chosen ? "rocco-fist-bump-spotter" : "rocco-neutral-ready"} size={MASCOT} />
     </Animated.View>
   );
 }
 
 /**
- * A step's heading. The mascot sits at the top right, beside the first headline line; a second
- * headline line runs full width underneath it.
+ * A step's heading. The mascot stands at the top right and the headline sits on the same ground
+ * line to its left; a second headline line runs full width underneath.
  */
 function Heading({
-  eyebrow,
   title,
   second,
   body,
   mascot,
 }: {
-  eyebrow: string;
   title: string;
   second?: string;
   body: string;
   mascot?: ReactNode;
 }) {
   const theme = useTheme();
-  // A touch under the theme's headline size so the first line clears the mascot.
-  const headlineSize = theme.font.size.headline - 2;
+  const headline = {
+    fontSize: theme.font.size.headline,
+    fontWeight: theme.font.weight.bold,
+    lineHeight: 34,
+    letterSpacing: -0.5,
+    color: theme.colors.text,
+  } as const;
   return (
-    <View
-      style={{
-        gap: theme.spacing.sm,
-        paddingTop: mascot ? theme.spacing.xl + theme.spacing.lg : 0,
-      }}
-    >
-      {mascot ? (
-        <View style={{ position: "absolute", top: theme.spacing.xs, right: 0 }}>{mascot}</View>
-      ) : null}
-      <Text
-        style={{
-          fontSize: theme.font.size.body,
-          fontWeight: theme.font.weight.medium,
-          color: theme.colors.textMuted,
-        }}
-      >
-        {eyebrow}
-      </Text>
-      <Text
+    <View style={{ gap: theme.spacing.sm }}>
+      <View
+        accessible
         accessibilityRole="header"
-        style={{
-          fontSize: headlineSize,
-          fontWeight: theme.font.weight.bold,
-          lineHeight: 34,
-          letterSpacing: -0.5,
-          color: theme.colors.text,
-          paddingRight: mascot && !second ? MASCOT + theme.spacing.sm : 0,
-        }}
+        accessibilityLabel={second ? `${title} ${second}` : title}
       >
-        {second ? `${title}\n${second}` : title}
-      </Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: theme.spacing.sm }}>
+          <Text style={[headline, { flex: 1 }]}>{title}</Text>
+          {mascot}
+        </View>
+        {second ? <Text style={headline}>{second}</Text> : null}
+      </View>
       <Text
         style={{
           fontSize: theme.font.size.body,
@@ -190,7 +173,7 @@ function Stepper({ icon, label, onPress }: { icon: IconName; label: string; onPr
         justifyContent: "center",
         backgroundColor: theme.colors.surfaceAlt,
         borderWidth: 1,
-        borderColor: theme.colors.border,
+        borderColor: theme.colors.textMuted,
       }}
     >
       <Ionicons name={icon} size={22} color={theme.colors.text} />
@@ -293,7 +276,7 @@ export default function OnboardingScreen() {
   const logLabel = complete
     ? "All sets logged"
     : loggedWeights.length === 0
-      ? "Log First Set"
+      ? "Log first set"
       : "Log next set";
 
   function pickTime(index: number) {
@@ -346,17 +329,18 @@ export default function OnboardingScreen() {
           disabled: step === 1 && !days,
         };
 
+  const actionInk = action.disabled ? theme.colors.textMuted : theme.colors.onPrimary;
+
   let content: ReactNode;
 
   if (step === 0) {
     content = (
       <>
         <Heading
-          eyebrow="Welcome"
           title="Train for yourself."
           second="Show up for each other."
           body="Spotter Pair writes your custom lifting split while keeping your actual weights 100% private. Your partner only sees if you showed up."
-          mascot={<Mascot pose="rocco-neutral-ready" size={MASCOT} />}
+          mascot={<Rocco pose="rocco-neutral-ready" size={MASCOT} />}
         />
         <View style={{ gap: theme.spacing.md }}>
           <Text
@@ -414,7 +398,6 @@ export default function OnboardingScreen() {
     content = (
       <>
         <Heading
-          eyebrow="Your week"
           title="How many days a week?"
           body="Pick what you can really keep up. Your partner counts on the days you commit to, not the ones you hope for."
           mascot={<PeekMascot chosen={days !== null} />}
@@ -436,7 +419,6 @@ export default function OnboardingScreen() {
     content = (
       <>
         <Heading
-          eyebrow="Practice"
           title="Log your first set"
           body="Try one set of bench press. Each set you log counts toward today's workout, and finished workouts count toward your week."
         />
@@ -567,7 +549,9 @@ export default function OnboardingScreen() {
                 </Text>
               </View>
               {loggedWeights.length > 0 ? (
-                <Lottie key={loggedWeights.length} name="success" size={48} />
+                <View style={{ width: 48, height: 48, overflow: "hidden" }}>
+                  <Lottie key={loggedWeights.length} name="success" size={48} />
+                </View>
               ) : null}
             </View>
 
@@ -592,11 +576,10 @@ export default function OnboardingScreen() {
     content = (
       <>
         <Heading
-          eyebrow="Reminders"
           title="A nudge on workout days"
           body="Pick a time and we'll send one reminder a day so you don't let your partner down. You can change it in Settings."
           mascot={
-            <Mascot
+            <Rocco
               pose={reminderState === "on" ? "rocco-fist-bump-spotter" : "rocco-vault-guardian"}
               size={MASCOT}
             />
@@ -701,7 +684,9 @@ export default function OnboardingScreen() {
         </View>
         {reminderState === "on" ? (
           <Appear style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-            <Lottie name="success" size={56} />
+            <View style={{ width: 56, height: 56, overflow: "hidden" }}>
+              <Lottie name="success" size={56} />
+            </View>
             <Text style={{ flex: 1, fontSize: theme.font.size.body, color: theme.colors.text }}>
               {`Reminder set for ${formatClock(time.hour, time.minute)}. Change it any time in Settings.`}
             </Text>
@@ -749,7 +734,11 @@ export default function OnboardingScreen() {
           accessibilityRole="button"
           accessibilityLabel="Skip onboarding"
           hitSlop={12}
-          style={{ minHeight: 44, justifyContent: "center" }}
+          style={({ pressed }) => ({
+            minHeight: 44,
+            justifyContent: "center",
+            opacity: pressed ? 0.6 : 1,
+          })}
         >
           <Text
             style={{
@@ -799,7 +788,7 @@ export default function OnboardingScreen() {
               style={{
                 width: 56,
                 height: 56,
-                borderRadius: theme.radius.md,
+                borderRadius: theme.radius.pill,
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: theme.colors.surfaceAlt,
@@ -822,23 +811,24 @@ export default function OnboardingScreen() {
               accessibilityState={{ disabled: action.disabled }}
               style={{
                 minHeight: 56,
-                borderRadius: theme.radius.md,
+                paddingHorizontal: theme.spacing.lg,
+                borderRadius: theme.radius.pill,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: theme.spacing.sm,
-                backgroundColor: theme.colors.primary,
-                opacity: action.disabled ? 0.5 : 1,
+                borderWidth: 1,
+                // Disabled goes neutral with a readable label; it never fades.
+                borderColor: action.disabled ? theme.colors.border : theme.colors.primary,
+                backgroundColor: action.disabled ? theme.colors.surfaceAlt : theme.colors.primary,
               }}
             >
-              {action.icon ? (
-                <Ionicons name={action.icon} size={20} color={theme.colors.onPrimary} />
-              ) : null}
+              {action.icon ? <Ionicons name={action.icon} size={20} color={actionInk} /> : null}
               <Text
                 style={{
-                  fontSize: theme.font.size.title,
+                  fontSize: theme.font.size.body,
                   fontWeight: theme.font.weight.bold,
-                  color: theme.colors.onPrimary,
+                  color: actionInk,
                 }}
               >
                 {action.label}
@@ -852,7 +842,12 @@ export default function OnboardingScreen() {
             accessibilityRole="button"
             accessibilityLabel="Not now, start my plan without reminders"
             hitSlop={12}
-            style={{ minHeight: 44, alignItems: "center", justifyContent: "center" }}
+            style={({ pressed }) => ({
+              minHeight: 44,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.6 : 1,
+            })}
           >
             <Text style={{ fontSize: theme.font.size.body, color: theme.colors.textMuted }}>
               Not now
