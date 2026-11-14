@@ -237,7 +237,7 @@ function OpponentReportScreen({ onRetry }: { onRetry: () => void }) {
         accessibilityRole="header"
         numberOfLines={1}
         style={{
-          maxWidth: screenWidth - 176,
+          maxWidth: screenWidth - 152,
           color: colors.text,
           fontSize: font.size.body + 1,
           fontWeight: "600",
