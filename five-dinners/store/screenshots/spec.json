@@ -5,9 +5,7 @@
     "bgBottom": "#E8D6B3",
     "text": "#2A1F16",
     "muted": "#675946",
-    "accent": "#994000",
-    "pill": "#4D6220",
-    "onPill": "#FFFFFF"
+    "accent": "#994000"
   },
   "shots": [
     {
@@ -52,15 +50,14 @@
         "Next week starts",
         "with *what's left*"
       ],
-      "sub": "Leftover chicken and eggs go in first.",
+      "sub": "Leftover potatoes, penne and peas go in first.",
       "capture": "captures/week2.png",
-      "pill": "Unlimited",
       "callout": {
         "crop": [
           16,
           462,
           408,
-          296
+          284
         ],
         "scale": 1.05
       }
@@ -96,7 +93,7 @@
           16,
           54,
           408,
-          298
+          310
         ],
         "scale": 1.04
       }
@@ -145,7 +142,6 @@
       ],
       "sub": "Shelf prices against the estimate.",
       "capture": "captures/price-history.png",
-      "pill": "Unlimited",
       "callout": {
         "crop": [
           8,
