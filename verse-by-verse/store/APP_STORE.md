@@ -55,7 +55,7 @@ Never use "one verse at a time" or competitors' names (Guideline 2.3.7).
 |---|---|
 | Support URL | **Needed**: an https page with a way to contact you |
 | Marketing URL | optional |
-| Privacy Policy URL | `https://build.hireshelby.com/apps/p_0m2g4fumpyqsz4/privacy` is live, **but out of date**: it still lists photos, camera and location, which this build no longer uses. Regenerate it in App Builder, or host `store/privacy-policy.md` and update `data/app-info.ts` `privacyUrl` to match. |
+| Privacy Policy URL | **Needed**: the App Builder page (`https://build.hireshelby.com/apps/p_0m2g4fumpyqsz4/privacy`) still lists error reports, photos, camera and location, which this build no longer has. Host `store/privacy-policy.md` (or one shared page for both apps) and set `data/app-info.ts` `privacyUrl` to it. |
 | Copyright | 2026 your name or company |
 
 ## Screenshots
@@ -67,21 +67,18 @@ Answer the content questions for the Bible text honestly. Most general Bible rea
 is your call.
 
 ## App Privacy (nutrition label)
-The app sends **error reports** to App Builder's server (`build.hireshelby.com`, set in
-`data/errors-config.ts`). Each report carries the error, the screen and the phone model, with a random
-install ID. Declare:
-- **Diagnostics → Crash Data**: not linked to the user, not used for tracking, purpose App Functionality.
-- **Identifiers → Device ID** (the random install ID): not linked, not tracking, App Functionality.
-
-Nothing else is collected: no account, no analytics (its config is empty), no ads, no location,
-camera or photos. To answer "Data Not Collected" instead, empty `data/errors-config.ts`.
+**Data Not Collected.** Error reporting is off for this build (`data/errors-config.ts` is empty),
+so the app makes no network requests of its own: no account, no analytics, no crash reports, no
+ads, no tracking, and RevenueCat is never started. The Privacy and Terms links open in the browser
+only when tapped. This has to be answered by hand in App Store Connect (App Privacy → Get Started →
+"No, we do not collect data from this app"); Apple has no API or Expo command for it.
 
 ## App Review information
 - Sign-in required: **No**
 - Contact: your name, phone and email
 - Notes for the reviewer:
 ```
-No account or sign-in is needed. Everything the user saves stays on the device.
+No account or sign-in is needed. Everything the user saves stays on the device, and the app collects no data.
 
 To test the main flow:
 1. Setup: pick a starting passage and a reminder time, then finish (or Skip).

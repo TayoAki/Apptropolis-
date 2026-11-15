@@ -11,6 +11,7 @@ review notes and privacy answers are in `five-dinners/store/APP_STORE.md` and
 | Core loop tested end to end in the web build, fresh install, no console errors | ✅ 8/8 steps, including planning week 2 | ✅ 10/10 steps |
 | No purchase UI, padlocks or prices anywhere in the app | ✅ | ✅ |
 | Unused camera, photo and location modules and permission strings removed | ✅ | ✅ |
+| Collects no data (no analytics, no crash reports, no network requests of its own) | ✅ | ✅ error reports turned off |
 | Notifications asked only when the user turns a reminder on | ✅ | ✅ |
 | App icon (1024 px, no transparency) | ✅ new | ✅ new |
 | Bundle ID | `com.appbuilder.fivedinners5hpa` (new, same pattern as your other apps) | `com.appbuilder.versebyverseqsz4` |
@@ -35,7 +36,7 @@ review notes and privacy answers are in `five-dinners/store/APP_STORE.md` and
 2. **Privacy policy URL.**
    - **Five Dinners:** its link points at `localhost`. Host `five-dinners/store/privacy-policy.md`
      at an https URL and put it in `five-dinners/data/app-info.ts`.
-   - **Verse:** the hosted policy is live but still lists camera, photos and location. Regenerate it
+   - **Verse:** the App Builder page still lists error reports, camera, photos and location. Regenerate it
      in App Builder, or host `verse-by-verse/store/privacy-policy.md`.
    - This is Guideline 5.1.1(i).
 3. **Support URL (both).** App Store Connect needs an https support page (Guideline 1.5). If you
@@ -49,7 +50,9 @@ review notes and privacy answers are in `five-dinners/store/APP_STORE.md` and
    - Upload the screenshots from `store/screenshots/6.9` and `6.5`.
    - Set the price to Free.
    - Set availability: Five Dinners in the US only.
-   - Fill in App Privacy and the age rating.
+   - App Privacy: "No, we do not collect data from this app" for both (neither app sends anything
+     off the phone; Verse's error reports are off). This one is by hand: Apple has no API for it.
+   - Fill in the age rating.
    - Paste the review notes.
 4. Pricing and Availability → Pre-Orders: on, with a release date up to 180 days out.
 5. Submit for review. The pre-order page goes live only after the build is approved.
