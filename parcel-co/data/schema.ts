@@ -1,114 +1,194 @@
-// Record shapes and small helpers shared by the screens. Money is in dollars; dates are ISO strings.
-import { Platform } from "react-native";
+// Record shapes and small helpers shared by the screens. Coupons, deals and stores come from the
+// Pip API (data/deals.ts); what the person saves and says to Pip is theirs (useCollection).
+// Money is in the row's currency; dates are ISO strings.
 
-/** The phone's own wallet: Google Pay on Android, Apple Pay everywhere else. */
-export const WALLET = Platform.OS === "android" ? "Google Pay" : "Apple Pay";
-
-export const SHOP_MODES = [
-  { key: "style", label: "Style" },
-  { key: "glow", label: "Glow" },
-  { key: "home", label: "Home" },
-  { key: "pantry", label: "Pantry" },
-] as const;
-
-export type ShopMode = (typeof SHOP_MODES)[number]["key"];
-
-export const ORDER_STATUSES = [
-  "placed",
-  "packed",
-  "shipped",
-  "out_for_delivery",
-  "delivered",
-  "returned",
-] as const;
-
-export type OrderStatus = (typeof ORDER_STATUSES)[number];
-
-/** The steps a parcel goes through, in order, for the tracking timeline. */
-export const ORDER_TIMELINE: OrderStatus[] = [
-  "placed",
-  "packed",
-  "shipped",
-  "out_for_delivery",
-  "delivered",
-];
-
-export interface Product {
-  id: string;
+export interface Store {
+  slug: string;
   name: string;
-  mode: ShopMode;
-  /** Category within the mode, such as "serums", "tops" or "candles". */
-  category: string;
-  /** Price in dollars. */
+  domain: string | null;
+  logoUrl: string | null;
+  category: string | null;
+  /** Free text as the scraper found it, e.g. "Up to 6% cash back". */
+  cashback: string | null;
+  affiliateUrl: string | null;
+  updatedAt: string;
+  couponCount: number;
+  dealCount: number;
+}
+
+export type DiscountType = "percent" | "amount" | "free_shipping" | "bogo" | "gift" | "other";
+
+export interface Coupon {
+  key: string;
+  storeSlug: string;
+  storeName: string;
+  storeDomain: string | null;
+  storeLogoUrl: string | null;
+  /** null when the offer needs no code. */
+  code: string | null;
+  title: string;
+  details: string | null;
+  discountType: DiscountType | null;
+  discountValue: number | null;
+  minSpend: number | null;
+  /** Where "Shop" goes: the offer's page, the store's link, or its home page. */
+  url: string | null;
+  source: string;
+  sourceUrl: string | null;
+  expiresAt: string | null;
+  /** Set only when the owner's scraper confirmed the code works. */
+  verifiedAt: string | null;
+  lastSeenAt: string;
+}
+
+export interface Deal {
+  key: string;
+  storeSlug: string | null;
+  storeName: string | null;
+  title: string;
+  brand: string | null;
+  category: string | null;
   price: number;
-  description: string;
-  /** Whether the person saved it. */
-  isWishlisted: boolean;
-  /** How many are in the cart; 0 when none. */
-  cartQuantity: number;
+  wasPrice: number | null;
+  currency: string;
+  imageUrl: string | null;
+  url: string;
+  source: string;
+  rating: number | null;
+  reviewCount: number | null;
+  tags: string[];
+  expiresAt: string | null;
+  lastSeenAt: string;
 }
 
-export interface Order {
+/** A coupon or deal the person saved, as it was when they saved it (it may expire later). */
+export interface SavedItem {
   id: string;
-  /** Human-readable order number, e.g. "PC-20461". */
-  orderNumber: string;
-  /** Summary of purchased items, e.g. "Linen Relaxed Shirt x2". */
-  items: string;
-  /** Order total in dollars, shipping included. */
-  total: number;
-  shippingAddress: string;
-  deliverySpeed: "standard" | "express";
-  status: OrderStatus;
-  placedAt: string;
-  estimatedDelivery: string;
+  kind: "coupon" | "deal";
+  /** The coupon's or deal's key in the API. */
+  key: string;
+  coupon?: Coupon;
+  deal?: Deal;
+  savedAt: string;
 }
 
-export interface AssistantMessage {
+export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   createdAt: string;
+  /** Keys of the coupons and deals Pip's answer points to, shown as cards under it. */
+  couponKeys?: string[];
+  dealKeys?: string[];
+  /** The coupons and deals themselves, kept so the answer still shows them later. */
+  coupons?: Coupon[];
+  deals?: Deal[];
+  photo?: boolean;
 }
+
+/** Shopping interests offered at setup. Stores are sorted by these on Home and in Stores. */
+export const INTERESTS = [
+  { key: "fashion", label: "Fashion", icon: "shirt-outline" },
+  { key: "beauty", label: "Beauty", icon: "color-palette-outline" },
+  { key: "home", label: "Home", icon: "home-outline" },
+  { key: "electronics", label: "Electronics", icon: "headset-outline" },
+  { key: "toys", label: "Kids & toys", icon: "happy-outline" },
+  { key: "groceries", label: "Groceries", icon: "basket-outline" },
+  { key: "travel", label: "Travel", icon: "airplane-outline" },
+  { key: "sports", label: "Sports & outdoors", icon: "bicycle-outline" },
+] as const;
+
+export type InterestKey = (typeof INTERESTS)[number]["key"];
 
 const DAY = 86_400_000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** An ISO date `days` from today (negative for the past) at the given local hour. */
-export function daysFromNow(days: number, hour = 12): string {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  date.setHours(hour, 0, 0, 0);
-  return date.toISOString();
+/** Comma-separated answer to a list ("nike,target" -> ["nike", "target"]). */
+export function listFrom(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+/** "$29.99" in the row's currency (USD, GBP and EUR get their symbol; others their code). */
+export function formatMoney(amount: number, currency = "USD"): string {
+  const symbol = currency === "USD" ? "$" : currency === "GBP" ? "£" : currency === "EUR" ? "€" : "";
+  const value = amount.toFixed(2);
+  return symbol ? `${symbol}${value}` : `${value} ${currency}`;
 }
 
 /** Whole days from today to the date (0 today, 1 tomorrow, -1 yesterday). */
-export function dayDiff(iso: string): number {
-  const today = new Date();
+export function dayDiff(iso: string, now = new Date()): number {
+  const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   const other = new Date(iso);
   other.setHours(0, 0, 0, 0);
   return Math.round((other.getTime() - today.getTime()) / DAY);
 }
 
-/** "$29.99" */
-export function formatMoney(amount: number): string {
-  return `$${amount.toFixed(2)}`;
-}
-
-/** "Mon, Jun 3" */
-export function formatDate(iso: string): string {
+/** "Nov 18" */
+export function shortDate(iso: string): string {
   const date = new Date(iso);
-  return `${WEEKDAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${date.getDate()}`;
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
 }
 
-/** "Today", "Tomorrow", "Yesterday", or the full date. */
-export function relativeDay(iso: string): string {
+/** "Seen today", "Seen yesterday", "Seen 3 days ago", "Seen Oct 2". */
+export function seenLabel(iso: string): string {
+  const diff = -dayDiff(iso);
+  if (diff <= 0) return "Seen today";
+  if (diff === 1) return "Seen yesterday";
+  if (diff < 14) return `Seen ${diff} days ago`;
+  return `Seen ${shortDate(iso)}`;
+}
+
+/** "Ends today", "Ends tomorrow", "Ends in 4 days", "Ends Dec 2"; null when there is no date. */
+export function endsLabel(iso: string | null): string | null {
+  if (!iso) return null;
   const diff = dayDiff(iso);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
-  return formatDate(iso);
+  if (diff <= 0) return "Ends today";
+  if (diff === 1) return "Ends tomorrow";
+  if (diff < 8) return `Ends in ${diff} days`;
+  return `Ends ${shortDate(iso)}`;
+}
+
+/** The headline number for a coupon tile: "20% off", "$15 off", "Free shipping". */
+export function discountLabel(coupon: Coupon): string {
+  const value = coupon.discountValue;
+  switch (coupon.discountType) {
+    case "percent":
+      return value ? `${trim(value)}% off` : "Percent off";
+    case "amount":
+      return value ? `${formatMoney(value).replace(/\.00$/, "")} off` : "Money off";
+    case "free_shipping":
+      return "Free shipping";
+    case "bogo":
+      return "Buy one, get one";
+    case "gift":
+      return "Free gift";
+    default:
+      return "Offer";
+  }
+}
+
+function trim(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+/** "$15 off orders of $75+" style condition line, or null. */
+export function minSpendLabel(coupon: Coupon): string | null {
+  return coupon.minSpend ? `On orders of ${formatMoney(coupon.minSpend).replace(/\.00$/, "")}+` : null;
+}
+
+/** Percent saved on a deal against its was-price, rounded; null when there isn't one. */
+export function dealSaving(deal: Deal): number | null {
+  if (!deal.wasPrice || deal.wasPrice <= deal.price) return null;
+  return Math.round(((deal.wasPrice - deal.price) / deal.wasPrice) * 100);
+}
+
+/** True when the date is today, for counting today's Pip questions. */
+export function isToday(iso: string, now = new Date()): boolean {
+  return dayDiff(iso, now) === 0;
 }
 
 /** "6:05 pm" */
@@ -119,68 +199,13 @@ export function formatTime(iso: string): string {
   return `${hours % 12 || 12}:${minutes} ${hours < 12 ? "am" : "pm"}`;
 }
 
-export function statusLabel(status: OrderStatus): string {
-  switch (status) {
-    case "placed":
-      return "Order placed";
-    case "packed":
-      return "Packed";
-    case "shipped":
-      return "Shipped";
-    case "out_for_delivery":
-      return "Out for delivery";
-    case "delivered":
-      return "Delivered";
-    case "returned":
-      return "Returned";
-  }
+/** "Today", "Yesterday", or "Nov 18". */
+export function relativeDay(iso: string): string {
+  const diff = dayDiff(iso);
+  if (diff === 0) return "Today";
+  if (diff === -1) return "Yesterday";
+  return shortDate(iso);
 }
 
-/** How far along the timeline an order is (0 to 4). A returned order sits at delivered. */
-export function orderProgress(status: OrderStatus): number {
-  if (status === "returned") return ORDER_TIMELINE.length - 1;
-  return ORDER_TIMELINE.indexOf(status);
-}
-
-/** Standard is free from $50; express is a flat $14.95. */
-export function shippingCost(speed: Order["deliverySpeed"], subtotal: number): number {
-  if (speed === "express") return 14.95;
-  return subtotal >= 50 ? 0 : 6.95;
-}
-
-export function modeLabel(mode: ShopMode): string {
-  return SHOP_MODES.find((m) => m.key === mode)?.label ?? mode;
-}
-
-/** The mode every screen shows until one has been chosen. */
-export const DEFAULT_SHOP_MODE: ShopMode = SHOP_MODES[0].key;
-
-/**
- * The shop mode a saved answer names, whether it was stored as a key ("glow"), a label ("Glow")
- * or a longer name ("Glow (skincare)"); null when there is none.
- */
-export function shopModeFrom(value: string | undefined): ShopMode | null {
-  const text = (value ?? "").trim().toLowerCase();
-  if (!text) return null;
-  return SHOP_MODES.find((m) => text.startsWith(m.key))?.key ?? null;
-}
-
-/** "serums" to "Serums", for showing a category as a label. */
-export function categoryLabel(category: string): string {
-  return category.charAt(0).toUpperCase() + category.slice(1);
-}
-
-/** The products currently in the cart. */
-export function cartLines(products: Product[]): Product[] {
-  return products.filter((p) => p.cartQuantity > 0);
-}
-
-/** Total items in the cart, counting quantities. */
-export function cartCount(products: Product[]): number {
-  return products.reduce((sum, p) => sum + p.cartQuantity, 0);
-}
-
-/** Cart subtotal in dollars, before shipping. */
-export function cartSubtotal(products: Product[]): number {
-  return products.reduce((sum, p) => sum + p.price * p.cartQuantity, 0);
-}
+/** How many questions a day Pip answers without Plus. */
+export const FREE_QUESTIONS_PER_DAY = 3;

@@ -45,15 +45,19 @@ export default function TabsLayout() {
         options={{ title: "Home", tabBarIcon: tabIcon("home-outline", "home") }}
       />
       <Tabs.Screen
-        name="shop"
-        options={{ title: "Shop", tabBarIcon: tabIcon("bag-outline", "bag") }}
-      />
-      <Tabs.Screen
         name="assistant"
         options={{
-          title: "Pip",
+          title: "Ask Pip",
           tabBarIcon: tabIcon("chatbubble-ellipses-outline", "chatbubble-ellipses"),
         }}
+      />
+      <Tabs.Screen
+        name="stores"
+        options={{ title: "Stores", tabBarIcon: tabIcon("storefront-outline", "storefront") }}
+      />
+      <Tabs.Screen
+        name="saved"
+        options={{ title: "Saved", tabBarIcon: tabIcon("bookmark-outline", "bookmark") }}
       />
     </Tabs>
   );

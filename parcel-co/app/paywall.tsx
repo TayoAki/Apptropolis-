@@ -1,360 +1,120 @@
+// The offer for Pip Plus. Everything someone needs to decide is on screen before the button:
+// what stays free, what Plus adds, each plan's price and length, the trial and what it costs
+// afterwards, that it renews and where to cancel. A subscriber sees their plan instead.
 import { Ionicons } from "@expo/vector-icons";
-import { Stack } from "expo-router";
-import { useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Stack, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LottieBox } from "../components/LottieBox";
-import { Float, haptic, PressScale, Pulse, Skeleton, Stagger } from "../components/motion";
+import { Lottie } from "../components/lottie";
+import { OfferCard, periodText } from "../components/paywall/OfferCard";
+import { haptic, PressScale, Skeleton } from "../components/motion";
 import { Pip } from "../components/Pip";
-import { ProductArt, type IconName } from "../components/ProductArt";
-import {
-  DISPLAY_FONT,
-  EmptyState,
-  InlineNotice,
-  PrimaryButton,
-  ScreenTitle,
-} from "../components/ui";
+import { Card } from "../components/settings/Controls";
+import { EmptyState } from "../components/ui";
+import { track } from "../data/analytics";
 import { appInfo } from "../data/app-info";
-import { usePurchases } from "../data/purchases";
+import { usePurchases, type Offer } from "../data/purchases";
+import { FREE_QUESTIONS_PER_DAY } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
-type Plan = ReturnType<typeof usePurchases>["offers"][number];
+type IconName = ComponentProps<typeof Ionicons>["name"];
 
-const SUFFIX: Record<Plan["period"], string> = {
-  week: "wk",
-  month: "mo",
-  year: "yr",
-  lifetime: "",
-};
-
-const PERIOD_WORD: Record<Plan["period"], string> = {
-  week: "week",
-  month: "month",
-  year: "year",
-  lifetime: "",
-};
-
-/** Where a subscription is managed on this phone. */
-const STORE = Platform.OS === "android" ? "Google Play" : "App Store";
-
-const BENEFIT_PROMPT = "a small cardboard parcel box mascot, flat illustration, soft beige";
-
-/** `icon` stands in for the picture until the project has one for `prompt`. */
-const BENEFITS: Array<{ title: string; body: string; prompt: string; icon: IconName }> = [
+/** What Plus adds. Each one is a feature the app has today (see data/monetization.ts). */
+const PERKS: Array<{ icon: IconName; title: string; body: string }> = [
   {
-    title: "Unlimited AI order routing",
-    body: "Pip proactively alerts courier changes and reroutes with one tap",
-    prompt: "a small cardboard box character holding a folded map, on a light background",
-    icon: "map-outline",
+    icon: "chatbubbles-outline",
+    title: "Ask Pip as much as you like",
+    body: `Free answers ${FREE_QUESTIONS_PER_DAY} questions a day. Plus has no daily limit.`,
   },
   {
-    title: "Complimentary express courier",
-    body: "Next-day courier on all shop modes with zero minimums",
-    prompt: "a cardboard box with motion lines, speeding to the right with a smiling face",
-    icon: "flash-outline",
-  },
-  {
-    title: "Extended 60-day studio returns",
-    body: "Instant QR returns with complimentary courier doorstep pickup",
-    prompt: "a cardboard box with a curved return arrow and a QR code beside it",
-    icon: "qr-code-outline",
+    icon: "camera-outline",
+    title: "Ask with a photo",
+    body: "Snap a product or its label. Pip names it, then looks for codes and deals for it.",
   },
 ];
 
-/** "$29.99" on a yearly plan becomes "($2.50/mo)" (same currency symbol). */
-function perMonth(price: string, period: Plan["period"]): string | null {
-  if (period !== "year") return null;
-  const match = /^(\D*?)([\d.,]+)/.exec(price);
-  if (!match) return null;
-  const amount = parseFloat(match[2].replace(/,/g, "")) / 12;
-  return Number.isFinite(amount) ? `${match[1]}${amount.toFixed(2)}/mo` : null;
+const FREE_LINE = `Free, with no time limit: every code and deal in Pip's list, following stores, saving, and ${FREE_QUESTIONS_PER_DAY} questions to Pip a day.`;
+const CANCEL_LINE = "Cancel any time in your App Store or Google Play subscription settings.";
+
+/** The whole deal for a plan in plain sentences: trial, price after it, renewal. */
+function termsOf(offer: Offer): string {
+  if (offer.period === "lifetime") return `${offer.price} once. It does not renew.`;
+  const price = `${offer.price} ${periodText(offer)}`;
+  return offer.trialDays > 0
+    ? `${offer.trialDays} days free, then ${price}. Renews automatically until canceled.`
+    : `${price}, charged today. Renews automatically until canceled.`;
 }
 
-/** One thing the Club includes: a picture or icon, its name, and a line about it. */
-function Benefit({
-  title,
-  body,
-  prompt,
-  icon,
-}: {
-  title: string;
-  body: string;
-  prompt: string;
-  icon: IconName;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-      <ProductArt
-        prompt={prompt}
-        icon={icon}
-        fit="contain"
-        label={title}
-        style={{ width: 52, height: 52, borderRadius: theme.radius.md }}
-      />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontSize: theme.font.size.body,
-            lineHeight: 21,
-            fontWeight: theme.font.weight.bold,
-          }}
-        >
-          {title}
-        </Text>
-        {body ? (
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 21 }}>
-            {body}
-          </Text>
-        ) : null}
-      </View>
-    </View>
-  );
+/** What pressing the button does, in the button's own words. */
+function actionOf(offer: Offer): string {
+  if (offer.period === "lifetime") return `Buy once for ${offer.price}`;
+  return offer.trialDays > 0
+    ? `Start ${offer.trialDays}-day free trial`
+    : `Subscribe for ${offer.price} ${periodText(offer)}`;
 }
 
-function PlanCard({
-  plan,
-  selected,
-  onSelect,
-}: {
-  plan: Plan;
-  selected: boolean;
-  onSelect: () => void;
-}) {
+/** A quiet text link for the footer row (restore, terms, privacy). */
+function TextLink({ label, onPress }: { label: string; onPress: () => void }) {
   const theme = useTheme();
-  const suffix = SUFFIX[plan.period];
-  const monthly = perMonth(plan.price, plan.period);
-  const billing =
-    plan.trialDays > 0
-      ? `${plan.trialDays}-day free trial`
-      : plan.period === "lifetime"
-        ? "One-time purchase"
-        : plan.period === "year"
-          ? "Billed yearly"
-          : plan.period === "month"
-            ? "Billed monthly"
-            : "Billed weekly";
-
   return (
     <Pressable
-      onPress={() => {
-        if (!selected) haptic("selection");
-        onSelect();
-      }}
-      accessibilityRole="radio"
-      accessibilityLabel={`${plan.label}, ${plan.price}${suffix ? ` per ${PERIOD_WORD[plan.period]}` : ""}, ${billing}`}
-      accessibilityState={{ checked: selected, selected }}
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={label}
+      hitSlop={10}
       style={({ pressed }) => ({
-        flex: 1,
-        padding: theme.spacing.md,
-        gap: theme.spacing.xs,
-        borderRadius: theme.radius.md,
-        borderWidth: 2,
-        borderColor: selected ? theme.colors.primary : theme.colors.border,
-        backgroundColor: selected ? theme.colors.surfaceAlt : theme.colors.surface,
-        opacity: pressed ? 0.8 : 1,
+        minHeight: 44,
+        justifyContent: "center",
+        opacity: pressed ? 0.6 : 1,
       })}
     >
-      {plan.badge ? (
-        <View
-          style={{
-            position: "absolute",
-            top: -13,
-            left: theme.spacing.md,
-            paddingHorizontal: theme.spacing.sm,
-            paddingVertical: 3,
-            borderRadius: theme.radius.pill,
-            backgroundColor: theme.colors.primary,
-          }}
-        >
-          <Text
-            numberOfLines={1}
-            style={{
-              color: theme.colors.onPrimary,
-              fontSize: theme.font.size.caption,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            {plan.badge}
-          </Text>
-        </View>
-      ) : null}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-        <Text
-          numberOfLines={1}
-          style={{
-            flex: 1,
-            color: theme.colors.text,
-            fontSize: theme.font.size.body,
-            fontWeight: theme.font.weight.bold,
-          }}
-        >
-          {plan.label}
-        </Text>
-        <Ionicons
-          name={selected ? "radio-button-on" : "radio-button-off"}
-          size={22}
-          color={selected ? theme.colors.primary : theme.colors.textMuted}
-        />
-      </View>
-      <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontSize: theme.font.size.headline,
-            fontWeight: theme.font.weight.bold,
-            fontVariant: ["tabular-nums"],
-          }}
-        >
-          {plan.price}
-        </Text>
-        {suffix ? (
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              marginBottom: 4,
-            }}
-          >
-            /{suffix}
-          </Text>
-        ) : null}
-      </View>
-      {monthly ? (
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
-            fontVariant: ["tabular-nums"],
-          }}
-        >
-          ({monthly})
-        </Text>
-      ) : null}
       <Text
         style={{
-          marginTop: "auto",
-          color: theme.colors.text,
+          color: theme.colors.textMuted,
           fontSize: theme.font.size.caption,
-          fontWeight: theme.font.weight.medium,
+          textDecorationLine: "underline",
         }}
       >
-        {billing}
+        {label}
       </Text>
     </Pressable>
-  );
-}
-
-function Footer({
-  onRestore,
-  restoring,
-  termsUrl,
-  privacyUrl,
-}: {
-  onRestore: () => void;
-  restoring: boolean;
-  termsUrl: string;
-  privacyUrl: string;
-}) {
-  const theme = useTheme();
-  const links = [
-    { key: "restore", label: restoring ? "Restoring…" : "Restore purchases", onPress: onRestore },
-    ...(termsUrl
-      ? [{ key: "terms", label: "Terms", onPress: () => void Linking.openURL(termsUrl) }]
-      : []),
-    ...(privacyUrl
-      ? [
-          {
-            key: "privacy",
-            label: "Privacy policy",
-            onPress: () => void Linking.openURL(privacyUrl),
-          },
-        ]
-      : []),
-  ];
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        flexWrap: "wrap",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      {links.map((link, index) => (
-        <View key={link.key} style={{ flexDirection: "row", alignItems: "center" }}>
-          {index > 0 ? (
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
-              ·
-            </Text>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={link.label}
-            hitSlop={8}
-            onPress={link.onPress}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              justifyContent: "center",
-              paddingHorizontal: theme.spacing.sm,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.caption,
-                fontWeight: theme.font.weight.medium,
-              }}
-            >
-              {link.label}
-            </Text>
-          </Pressable>
-        </View>
-      ))}
-    </View>
   );
 }
 
 export default function PaywallScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ from?: string }>();
   const {
     ready,
     isPremium,
     activeOffer,
+    entitlement,
     offers,
     defaultOfferId,
-    premiumFeatures,
     status,
     error,
+    testMode,
     purchase,
     restorePurchases,
     dismissPaywall,
   } = usePurchases();
 
-  const [picked, setPicked] = useState<string | null>(null);
-  const selected: Plan | undefined =
-    offers.find((o) => o.id === (picked ?? defaultOfferId)) ?? offers[0];
+  // Opened without a source, this is the paywall the app shows once setup is finished.
+  const from = typeof params.from === "string" && params.from ? params.from : "after_onboarding";
+  const premiumNow = useRef(isPremium);
+  premiumNow.current = isPremium;
+  useEffect(() => {
+    track("paywall_shown", { from });
+    // Closing covers every way out: the close button, a purchase, Done, or a swipe down.
+    return () => track("paywall_closed", { from, premium: premiumNow.current });
+  }, [from]);
+
+  const [chosen, setChosen] = useState<string | null>(null);
+  const selected: Offer | undefined =
+    offers.find((o) => o.id === (chosen ?? defaultOfferId)) ?? offers[0];
   const busy = status !== "idle";
-  const trial = selected !== undefined && selected.trialDays > 0;
-
-  const buttonLabel = !selected
-    ? "Continue"
-    : trial
-      ? status === "purchasing"
-        ? "Starting your trial…"
-        : `Start my ${selected.trialDays}-day free trial`
-      : status === "purchasing"
-        ? "Processing…"
-        : "Continue";
-
-  const shortTerms = !selected
-    ? ""
-    : selected.period === "lifetime"
-      ? "One-time purchase. No subscription."
-      : `${trial ? "Then " : ""}${selected.price}/${PERIOD_WORD[selected.period]}. Cancel anytime in ${STORE} settings.`;
 
   async function buy() {
     if (!selected || busy) return;
@@ -367,266 +127,344 @@ export default function PaywallScreen() {
 
   async function restore() {
     if (busy) return;
-    await restorePurchases();
+    const ok = await restorePurchases();
+    if (ok) haptic("success");
   }
 
-  const benefits = premiumFeatures.length
-    ? premiumFeatures.map((title) => ({
-        title,
-        body: "",
-        prompt: BENEFIT_PROMPT,
-        icon: "sparkles-outline" as IconName,
-      }))
-    : BENEFITS;
-
-  const clubName = `${appInfo.name} Club`;
-  const premiumView = ready && isPremium;
-
-  const headerRow = premiumView ? (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: theme.spacing.sm,
-      }}
-    >
-      <LottieBox name="sparkle" size={48} />
-      <ScreenTitle align="center" style={{ flexShrink: 1 }}>
-        You're in the Club
-      </ScreenTitle>
-    </View>
-  ) : (
-    <ScreenTitle align="center">{"Ship free, skip queues,\nask Pip without limits"}</ScreenTitle>
-  );
-
-  const benefitList = (
-    <View style={{ gap: theme.spacing.lg }}>
-      {benefits.map((benefit) => (
-        <Benefit
-          key={benefit.title}
-          title={benefit.title}
-          body={benefit.body}
-          prompt={benefit.prompt}
-          icon={benefit.icon}
-        />
-      ))}
-    </View>
-  );
-
-  const plansSection = !ready ? (
-    <View style={{ flexDirection: "row", gap: theme.spacing.md, paddingTop: theme.spacing.md }}>
-      <Skeleton height={148} radius={theme.radius.md} style={{ flex: 1 }} />
-      <Skeleton height={148} radius={theme.radius.md} style={{ flex: 1 }} />
-    </View>
-  ) : offers.length === 0 ? (
-    <EmptyState
-      icon="pricetag-outline"
-      title="Plans aren't available yet"
-      body="The store hasn't returned prices for this app. Restore earlier purchases, or check back shortly."
-      actionLabel="Restore purchases"
-      onAction={restore}
-    />
-  ) : (
-    <View
-      accessibilityRole="radiogroup"
-      style={{ flexDirection: "row", gap: theme.spacing.md, paddingTop: theme.spacing.md }}
-    >
-      {offers.map((offer) => (
-        <View key={offer.id} style={{ flex: 1, minWidth: 0 }}>
-          <PlanCard
-            plan={offer}
-            selected={selected?.id === offer.id}
-            onSelect={() => setPicked(offer.id)}
-          />
-        </View>
-      ))}
-    </View>
-  );
-
-  const purchaseSection =
-    ready && selected ? (
-      <View style={{ gap: theme.spacing.sm }}>
-        <Pulse>
-          <PressScale
-            onPress={buy}
-            disabled={busy || offers.length === 0}
-            scaleTo={0.97}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityLabel={buttonLabel}
-            accessibilityState={{ disabled: busy }}
-            style={{
-              minHeight: 56,
-              borderRadius: theme.radius.pill,
-              alignItems: "center",
-              justifyContent: "center",
-              paddingHorizontal: theme.spacing.lg,
-              backgroundColor: theme.colors.primary,
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.85}
-              style={{
-                color: theme.colors.onPrimary,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.bold,
-              }}
-            >
-              {buttonLabel}
-            </Text>
-          </PressScale>
-        </Pulse>
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontSize: theme.font.size.caption,
-            lineHeight: 17,
-            textAlign: "center",
-          }}
-        >
-          {shortTerms}
-        </Text>
-      </View>
-    ) : ready ? null : (
-      <Skeleton height={56} radius={theme.radius.pill} />
-    );
-
-  const premiumSection = (
-    <View style={{ alignItems: "center", gap: theme.spacing.md }}>
-      <LottieBox name="success" size={96} />
-      <Text
-        style={{
-          color: theme.colors.textMuted,
-          fontSize: theme.font.size.body,
-          textAlign: "center",
-        }}
-      >
-        {activeOffer
-          ? `Your ${activeOffer.label.toLowerCase()} plan is active. Everything Club includes is unlocked.`
-          : "Club is active on this phone. Everything Club includes is unlocked."}
-      </Text>
-      <Text
-        style={{
-          color: theme.colors.textMuted,
-          fontSize: theme.font.size.caption,
-          textAlign: "center",
-        }}
-      >
-        {`Change or cancel in ${STORE} settings.`}
-      </Text>
-      <View style={{ alignSelf: "stretch" }}>
-        <PrimaryButton label="Back to the app" onPress={dismissPaywall} />
-      </View>
-    </View>
-  );
+  const ctaLabel = isPremium
+    ? "Done"
+    : status === "purchasing"
+      ? "Processing…"
+      : selected
+        ? actionOf(selected)
+        : "No plan available";
+  const ctaDisabled = !ready || busy || (!isPremium && !selected);
+  const ctaInk = ctaDisabled ? theme.colors.textMuted : theme.colors.onPrimary;
+  const since = entitlement?.since ? new Date(entitlement.since) : null;
+  const sinceText =
+    since && !Number.isNaN(since.getTime())
+      ? since.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+      : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Stack.Screen options={{ title: "Premium" }} />
+      <Stack.Screen options={{ title: "Pip Plus", headerShown: false }} />
 
       <View
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: theme.spacing.sm,
           paddingTop: insets.top + theme.spacing.xs,
-          paddingHorizontal: theme.spacing.lg,
-          paddingBottom: theme.spacing.xs,
+          paddingHorizontal: theme.spacing.sm,
         }}
       >
         <Pressable
+          onPress={dismissPaywall}
           accessibilityRole="button"
           accessibilityLabel="Close"
-          hitSlop={12}
-          onPress={dismissPaywall}
+          hitSlop={8}
           style={({ pressed }) => ({
-            width: 44,
-            height: 44,
-            marginLeft: -theme.spacing.sm,
-            borderRadius: 22,
+            width: 48,
+            height: 48,
             alignItems: "center",
             justifyContent: "center",
             opacity: pressed ? 0.6 : 1,
           })}
         >
-          <Ionicons name="close" size={26} color={theme.colors.text} />
+          <Ionicons name="close" size={28} color={theme.colors.text} />
         </Pressable>
-        <Text
-          numberOfLines={1}
-          style={{
-            flexShrink: 1,
-            color: theme.colors.text,
-            fontFamily: DISPLAY_FONT,
-            fontSize: theme.font.size.title,
-            lineHeight: 28,
-            textAlign: "center",
-          }}
-        >
-          {clubName}
-        </Text>
-        <View style={{ width: 44 - theme.spacing.sm }} />
       </View>
 
       <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
           paddingBottom: theme.spacing.xl,
+          gap: theme.spacing.lg,
         }}
+        showsVerticalScrollIndicator={false}
       >
-        <Stagger step={70} style={{ gap: theme.spacing.xl }}>
-          <View style={{ alignItems: "center", gap: theme.spacing.sm }}>
-            <Float amplitude={6}>
-              <Pip pose={ready ? "pip-celebrating" : "pip-neutral"} size={148} />
-            </Float>
-            {headerRow}
-          </View>
-          {premiumView ? premiumSection : benefitList}
-          {premiumView ? null : plansSection}
-          <Footer
-            onRestore={restore}
-            restoring={status === "restoring"}
-            termsUrl={appInfo.termsUrl}
-            privacyUrl={appInfo.privacyUrl}
-          />
-        </Stagger>
-      </ScrollView>
-
-      {/* The offer's button stays in reach under the scrolling content. */}
-      {premiumView || (purchaseSection === null && !error) ? null : (
         <View
           style={{
-            gap: theme.spacing.sm,
-            paddingTop: theme.spacing.md,
-            paddingHorizontal: theme.spacing.lg,
-            paddingBottom: insets.bottom + theme.spacing.md,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
-            backgroundColor: theme.colors.background,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: theme.spacing.md,
           }}
         >
-          {error ? (
-            <InlineNotice tone="danger" live>
-              {error}
-            </InlineNotice>
-          ) : null}
-          {purchaseSection}
+          <View style={{ flex: 1, gap: theme.spacing.sm }}>
+            {/* The product's name as a small lockup: the tag mark, then "Pip Plus". */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+              <Ionicons name="pricetags" size={24} color={theme.colors.primary} />
+              <Text
+                numberOfLines={1}
+                style={{
+                  flexShrink: 1,
+                  color: theme.colors.primary,
+                  fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
+                Pip Plus
+              </Text>
+            </View>
+            <Text
+              accessibilityRole="header"
+              style={{
+                color: theme.colors.text,
+                fontSize: theme.font.size.headline,
+                fontWeight: theme.font.weight.bold,
+                lineHeight: 34,
+              }}
+            >
+              {isPremium ? "You're on Pip Plus" : "Ask Pip without a limit. The codes stay free."}
+            </Text>
+          </View>
+          <Pip pose={isPremium ? "pip-celebrating" : "pip-neutral"} size={88} />
         </View>
-      )}
-      {premiumView && error ? (
-        <InlineNotice
-          tone="danger"
-          live
-          style={{ padding: theme.spacing.lg, paddingBottom: insets.bottom + theme.spacing.lg }}
+
+        {isPremium ? (
+          <Card style={{ padding: theme.spacing.lg }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+              <Ionicons name="checkmark-circle" size={28} color={theme.colors.success} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                >
+                  {activeOffer
+                    ? `${activeOffer.label.replace(/\s*\([^)]*\)/g, "")} plan: ${activeOffer.price} ${periodText(activeOffer)}`
+                    : "Plus is active on this phone"}
+                </Text>
+                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
+                  {`${sinceText ? `Since ${sinceText}. ` : ""}${
+                    activeOffer && activeOffer.period !== "lifetime"
+                      ? "Renews automatically until canceled."
+                      : ""
+                  }`.trim() || "Every Plus feature is unlocked."}
+                </Text>
+              </View>
+            </View>
+          </Card>
+        ) : null}
+
+        <Card style={{ paddingVertical: 0, paddingHorizontal: theme.spacing.lg }}>
+          {PERKS.map((perk, index) => (
+            <View
+              key={perk.title}
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: theme.spacing.md,
+                paddingVertical: theme.spacing.md,
+                borderTopWidth: index > 0 ? 1 : 0,
+                borderTopColor: theme.colors.border,
+              }}
+            >
+              <Ionicons
+                name={perk.icon}
+                size={22}
+                color={theme.colors.primary}
+                style={{ marginTop: 1 }}
+              />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                >
+                  {perk.title}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: theme.font.size.caption,
+                    lineHeight: 19,
+                  }}
+                >
+                  {perk.body}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Card>
+
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontSize: theme.font.size.caption,
+            lineHeight: 19,
+          }}
         >
-          {error}
-        </InlineNotice>
-      ) : null}
+          {isPremium
+            ? "These are unlocked on this phone, on top of everything that is free."
+            : FREE_LINE}
+        </Text>
+      </ScrollView>
+
+      <View
+        style={{
+          paddingHorizontal: theme.spacing.lg,
+          paddingTop: theme.spacing.md,
+          paddingBottom: insets.bottom + theme.spacing.sm,
+          gap: theme.spacing.sm,
+          backgroundColor: theme.colors.background,
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.border,
+        }}
+      >
+        {isPremium ? null : !ready ? (
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <View style={{ flex: 1 }}>
+              <Skeleton height={124} radius={theme.radius.md} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Skeleton height={124} radius={theme.radius.md} />
+            </View>
+          </View>
+        ) : offers.length === 0 ? (
+          <EmptyState
+            icon="cloud-offline-outline"
+            title="Plans aren't available yet"
+            body="The store didn't return any plans. Check your connection and open this screen again."
+          />
+        ) : (
+          <View
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Plan"
+            style={{ flexDirection: "row", gap: theme.spacing.sm }}
+          >
+            {offers.map((offer) => (
+              <View key={offer.id} style={{ flex: 1 }}>
+                <OfferCard
+                  offer={offer}
+                  selected={selected?.id === offer.id}
+                  onSelect={() => setChosen(offer.id)}
+                />
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* The terms of the picked plan, in full, right above the button. */}
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{
+            color: theme.colors.text,
+            fontSize: theme.font.size.caption,
+            lineHeight: 19,
+            textAlign: "center",
+          }}
+        >
+          {isPremium
+            ? "Manage or cancel your plan in your App Store or Google Play subscription settings."
+            : selected
+              ? `${termsOf(selected)}${selected.period === "lifetime" ? "" : ` ${CANCEL_LINE}`}`
+              : ""}
+        </Text>
+
+        {testMode ? (
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption,
+              textAlign: "center",
+            }}
+          >
+            Test mode: purchases are simulated, nothing is charged.
+          </Text>
+        ) : null}
+
+        {error ? (
+          <View
+            accessibilityLiveRegion="polite"
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.spacing.xs,
+            }}
+          >
+            <Ionicons name="alert-circle" size={16} color={theme.colors.danger} />
+            <Text
+              style={{
+                flexShrink: 1,
+                color: theme.colors.danger,
+                fontSize: theme.font.size.caption,
+              }}
+            >
+              {error}
+            </Text>
+          </View>
+        ) : null}
+
+        <PressScale
+          onPress={isPremium ? dismissPaywall : buy}
+          disabled={ctaDisabled}
+          haptic="light"
+          scaleTo={0.97}
+          accessibilityRole="button"
+          accessibilityLabel={ctaLabel}
+          accessibilityState={{ disabled: ctaDisabled, busy: status === "purchasing" }}
+          aria-busy={status === "purchasing"}
+        >
+          <View
+            style={{
+              minHeight: 56,
+              paddingHorizontal: theme.spacing.lg,
+              borderRadius: theme.radius.pill,
+              borderWidth: 1,
+              // Disabled goes neutral with a readable label; it never fades.
+              borderColor: ctaDisabled ? theme.colors.border : theme.colors.primary,
+              backgroundColor: ctaDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.spacing.sm,
+            }}
+          >
+            {status === "purchasing" ? (
+              <View style={{ width: 28, height: 28, overflow: "hidden" }}>
+                <Lottie name="loading" size={28} color={ctaInk} />
+              </View>
+            ) : null}
+            <Text
+              style={{
+                color: ctaInk,
+                fontSize: theme.font.size.body,
+                fontWeight: theme.font.weight.bold,
+              }}
+            >
+              {ctaLabel}
+            </Text>
+          </View>
+        </PressScale>
+
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            columnGap: theme.spacing.lg,
+          }}
+        >
+          <TextLink
+            label={status === "restoring" ? "Restoring…" : "Restore purchases"}
+            onPress={() => void restore()}
+          />
+          {appInfo.termsUrl ? (
+            <TextLink label="Terms of use" onPress={() => void Linking.openURL(appInfo.termsUrl)} />
+          ) : null}
+          {appInfo.privacyUrl ? (
+            <TextLink
+              label="Privacy policy"
+              onPress={() => void Linking.openURL(appInfo.privacyUrl)}
+            />
+          ) : null}
+        </View>
+      </View>
     </View>
   );
 }

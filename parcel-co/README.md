@@ -1,6 +1,10 @@
-# Parcel & Co
+# Pip
 
 Built with App Builder: an Expo (React Native) app using Expo Router.
+
+Pip is an AI shopping assistant: ask it before you buy, and it answers from the coupon codes and
+deals your scrapers collect into a Railway database. See [`backend/README.md`](backend/README.md)
+for the database, the API and how scrapers write to it.
 
 ## Run it
 

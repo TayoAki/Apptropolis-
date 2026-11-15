@@ -1,504 +1,415 @@
+// Setup has three steps, and the progress line counts exactly these:
+// 1. what they shop for (orders Home's codes and deals and the Stores list);
+// 2. which stores they buy from (their codes lead Home and Pip's answers);
+// 3. their first question to Pip, answered from the real list of codes and deals (the first
+//    success, before the paywall). Each step can be skipped; Back keeps every answer, and leaving
+//    mid-setup comes back to the same step.
 import { Ionicons } from "@expo/vector-icons";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiImage } from "../components/AiImage";
-import { LottieBox } from "../components/LottieBox";
-import { ModeCard, ModeCardSkeleton } from "../components/onboarding/ModeCard";
-import { PipBubble } from "../components/onboarding/PipBubble";
-import { OnboardingTabBar } from "../components/onboarding/TabBar";
-import {
-  Appear,
-  Float,
-  haptic,
-  PageDots,
-  Skeleton,
-  Stagger,
-  StepTransition,
-} from "../components/motion";
+import { CouponCard, DealCard, useSaved } from "../components/offers";
+import { haptic, PressScale, SkeletonList, StepTransition } from "../components/motion";
 import { Pip } from "../components/Pip";
-import {
-  Chip,
-  InlineNotice,
-  PrimaryButton,
-  ScreenTitle,
-  Surface,
-  useStalled,
-} from "../components/ui";
-import { useAI } from "../data/ai";
+import { StoreRow } from "../components/StoreRow";
+import { InlineNotice, PrimaryButton } from "../components/ui";
+import { track } from "../data/analytics";
 import { useAppState } from "../data/app-state";
+import { deals, useRemote } from "../data/deals";
+import { askPip, type PipAnswer } from "../data/pip";
+import { usePrefs } from "../data/prefs";
 import { useCollection } from "../data/repo";
-import { useReminder } from "../data/reminders";
-import {
-  formatDate,
-  formatMoney,
-  statusLabel,
-  type Order,
-  type Product,
-  type ShopMode,
-} from "../data/schema";
+import { INTERESTS, type ChatMessage, type Store } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
-const STEPS = 3;
-const HERO_HEIGHT = 180;
-const REMINDER_HOURS = [8, 12, 18, 21];
+const STEP_NAMES = ["interests", "stores", "first_question"] as const;
+const STEPS = STEP_NAMES.length;
+const STEP_KEY = "onboarding.step";
 
-const MODES: { key: ShopMode; label: string; caption: string }[] = [
-  { key: "style", label: "Style", caption: "Clothes, bags and everyday accessories" },
-  { key: "glow", label: "Glow", caption: "Skincare, from cleansers to sunscreen" },
-  { key: "home", label: "Home", caption: "Candles, kitchen and bedding" },
-  { key: "pantry", label: "Pantry", caption: "Coffee, tea, oils and staples" },
-];
+const EXAMPLES = ["Is there a code for Nike?", "Gift ideas under $40", "Free shipping codes"];
 
-/** Two staggered columns: the heights of the pictures make the grid feel like a catalog. */
-const COLUMNS: { mode: (typeof MODES)[number]; imageHeight: number }[][] = [
-  [
-    { mode: MODES[0]!, imageHeight: 210 },
-    { mode: MODES[2]!, imageHeight: 168 },
-  ],
-  [
-    { mode: MODES[1]!, imageHeight: 150 },
-    { mode: MODES[3]!, imageHeight: 190 },
-  ],
-];
-
-const QUESTIONS = [
-  { id: "package", label: "Where is my package?" },
-  { id: "serum", label: "What goes well with a vitamin C serum?" },
-] as const;
-
-type QuestionId = (typeof QUESTIONS)[number]["id"];
-
-const INSTRUCTIONS =
-  "You are Pip, the friendly parcel-box assistant in the Parcel & Co shopping app. Answer in at most three short sentences, warmly and specifically, in plain text with no lists and no emoji.";
-
-const TAB_PATHS: Record<string, string> = {
-  home: "/",
-  shop: "/shop",
-  assistant: "/assistant",
-  settings: "/settings",
-};
-
-/** The product a mood card shows: a wishlisted one when there is one, else the first in the mode. */
-function featuredFor(mode: ShopMode, products: Product[]): Product | undefined {
-  const inMode = products.filter((p) => p.mode === mode);
-  return inMode.find((p) => p.isWishlisted) ?? inMode[0];
-}
-
-function hourLabel(hour: number): string {
-  const twelve = hour % 12 === 0 ? 12 : hour % 12;
-  return `${twelve}:00 ${hour < 12 ? "am" : "pm"}`;
-}
-
-function buildPrompt(id: QuestionId, orders: Order[], products: Product[]): string {
-  if (id === "package") {
-    const latest = [...orders].sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0];
-    const detail = latest
-      ? `Their latest order is ${latest.orderNumber} (${latest.items}). Status: ${statusLabel(latest.status)}. Estimated delivery: ${formatDate(latest.estimatedDelivery)}.`
-      : "They have no orders yet.";
-    return `The customer asks: "Where is my package?" ${detail} Say where the package is and what happens next.`;
-  }
-  const glow = products
-    .filter((p) => p.mode === "glow")
-    .map((p) => `${p.name} (${formatMoney(p.price)})`)
-    .join("; ");
-  return `The customer asks: "What goes well with a vitamin C serum?" Suggest up to three products from this list only, by exact name, with one short reason each: ${glow}.`;
-}
-
-function StepHeader({ title, body }: { title: string; body: string }) {
-  const theme = useTheme();
-  return (
-    <View style={{ gap: theme.spacing.sm, alignItems: "center" }}>
-      <ScreenTitle align="center">{title}</ScreenTitle>
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontSize: theme.font.size.body,
-          lineHeight: 24,
-          textAlign: "center",
-          paddingHorizontal: theme.spacing.sm,
-        }}
-      >
-        {body}
-      </Text>
-    </View>
-  );
-}
-
-export default function Welcome() {
+export default function OnboardingScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { answers, setAnswer, completeOnboarding } = useAppState();
-  const reminder = useReminder();
-  const orders = useCollection<Order>("orders");
-  const products = useCollection<Product>("products");
-  const ai = useAI();
+  const prefs = usePrefs();
+  const saved = useSaved();
+  const history = useCollection<ChatMessage>("pip_messages");
 
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() => {
+    const n = Number(answers[STEP_KEY]);
+    return Number.isInteger(n) && n >= 0 && n < STEPS ? n : 0;
+  });
   const [direction, setDirection] = useState<1 | -1>(1);
-  const [asked, setAsked] = useState<QuestionId | null>(null);
-  const [hour, setHour] = useState(18);
-  const [saving, setSaving] = useState(false);
-  const [reminderState, setReminderState] = useState<"idle" | "on" | "declined">("idle");
-  // If the catalog doesn't arrive, the moods are still offered, without a featured product.
-  const catalogStalled = useStalled(products.loading, 6000);
+  const [picked, setPicked] = useState<string[]>(prefs.interests);
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer_] = useState<PipAnswer | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
 
-  const selected: string | null = answers.shopmode ?? null;
-  const canNext = step === 0 ? Boolean(selected) : true;
+  const stores = useRemote(() => deals.stores(), step === 1 ? "stores" : "idle");
 
-  function go(to: number) {
-    setDirection(to > step ? 1 : -1);
-    setStep(to);
+  function go(next: number) {
+    setDirection(next > step ? 1 : -1);
+    setProblem(null);
+    setStep(next);
+    void setAnswer(STEP_KEY, String(next));
   }
 
-  function next() {
-    if (canNext && step < STEPS - 1) go(step + 1);
+  function toggleInterest(key: string) {
+    haptic("selection");
+    setPicked((current) => (current.includes(key) ? current.filter((k) => k !== key) : [...current, key]));
+  }
+
+  async function saveInterests() {
+    await prefs.setInterests(picked);
+    track("onboarding_step_completed", { step: STEP_NAMES[0], interests: picked.length });
+    go(1);
+  }
+
+  async function ask(text: string) {
+    const q = text.trim();
+    if (!q || asking) return;
+    setAsking(true);
+    setProblem(null);
+    setAnswer_(null);
+    try {
+      // Asking here is agreeing to the AI notice shown above the box.
+      await prefs.giveAiConsent();
+      const now = new Date().toISOString();
+      await history.add({ role: "user", text: q, createdAt: now });
+      const result = await askPip({
+        question: q,
+        history: [],
+        interests: prefs.interests,
+        followed: prefs.storeNames,
+        tone: prefs.tone,
+      });
+      await history.add({
+        role: "assistant",
+        text: result.text,
+        createdAt: new Date().toISOString(),
+        couponKeys: result.coupons.map((c) => c.key),
+        dealKeys: result.deals.map((d) => d.key),
+        coupons: result.coupons,
+        deals: result.deals,
+      });
+      setAnswer_(result);
+      haptic("success");
+      track("onboarding_first_success", { coupons: result.coupons.length, deals: result.deals.length });
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : "Pip couldn't answer just now. Try again.");
+    } finally {
+      setAsking(false);
+    }
   }
 
   function finish() {
+    track("onboarding_step_completed", { step: STEP_NAMES[2], asked: answer !== null });
+    void setAnswer(STEP_KEY, "0");
     void completeOnboarding();
   }
 
-  /** The tab bar opens the app at that tab: onboarding completes, then the tab is shown. */
-  async function openTab(key: string) {
-    await completeOnboarding();
-    router.replace(TAB_PATHS[key] ?? "/");
-  }
+  // Their interests first, then the stores with the most live codes (the API's order).
+  const storeList: Store[] = [...(stores.data?.stores ?? [])]
+    .sort((a, b) => {
+      const rank = (s: Store) => (picked.includes((s.category ?? "").toLowerCase()) ? 0 : 1);
+      return rank(a) - rank(b);
+    })
+    .slice(0, 15);
 
-  function choose(key: ShopMode) {
-    void setAnswer("shopmode", key);
-  }
+  const heading = {
+    color: theme.colors.text,
+    fontSize: theme.font.size.headline,
+    fontWeight: theme.font.weight.bold,
+    lineHeight: 34,
+  } as const;
+  const prose = { color: theme.colors.textMuted, fontSize: theme.font.size.body, lineHeight: 23 } as const;
+  const footer = {
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    paddingBottom: Math.max(insets.bottom, theme.spacing.md),
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  } as const;
 
-  function askPip(id: QuestionId) {
-    setAsked(id);
-    void ai.ask({
-      prompt: buildPrompt(id, orders.items, products.items),
-      instructions: INSTRUCTIONS,
-    });
-  }
-
-  async function turnOn() {
-    setSaving(true);
-    const ok = await reminder.enable({
-      title: "Check on your parcels",
-      body: "Pip has news on your open orders. Tap to see where they are.",
-      hour,
-      minute: 0,
-    });
-    setSaving(false);
-    setReminderState(ok ? "on" : "declined");
-    if (ok) haptic("success");
-  }
-
-  const labelStyle = {
-    color: theme.colors.textMuted,
-    fontSize: theme.font.size.caption,
-    fontWeight: theme.font.weight.medium,
-  };
-
-  const bodyStyle = {
-    color: theme.colors.textMuted,
-    fontSize: theme.font.size.body,
-    textAlign: "center" as const,
-  };
-
-  const moodStep = (
-    <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-      <StepHeader
-        title="What are you shopping for?"
-        body="Pick your primary mood. Shop catalog, home recommendations, and Pip's tips change to match."
-      />
-      <View
-        accessibilityRole="radiogroup"
-        style={{ flexDirection: "row", gap: theme.spacing.md, alignItems: "flex-start" }}
+  function SkipLink({ label, onPress }: { label: string; onPress: () => void }) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        hitSlop={8}
+        style={({ pressed }) => ({ minHeight: 44, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.6 : 1 })}
       >
-        {COLUMNS.map((column, c) => (
-          <View key={c} style={{ flex: 1, gap: theme.spacing.md }}>
-            {column.map((cell, i) => (
-              <Appear key={cell.mode.key} delay={(i * 2 + c) * 90}>
-                {products.loading && !catalogStalled ? (
-                  <ModeCardSkeleton imageHeight={cell.imageHeight} />
-                ) : (
-                  <ModeCard
-                    mode={cell.mode.key}
-                    label={cell.mode.label}
-                    caption={cell.mode.caption}
-                    product={featuredFor(cell.mode.key, products.items)}
-                    selected={selected === cell.mode.key}
-                    imageHeight={cell.imageHeight}
-                    onPress={() => choose(cell.mode.key)}
-                  />
-                )}
-              </Appear>
-            ))}
-          </View>
-        ))}
-      </View>
-    </Stagger>
-  );
-
-  const demoStep = (
-    <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-      <StepHeader
-        title="Meet Pip"
-        body="Pip is your parcel buddy. It knows your orders and the shop, so ask it something real."
-      />
-      <View style={{ gap: theme.spacing.sm }}>
-        <Text style={labelStyle}>Try asking</Text>
-        {QUESTIONS.map((q) => (
-          <Chip key={q.id} label={q.label} selected={asked === q.id} onPress={() => askPip(q.id)} />
-        ))}
-      </View>
-      {asked ? (
-        <Surface style={{ gap: theme.spacing.sm }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-            <Pip pose="pip-delivering" size={44} />
-            <Text style={labelStyle}>Pip says</Text>
-          </View>
-          {ai.loading ? (
-            <View
-              accessibilityRole="progressbar"
-              accessibilityLabel="Pip is thinking"
-              style={{ gap: theme.spacing.sm }}
-            >
-              <Skeleton height={12} />
-              <Skeleton width="80%" height={12} />
-              <Skeleton width="55%" height={12} />
-            </View>
-          ) : ai.error ? (
-            <InlineNotice tone="danger" live>
-              {ai.error}
-            </InlineNotice>
-          ) : (
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.font.size.body,
-                lineHeight: 22,
-              }}
-            >
-              {ai.answer}
-            </Text>
-          )}
-        </Surface>
-      ) : null}
-    </Stagger>
-  );
-
-  const hourChoices = (
-    <View style={{ gap: theme.spacing.sm }}>
-      <Text style={labelStyle}>Remind me at</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-        {REMINDER_HOURS.map((h) => (
-          <Chip key={h} label={hourLabel(h)} selected={hour === h} onPress={() => setHour(h)} />
-        ))}
-      </View>
-    </View>
-  );
-
-  const permissionStep = (
-    <Stagger step={70} style={{ gap: theme.spacing.lg }}>
-      <StepHeader
-        title="Let Pip nudge you"
-        body="One reminder a day about your open orders, at the time you pick. Change it or turn it off anytime in Settings."
-      />
-      <View style={{ alignItems: "center" }}>
-        <Pip pose={reminderState === "on" ? "pip-celebrating" : "pip-delivering"} size={120} />
-      </View>
-      {reminderState === "idle" ? (
-        hourChoices
-      ) : reminderState === "on" ? (
-        <Surface style={{ alignItems: "center", gap: theme.spacing.sm }}>
-          <LottieBox name="success" size={64} />
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-            }}
-          >
-            Reminders are on
-          </Text>
-          <Text style={bodyStyle}>
-            Every day at {hourLabel(hour)}. Change the time or turn it off in Settings.
-          </Text>
-        </Surface>
-      ) : (
-        <Surface>
-          <InlineNotice icon="notifications-off-outline">
-            Notifications are off for Parcel & Co. Allow them in your phone's Settings to get
-            reminders later.
-          </InlineNotice>
-        </Surface>
-      )}
-      {reminderState === "idle" ? (
-        <View style={{ gap: theme.spacing.md }}>
-          <PrimaryButton
-            label={saving ? "Turning on..." : "Turn on reminders"}
-            onPress={() => void turnOn()}
-            disabled={saving}
-            icon="notifications-outline"
-          />
-          <Pressable
-            accessibilityRole="button"
-            hitSlop={12}
-            onPress={finish}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.medium,
-              }}
-            >
-              Not now
-            </Text>
-          </Pressable>
-        </View>
-      ) : (
-        <PrimaryButton label="Start shopping" onPress={finish} icon="bag-handle-outline" />
-      )}
-    </Stagger>
-  );
-
-  const content = step === 0 ? moodStep : step === 1 ? demoStep : permissionStep;
+        <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body, fontWeight: theme.font.weight.medium }}>{label}</Text>
+      </Pressable>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Stack.Screen options={{ title: "Welcome", headerShown: false }} />
+    <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
+      <Stack.Screen options={{ title: "Getting started" }} />
 
-      <View
-        style={{
-          paddingTop: insets.top,
-          height: insets.top + 56,
-          paddingHorizontal: theme.spacing.lg,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <View style={{ width: 96, alignItems: "flex-start" }}>
+      <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.xs, paddingBottom: theme.spacing.md, gap: theme.spacing.sm }}>
+        <View style={{ minHeight: 44, justifyContent: "center" }}>
           {step > 0 ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={12}
+              accessibilityLabel="Back to the previous step"
+              hitSlop={8}
               onPress={() => go(step - 1)}
               style={({ pressed }) => ({
-                minHeight: 44,
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 2,
+                alignSelf: "flex-start",
+                minHeight: 44,
+                paddingRight: theme.spacing.sm,
+                marginLeft: -theme.spacing.sm,
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <Ionicons name="chevron-back" size={22} color={theme.colors.textMuted} />
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontSize: theme.font.size.body,
-                  fontWeight: theme.font.weight.medium,
-                }}
-              >
-                Back
-              </Text>
+              <Ionicons name="chevron-back" size={24} color={theme.colors.primary} />
+              <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body }}>Back</Text>
             </Pressable>
           ) : null}
         </View>
-        <PageDots count={STEPS} index={step} />
-        <View style={{ width: 96, alignItems: "flex-end" }}>
-          {step < STEPS - 1 ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Next"
-              accessibilityState={{ disabled: !canNext }}
-              disabled={!canNext}
-              hitSlop={12}
-              onPress={next}
-              style={({ pressed }) => ({
-                minHeight: 44,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 2,
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <Text
-                style={{
-                  color: canNext ? theme.colors.primary : theme.colors.textMuted,
-                  fontSize: theme.font.size.body,
-                  fontWeight: canNext ? theme.font.weight.bold : theme.font.weight.medium,
-                }}
-              >
-                Next
-              </Text>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={canNext ? theme.colors.primary : theme.colors.textMuted}
-              />
-            </Pressable>
-          ) : null}
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, fontWeight: theme.font.weight.medium }}>
+          {`Getting started: step ${step + 1} of ${STEPS}`}
+        </Text>
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexDirection: "row", gap: 6 }}>
+          {Array.from({ length: STEPS }, (_, i) => (
+            <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i <= step ? theme.colors.primary : theme.colors.surfaceAlt }} />
+          ))}
         </View>
       </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: theme.spacing.lg,
-          paddingTop: theme.spacing.sm,
-          paddingBottom: theme.spacing.xl,
-          gap: theme.spacing.lg,
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Float amplitude={6} duration={3200} style={{ alignItems: "center" }}>
-          {/* The picture has its own cream paper, so it is framed like a print in both themes. */}
-          <AiImage
-            prompt="Watercolor postcards with postage stamps, a postmark and a red ribbon on warm cream paper, no characters"
-            fit="cover"
-            style={{
-              height: HERO_HEIGHT,
-              aspectRatio: 4 / 3,
-              borderRadius: theme.radius.lg,
-            }}
-          />
-        </Float>
-        <StepTransition step={step} direction={direction}>
-          {content}
-        </StepTransition>
-      </ScrollView>
+      <StepTransition step={step} direction={direction} style={{ flex: 1 }}>
+        {step === 0 ? (
+          <>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, gap: theme.spacing.lg }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+                <Pip pose="pip-neutral" size={64} />
+                <Text style={[prose, { flex: 1 }]}>
+                  {"I'm Pip. Before you buy, ask me for a code and I'll tell you what I've found, or that I haven't found one."}
+                </Text>
+              </View>
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text accessibilityRole="header" style={heading}>What do you shop for?</Text>
+                <Text style={prose}>Codes and deals for these come first on Home. Pick as many as you like.</Text>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                {INTERESTS.map((interest) => {
+                  const on = picked.includes(interest.key);
+                  return (
+                    <PressScale
+                      key={interest.key}
+                      onPress={() => toggleInterest(interest.key)}
+                      scaleTo={0.95}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: on }}
+                      aria-checked={on}
+                      accessibilityLabel={interest.label}
+                      style={{
+                        minHeight: 48,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: theme.spacing.xs,
+                        paddingHorizontal: theme.spacing.md,
+                        borderRadius: theme.radius.pill,
+                        borderWidth: 1.5,
+                        borderColor: on ? theme.colors.primary : theme.colors.textMuted,
+                        backgroundColor: on ? theme.colors.primary : theme.colors.surface,
+                      }}
+                    >
+                      <Ionicons
+                        name={on ? "checkmark" : (interest.icon as never)}
+                        size={18}
+                        color={on ? theme.colors.onPrimary : theme.colors.text}
+                      />
+                      <Text style={{ color: on ? theme.colors.onPrimary : theme.colors.text, fontSize: theme.font.size.body, fontWeight: theme.font.weight.medium }}>
+                        {interest.label}
+                      </Text>
+                    </PressScale>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <View style={footer}>
+              <PrimaryButton
+                label={picked.length ? "Continue" : "Pick at least one"}
+                disabled={!picked.length}
+                onPress={() => void saveInterests()}
+              />
+              <SkipLink
+                label="Skip: show me everything"
+                onPress={() => {
+                  void prefs.setInterests([]);
+                  go(1);
+                }}
+              />
+            </View>
+          </>
+        ) : step === 1 ? (
+          <>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, gap: theme.spacing.md }}>
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text accessibilityRole="header" style={heading}>Where do you shop?</Text>
+                <Text style={prose}>Follow the stores you buy from. Their codes lead Home, and Pip checks them first. Change these any time in Stores.</Text>
+              </View>
+              {stores.loading ? (
+                <SkeletonList rows={5} />
+              ) : stores.error ? (
+                <InlineNotice tone="warning">{`${stores.error} You can follow stores later in the Stores tab.`}</InlineNotice>
+              ) : storeList.length === 0 ? (
+                <InlineNotice tone="warning">Pip's store list is still being filled. You can follow stores later in the Stores tab.</InlineNotice>
+              ) : (
+                <View>
+                  {storeList.map((store) => (
+                    <StoreRow key={store.slug} store={store} />
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+            <View style={footer}>
+              <PrimaryButton
+                label={prefs.stores.length ? `Continue with ${prefs.stores.length} ${prefs.stores.length === 1 ? "store" : "stores"}` : "Continue"}
+                onPress={() => {
+                  track("onboarding_step_completed", { step: STEP_NAMES[1], stores: prefs.stores.length });
+                  go(2);
+                }}
+              />
+            </View>
+          </>
+        ) : (
+          <>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, gap: theme.spacing.md }}
+            >
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text accessibilityRole="header" style={heading}>Ask before you buy</Text>
+                <Text style={prose}>
+                  Try it now: what are you about to buy, and where? Pip answers from the codes and deals it has collected.
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+                <TextInput
+                  value={question}
+                  onChangeText={setQuestion}
+                  onSubmitEditing={() => void ask(question)}
+                  placeholder="e.g. a code for Nike"
+                  placeholderTextColor={theme.colors.textMuted}
+                  returnKeyType="send"
+                  accessibilityLabel="Ask Pip"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    minHeight: 48,
+                    paddingHorizontal: theme.spacing.lg,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1.5,
+                    borderColor: theme.colors.textMuted,
+                    outlineStyle: "solid",
+                    outlineWidth: 0,
+                    backgroundColor: theme.colors.surface,
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.body,
+                  }}
+                />
+                <PressScale
+                  onPress={() => void ask(question)}
+                  disabled={!question.trim() || asking}
+                  scaleTo={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ask Pip"
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: question.trim() && !asking ? theme.colors.primary : theme.colors.surfaceAlt,
+                  }}
+                >
+                  <Ionicons name="send" size={18} color={question.trim() && !asking ? theme.colors.onPrimary : theme.colors.textMuted} />
+                </PressScale>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                {[prefs.storeNames[0] ? `Any codes for ${prefs.storeNames[0]}?` : null, ...EXAMPLES]
+                  .filter((q): q is string => Boolean(q))
+                  .slice(0, 3)
+                  .map((q) => (
+                    <PressScale
+                      key={q}
+                      onPress={() => {
+                        setQuestion(q);
+                        void ask(q);
+                      }}
+                      disabled={asking}
+                      scaleTo={0.95}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ask Pip: ${q}`}
+                      style={{
+                        minHeight: 40,
+                        justifyContent: "center",
+                        paddingHorizontal: theme.spacing.md,
+                        borderRadius: theme.radius.pill,
+                        borderWidth: 1,
+                        borderColor: theme.colors.primary,
+                      }}
+                    >
+                      <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body }}>{q}</Text>
+                    </PressScale>
+                  ))}
+              </View>
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, lineHeight: 17 }}>
+                Asking sends your question to an AI service, with the codes and deals Pip found, so it can write the answer. Your name and account aren't sent.
+              </Text>
 
-      {/* Pip's question sits in its own strip above the tab bar, so it never covers a card. */}
-      {step === 0 ? (
-        <View
-          style={{
-            paddingHorizontal: theme.spacing.lg,
-            paddingVertical: theme.spacing.sm,
-            alignItems: "flex-end",
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
-            backgroundColor: theme.colors.background,
-          }}
-        >
-          <PipBubble
-            label="Where is my package?"
-            onPress={() => {
-              go(1);
-              askPip("package");
-            }}
-          />
-        </View>
-      ) : null}
-
-      <OnboardingTabBar activeKey="home" onOpen={(key) => void openTab(key)} />
+              {asking ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
+                  <Pip pose="pip-delivering" size={40} />
+                  <Text style={prose}>Pip is looking…</Text>
+                </View>
+              ) : null}
+              {problem ? <InlineNotice tone="danger" live>{problem}</InlineNotice> : null}
+              {answer ? (
+                <View style={{ gap: theme.spacing.sm }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: theme.spacing.sm,
+                      padding: theme.spacing.md,
+                      borderRadius: theme.radius.md,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.surface,
+                    }}
+                  >
+                    <Pip pose="pip-celebrating" size={36} />
+                    <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 23 }}>
+                      {answer.text}
+                    </Text>
+                  </View>
+                  {answer.coupons.map((c) => (
+                    <CouponCard key={c.key} coupon={c} saved={saved.isSaved(c.key)} onToggleSave={() => void saved.toggleCoupon(c)} />
+                  ))}
+                  {answer.deals.map((d) => (
+                    <DealCard key={d.key} deal={d} saved={saved.isSaved(d.key)} onToggleSave={() => void saved.toggleDeal(d)} />
+                  ))}
+                </View>
+              ) : null}
+            </ScrollView>
+            <View style={footer}>
+              <PrimaryButton label={answer ? "Finish setup" : "Finish without asking"} onPress={finish} />
+            </View>
+          </>
+        )}
+      </StepTransition>
     </View>
   );
 }
