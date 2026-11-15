@@ -16,7 +16,7 @@ review notes and privacy answers are in `five-dinners/store/APP_STORE.md` and
 | Bundle ID | `com.appbuilder.fivedinners5hpa` (new, same pattern as your other apps) | `com.appbuilder.versebyverseqsz4` |
 | Export compliance flag set | ✅ | ✅ |
 | Expo project | [@tayom/five-dinners](https://expo.dev/accounts/tayom/projects/five-dinners) | [@tayom/verse-by-verse](https://expo.dev/accounts/tayom/projects/verse-by-verse) |
-| Native iOS build compiles on EAS (simulator build) | ✅ finished | see the build page |
+| Native iOS build compiles on EAS (simulator build) | ✅ finished | ✅ finished |
 | App Store screenshots retaken from the free build (6.9" and 6.5") | ✅ 8 | ✅ 7 |
 | Listing copy, keywords, review notes, privacy label answers | ✅ `store/APP_STORE.md` | ✅ `store/APP_STORE.md` |
 
