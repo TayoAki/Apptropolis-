@@ -1,11 +1,14 @@
-# Review: Verse by Verse — "One verse. Then put it down." (v1)
+# Review: Verse by Verse — "One verse. Then put it down." (v2)
 
 Renders (in `renders/`, made from this folder's source):
-- `verse-by-verse-v1-vertical-9x16.mp4` — 1080 × 1920, 30 fps, 21.0 s, H.264 yuv420p, no audio (Reels / Shorts / TikTok)
-- `verse-by-verse-v1-16x9.mp4` — 1920 × 1080, 30 fps, 21.0 s, H.264 yuv420p, no audio (X, YouTube, site)
-- `poster-v1-*.png` — frame 0 of each (also the thumbnail)
+- `verse-by-verse-v2-vertical-9x16.mp4` — 1080 × 1920, 30 fps, 21.0 s, H.264 yuv420p, no audio (Reels / Shorts / TikTok)
+- `verse-by-verse-v2-16x9.mp4` — 1920 × 1080, 30 fps, 21.0 s, H.264 yuv420p, no audio (X, YouTube, site)
+- `poster-v2-*.png` — frame 0 of each (also the thumbnail)
 
-## Test status (checked on the encoded files)
+## Changes in v2
+- The phone's rim was missing on the right: the frame was sized with border-box, so the 440-pt screen spilled 28 pt past its right edge. The rim now wraps the screen evenly (`boxSizing: "content-box"`). Nothing else changed.
+
+## Test status (checked on the encoded v2 files)
 
 | Check | Vertical | 16:9 |
 |---|---|---|
@@ -16,6 +19,7 @@ Renders (in `renders/`, made from this folder's source):
 | Last frame | ✅ clean hold on the lockup | ✅ |
 | Phone legibility at 360 px wide | ✅ hook, reminder, verse, share card, lockup read; the sent card in the thread is small by design (its full-size version is held in B5) | n/a |
 | Determinism | ✅ frames 150, 300, 400 re-rendered in a different order are byte-identical | (same source) |
+| Phone frame: rim even on all four sides | ✅ | ✅ |
 | Text never over playing UI | ✅ the band sits above / beside the phone; the phone stays clear of it | ✅ |
 | Truth pass | ✅ see notes | ✅ |
 | Not checked | playback inside the TikTok / Instagram apps; a real music bed | — |

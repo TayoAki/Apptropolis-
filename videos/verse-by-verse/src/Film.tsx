@@ -147,6 +147,9 @@ export function Film({ layout }: { layout: Layout }) {
           <div style={{ transformOrigin: "0 0", transform: `scale(${k})`, width: SCREEN.w + RIM * 2 }}>
             <div
               style={{
+                // Explicit, so the rim sits around the screen on every side whatever the page's
+                // default box-sizing is (Remotion's is border-box, which squeezed the screen out).
+                boxSizing: "content-box",
                 padding: RIM,
                 borderRadius: RADIUS + RIM,
                 background: "#111214",

@@ -36,6 +36,9 @@ Read this at the start of every job. Save every correction as a rule with its re
   plus a recomposed 16:9.
 
 ## Rules (each with its reason)
+- Give the phone's rim div `boxSizing: "content-box"` (or size it as screen + 2 × rim): Remotion's
+  default is border-box, which squeezed the rim and let the screen spill out of the right side (v1 of
+  the Verse by Verse film shipped with this; the owner caught it).
 - Re-encode Remotion output to yuv420p limited range with +faststart: Remotion's JPEG frames come out
   as full-range yuvj420p, which some social players show with crushed tones.
 - Never say "one verse at a time" or "scroll the Bible" for Verse by Verse: it is Scroll The Bible's
@@ -46,4 +49,5 @@ Read this at the start of every job. Save every correction as a rule with its re
 ## Films made
 | Version | Date | Cuts | Notes |
 |---|---|---|---|
-| Verse by Verse v1 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | videos/verse-by-verse/renders/ |
+| Verse by Verse v1 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | rim missing on the right; replaced |
+| Verse by Verse v2 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | videos/verse-by-verse/renders/ |
