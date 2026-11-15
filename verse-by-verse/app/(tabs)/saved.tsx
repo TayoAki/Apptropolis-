@@ -376,7 +376,7 @@ export default function SavedScreen() {
   const reduced = useReducedMotion();
   const marks = useBookmarks();
   const { items, loading } = marks;
-  const { isPremium } = usePurchases();
+  const { isPremium, paywallEnabled } = usePurchases();
   const { ref, share, sharing } = useShareImage();
 
   const [filter, setFilter] = useState(ALL);
@@ -688,34 +688,37 @@ export default function SavedScreen() {
                 }}
               />
             )}
-            <Pressable
-              onPress={() => openPaywallFrom("saved_patron_key")}
-              // 44pt tall with the slop; it reaches down into the gap below, not up into
-              // the New folder button.
-              hitSlop={{ bottom: 12, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={
-                isPremium ? "Patron key, see your plan" : "Patron key, unlock premium"
-              }
-              style={({ pressed }) => ({
-                minHeight: 32,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: theme.spacing.xs + 2,
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <Ionicons name="key-outline" size={16} color={theme.colors.primary} />
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontSize: theme.font.size.caption,
-                  fontWeight: theme.font.weight.medium,
-                }}
+            {/* The way to the paywall, only while there is one (data/launch.ts). */}
+            {paywallEnabled ? (
+              <Pressable
+                onPress={() => openPaywallFrom("saved_patron_key")}
+                // 44pt tall with the slop; it reaches down into the gap below, not up into
+                // the New folder button.
+                hitSlop={{ bottom: 12, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isPremium ? "Patron key, see your plan" : "Patron key, unlock premium"
+                }
+                style={({ pressed }) => ({
+                  minHeight: 32,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.xs + 2,
+                  opacity: pressed ? 0.6 : 1,
+                })}
               >
-                Patron key
-              </Text>
-            </Pressable>
+                <Ionicons name="key-outline" size={16} color={theme.colors.primary} />
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontSize: theme.font.size.caption,
+                    fontWeight: theme.font.weight.medium,
+                  }}
+                >
+                  Patron key
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </Appear>

@@ -26,7 +26,8 @@ import { useSavedTheme } from "../components/reading";
 import { track } from "../data/analytics";
 import { appInfo } from "../data/app-info";
 import { BIBLE_TOTALS } from "../data/bible";
-import { usePurchases } from "../data/purchases";
+import { PAYWALL_ENABLED } from "../data/launch";
+import { dismissPaywall, usePurchases } from "../data/purchases";
 import { useCollection } from "../data/repo";
 import { FREE_KEYWORD_RESULTS, type StudyNote } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
@@ -46,11 +47,28 @@ type FooterLinkItem = {
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
+ * The /paywall route. With the paywall off (data/launch.ts) it shows nothing and goes straight
+ * back to where it was opened from, or home; with it on, the paywall below.
+ */
+export default function PaywallRoute() {
+  return PAYWALL_ENABLED ? <PaywallScreen /> : <PaywallOff />;
+}
+
+/** The paywall is off: leave at once, without showing a plan or a price. */
+function PaywallOff() {
+  const theme = useTheme();
+  useEffect(() => {
+    dismissPaywall();
+  }, []);
+  return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
+}
+
+/**
  * The paywall. Someone on the free plan sees what stays free, what premium adds, each plan with
  * the price that renews, and the terms of the chosen plan in a plain sentence above the button.
  * A subscriber sees their plan instead of the offer.
  */
-export default function PaywallScreen() {
+function PaywallScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const serif = { fontFamily: theme.font.family };

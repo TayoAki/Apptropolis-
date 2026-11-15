@@ -5,9 +5,7 @@
     "bgBottom": "#E5D6BF",
     "text": "#1F1812",
     "muted": "#6E5D4B",
-    "accent": "#9F440F",
-    "pill": "#835529",
-    "onPill": "#FFF9F0"
+    "accent": "#9F440F"
   },
   "shots": [
     {
@@ -80,8 +78,7 @@
         "*word*"
       ],
       "sub": "Every match in the whole Bible, with the words highlighted.",
-      "capture": "captures/search-keywords.png",
-      "pill": "Premium"
+      "capture": "captures/search-keywords.png"
     },
     {
       "file": "07-folders",
@@ -90,8 +87,7 @@
         "your *verses*"
       ],
       "sub": "Keep saved verses together, like Comfort and Promises.",
-      "capture": "captures/saved-folder.png",
-      "pill": "Premium"
+      "capture": "captures/saved-folder.png"
     }
   ]
 }

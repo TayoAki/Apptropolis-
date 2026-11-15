@@ -7,6 +7,7 @@
 import { useEffect } from "react";
 import { Linking, Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { appInfo } from "../data/app-info";
+import { PAYWALL_ENABLED } from "../data/launch";
 import { monetization } from "../data/monetization";
 import { openPaywall, usePurchases } from "../data/purchases";
 import { supportChatClient } from "../data/support";
@@ -124,6 +125,8 @@ export function useSupportSetup(): void {
         title: "Support",
       },
     });
+    // With the paywall off (data/launch.ts) there are no plans to offer from the chat.
+    if (!PAYWALL_ENABLED) return;
     chat.sdk.reportPaywalls(
       monetization.offers.map((offer) => ({
         id: offer.id.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 64) || "premium",
@@ -134,6 +137,7 @@ export function useSupportSetup(): void {
     chat.sdk.setPaywallHandler(() => openPaywall());
   }, [theme]);
   useEffect(() => {
-    if (chat?.sdk.isSupported) chat.sdk.setMetadata({ plan: isPremium ? "premium" : "free" });
+    if (PAYWALL_ENABLED && chat?.sdk.isSupported)
+      chat.sdk.setMetadata({ plan: isPremium ? "premium" : "free" });
   }, [isPremium]);
 }

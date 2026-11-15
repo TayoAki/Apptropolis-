@@ -4,11 +4,13 @@
 //
 // The demo household: 4 people, a $65 weekly dinner budget, no pork, with olive oil, rice,
 // onions, garlic, cumin and paprika already in the cupboard. Sunday Nov 15, 2026 they finish
-// onboarding (the app plans their free week), shop that morning, logging a few shelf prices,
-// and cook Monday to Friday. Sunday Nov 22 the free week is over: the paywall's test-mode
-// purchase (simulated, nothing charged) unlocks unlimited plans, and week 2 is planned around
+// onboarding (the app plans their first week), shop that morning, logging a few shelf prices,
+// and cook Monday to Friday. Sunday Nov 22 the first week is over and week 2 is planned around
 // what's left. Every dinner, pack, amount and price on screen is what the app produced from
 // those taps; the only typed numbers are the shelf prices the shopper logs.
+//
+// Built for the free launch build (PAYWALL_ENABLED = false in data/launch.ts): there is no
+// paywall, nothing is bought, and every screen is the app as everyone gets it.
 //
 // Usage: node capture.cjs <web-build-dir> <captures-dir>
 const path = require("path");
@@ -34,7 +36,7 @@ const T = {
     "2026-11-19T18:35:00-06:00",
     "2026-11-20T18:25:00-06:00",
   ],
-  week2: "2026-11-22T09:20:00-06:00", // next Sunday: the free week has ended
+  week2: "2026-11-22T09:20:00-06:00", // next Sunday: the first week has ended
   shop2: "2026-11-22T11:05:00-06:00",
 };
 
@@ -107,7 +109,7 @@ async function main() {
       await page.waitForTimeout(300);
     }
   }
-  // ===== Sunday Nov 15: onboarding plans the free week =====
+  // ===== Sunday Nov 15: onboarding plans the first week =====
   await go("/");
   await page.getByRole("radio", { name: "4, A family of four" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
@@ -124,10 +126,8 @@ async function main() {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Not now" }).click();
   await page.waitForTimeout(2500);
-  // The template opens the paywall over the new week; it is closed without buying (never captured).
-  if (await page.getByRole("button", { name: "Close" }).count()) {
-    await page.getByRole("button", { name: "Close" }).click();
-  }
+  // The free build opens straight on the new week: there is no paywall to close.
+  if (await page.getByText(/Unlock for|Keep cooking/).count()) throw new Error("paywall shown: build with PAYWALL_ENABLED = false");
   await go("/");
   await shoot(page, out("week1.png"));
   await note("week1-basket", page.getByText("This week's basket"));
@@ -143,7 +143,6 @@ async function main() {
   await shoot(page, out("week1-swap.png"));
   await notePhoto("swap-thumb (first option)", 1);
   await note("swap-panel", page.getByText(/^Swap for one of these/));
-  await note("swap-locked", page.getByRole("button", { name: /more recipes$/ }));
   await page.getByRole("button", { name: `Close swap options for ${mondayName}` }).click();
 
   // ===== At the store: tick as you go, log a few shelf prices =====
@@ -196,13 +195,10 @@ async function main() {
     await page.waitForTimeout(300);
   }
 
-  // ===== Sunday Nov 22: the free week is over; unlock and plan around what's left =====
+  // ===== Sunday Nov 22: the first week is over; plan the next one around what's left =====
   await at(T.week2);
   await go("/");
   await page.waitForTimeout(800);
-  await go("/paywall");
-  await page.getByRole("button", { name: /^Unlock for / }).click(); // test mode: simulated
-  await page.waitForTimeout(2000);
   await go("/");
   await page.getByRole("button", { name: "Plan next week" }).click();
   await page.waitForTimeout(2000);

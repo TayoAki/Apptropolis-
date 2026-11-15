@@ -12,6 +12,7 @@ import { useShareImage } from "../../components/share";
 import { DinnerRow, type Candidate, type SwapInfo } from "../../components/index/DinnerRow";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
+import { PAYWALL_ENABLED } from "../../data/launch";
 import { createPlan, setPantryConfirmed, swapDinner, usePlanData } from "../../data/plan";
 import { recipePool } from "../../data/planner";
 import { usePurchases } from "../../data/purchases";
@@ -340,7 +341,7 @@ export default function WeekScreen() {
         <EmptyState
           icon="calendar-outline"
           title="Plan your first week"
-          body={`Five dinners for ${householdServings}, priced by the full packs you buy at Aldi, against your ${formatPrice(budget)} budget. Your first week is free.`}
+          body={`Five dinners for ${householdServings}, priced by the full packs you buy at Aldi, against your ${formatPrice(budget)} budget.${PAYWALL_ENABLED ? " Your first week is free." : ""}`}
           actionLabel="Plan my week"
           actionLoading={planning}
           onAction={planWeek}

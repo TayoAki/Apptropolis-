@@ -7,6 +7,7 @@ import { LoadingState } from "../components/EmptyState";
 import { Penny } from "../components/Penny";
 import { useAppState } from "../data/app-state";
 import { appInfo } from "../data/app-info";
+import { PAYWALL_ENABLED } from "../data/launch";
 import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
 import { applyAnswersToPlan, setStaple, usePlanData } from "../data/plan";
@@ -402,7 +403,6 @@ export default function SettingsScreen() {
     Platform.OS === "ios"
       ? "https://apps.apple.com/account/subscriptions"
       : "https://play.google.com/store/account/subscriptions";
-  const hasLegal = Boolean(appInfo.supportEmail || appInfo.privacyUrl || appInfo.termsUrl);
   const freeLastDay = planData.firstPlan ? formatLongDate(addDays(planData.firstPlan.weekStart, 6)) : "";
   const freeLine = !planData.firstPlan
     ? "Free week · starts with your first plan"
@@ -548,7 +548,7 @@ export default function SettingsScreen() {
             </View>
           </Section>
           {small(
-            `${PRICE_SOURCE_LINE} Meat and zucchini are sold by weight, so those prices are aldi.us estimates per pack. Paid prices you log are kept in Price history.`,
+            `${PRICE_SOURCE_LINE} Meat and zucchini are sold by weight, so those prices are aldi.us estimates per pack. Paid prices you log are kept in Price history. Five Dinners isn't affiliated with or endorsed by Aldi.`,
           )}
           {small(
             "Recipe pictures are AI-generated illustrations of each dish, so your dinner will look a little different.",
@@ -699,22 +699,42 @@ export default function SettingsScreen() {
           )}
         </Section>
 
-        <Section title="Your plan">
-          <View style={{ minHeight: 44, justifyContent: "center" }}>
+        {/* Purchases: only when the launch switch sells something (data/launch.ts). */}
+        {PAYWALL_ENABLED ? (
+          <Section title="Your plan">
+            <View style={{ minHeight: 44, justifyContent: "center" }}>
+              {purchases.isPremium ? (
+                <Body weight="500">
+                  {purchases.activeOffer ? purchases.activeOffer.label : "Premium"} · paid once
+                </Body>
+              ) : (
+                <Body>{freeLine}</Body>
+              )}
+            </View>
             {purchases.isPremium ? (
-              <Body weight="500">
-                {purchases.activeOffer ? purchases.activeOffer.label : "Premium"} · paid once
-              </Body>
+              activeIsOneOff ? null : (
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="Manage subscription"
+                  onPress={() => void Linking.openURL(manageUrl)}
+                  style={({ pressed }) => ({
+                    minHeight: 44,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: theme.spacing.sm,
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                >
+                  <Body>Manage subscription</Body>
+                  <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+                </Pressable>
+              )
             ) : (
-              <Body>{freeLine}</Body>
-            )}
-          </View>
-          {purchases.isPremium ? (
-            activeIsOneOff ? null : (
               <Pressable
-                accessibilityRole="link"
-                accessibilityLabel="Manage subscription"
-                onPress={() => void Linking.openURL(manageUrl)}
+                accessibilityRole="button"
+                accessibilityLabel="Unlimited weekly plans, see the one-time offer"
+                onPress={() => purchases.openPaywall()}
                 style={({ pressed }) => ({
                   minHeight: 44,
                   flexDirection: "row",
@@ -724,70 +744,53 @@ export default function SettingsScreen() {
                   opacity: pressed ? 0.6 : 1,
                 })}
               >
-                <Body>Manage subscription</Body>
-                <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+                <Text
+                  style={{
+                    flexShrink: 1,
+                    color: theme.colors.primary,
+                    fontSize: theme.font.size.body + 2,
+                    fontWeight: theme.font.weight.medium,
+                    fontFamily: theme.font.family,
+                  }}
+                >
+                  Unlimited weekly plans{defaultOffer ? ` — ${defaultOffer.price} once` : ""}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
               </Pressable>
-            )
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Unlimited weekly plans, see the one-time offer"
-              onPress={() => purchases.openPaywall()}
-              style={({ pressed }) => ({
-                minHeight: 44,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: theme.spacing.sm,
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <Text
-                style={{
-                  flexShrink: 1,
-                  color: theme.colors.primary,
-                  fontSize: theme.font.size.body + 2,
-                  fontWeight: theme.font.weight.medium,
-                  fontFamily: theme.font.family,
-                }}
+            )}
+            <View style={{ gap: theme.spacing.xs }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Restore purchase"
+                accessibilityState={{ busy: purchases.status === "restoring" }}
+                disabled={purchases.status === "restoring"}
+                onPress={() => void restore()}
+                style={({ pressed }) => ({
+                  minHeight: 44,
+                  justifyContent: "center",
+                  opacity: pressed ? 0.6 : 1,
+                })}
               >
-                Unlimited weekly plans{defaultOffer ? ` — ${defaultOffer.price} once` : ""}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
-            </Pressable>
-          )}
-          <View style={{ gap: theme.spacing.xs }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Restore purchase"
-              accessibilityState={{ busy: purchases.status === "restoring" }}
-              disabled={purchases.status === "restoring"}
-              onPress={() => void restore()}
-              style={({ pressed }) => ({
-                minHeight: 44,
-                justifyContent: "center",
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <Body muted={purchases.status === "restoring"}>
-                {purchases.status === "restoring" ? "Restoring…" : "Restore purchase"}
-              </Body>
-            </Pressable>
-            {restoreNote || purchases.error ? (
-              <Text
-                accessibilityLiveRegion="polite"
-                style={{
-                  color: theme.colors.textMuted,
-                  fontSize: note,
-                  fontFamily: theme.font.family,
-                  paddingBottom: theme.spacing.xs,
-                }}
-              >
-                {restoreNote ?? purchases.error}
-              </Text>
-            ) : null}
-          </View>
-        </Section>
+                <Body muted={purchases.status === "restoring"}>
+                  {purchases.status === "restoring" ? "Restoring…" : "Restore purchase"}
+                </Body>
+              </Pressable>
+              {restoreNote || purchases.error ? (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: note,
+                    fontFamily: theme.font.family,
+                    paddingBottom: theme.spacing.xs,
+                  }}
+                >
+                  {restoreNote ?? purchases.error}
+                </Text>
+              ) : null}
+            </View>
+          </Section>
+        ) : null}
 
         <Section title="Appearance">
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
@@ -803,22 +806,20 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
-        {hasLegal ? (
-          <Section title="Support and legal">
-            {appInfo.supportEmail
-              ? linkRow("Contact support", "mail-outline", `mailto:${appInfo.supportEmail}`)
-              : null}
-            {appInfo.privacyUrl
-              ? linkRow("Privacy policy", "open-outline", appInfo.privacyUrl)
-              : null}
-            {appInfo.termsUrl ? linkRow("Terms of use", "open-outline", appInfo.termsUrl) : null}
-          </Section>
-        ) : null}
+        {/* Support shows only with an email to write to. The privacy policy is always listed
+            (App Review requires it in the app); its link is appInfo.privacyUrl. */}
+        <Section title="Support and legal">
+          {appInfo.supportEmail
+            ? linkRow("Contact support", "mail-outline", `mailto:${appInfo.supportEmail}`)
+            : null}
+          {linkRow("Privacy policy", "open-outline", appInfo.privacyUrl)}
+          {appInfo.termsUrl ? linkRow("Terms of use", "open-outline", appInfo.termsUrl) : null}
+        </Section>
 
         <View style={{ alignItems: "center", gap: theme.spacing.sm, paddingTop: theme.spacing.sm }}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Replay onboarding"
+            accessibilityLabel="Redo setup"
             hitSlop={10}
             onPress={() => void resetOnboarding()}
             style={({ pressed }) => ({
@@ -835,7 +836,7 @@ export default function SettingsScreen() {
                 fontFamily: theme.font.family,
               }}
             >
-              Replay onboarding
+              Redo setup
             </Text>
           </Pressable>
           <Text

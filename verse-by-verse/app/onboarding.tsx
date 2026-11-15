@@ -245,7 +245,7 @@ export default function OnboardingScreen() {
             >
               <View style={{ gap: theme.spacing.sm }}>
                 <Text accessibilityRole="header" style={heading}>
-                  Read the Bible one verse at a time
+                  Read the Bible verse by verse
                 </Text>
                 <Text style={prose}>
                   Verse by Verse opens on a single verse and keeps your place when you leave.

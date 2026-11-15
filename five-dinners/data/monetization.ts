@@ -3,6 +3,8 @@
 // Each feature below is gated on isPremium in the code: planning any week after the free one
 // (data/plan.ts createPlan), the full recipe library for plans and swaps (data/planner.ts
 // recipePool), "Keep for next week" (app/recipe/[id].tsx) and price history (app/(tabs)/shop.tsx).
+// None of this is sold while the launch switch is off (PAYWALL_ENABLED in data/launch.ts):
+// isPremium is then true for everyone and no screen shows these offers.
 import type { Monetization } from "./purchases";
 
 export const monetization: Monetization = {

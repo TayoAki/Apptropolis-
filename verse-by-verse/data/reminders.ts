@@ -99,15 +99,20 @@ export async function enableReminder(options: {
   if (saved.id) await Notifications.cancelScheduledNotificationAsync(saved.id).catch(() => {});
   const hour = options.hour ?? saved.hour;
   const minute = options.minute ?? saved.minute;
-  const id = await Notifications.scheduleNotificationAsync({
-    content: { title: options.title, body: options.body },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour,
-      minute,
-      channelId: CHANNEL,
-    },
-  });
+  // The web has no notification scheduler (expo-notifications throws there), so the web preview
+  // keeps the choice without scheduling anything: the simulation the header describes.
+  const id =
+    Platform.OS === "web"
+      ? null
+      : await Notifications.scheduleNotificationAsync({
+          content: { title: options.title, body: options.body },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour,
+            minute,
+            channelId: CHANNEL,
+          },
+        });
   await persist({ enabled: true, hour, minute, title: options.title, body: options.body, id });
   return true;
 }

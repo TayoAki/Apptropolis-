@@ -1,8 +1,9 @@
 // Captures Verse by Verse's App Store screens from the real web build. The demo reader is
 // fictional: a few weeks in, started at Psalm 23 during setup, now reading Romans 8, with nine
-// saved verses (four in Comfort, three in Promises) and Premium (the app's test-mode purchase,
-// stored the way the app stores it). Everything is seeded in the app's own storage shapes before
-// the app loads; every screen after that is reached through the app's own controls.
+// saved verses (four in Comfort, three in Promises). The build has no paywall
+// (data/launch.ts: PAYWALL_ENABLED = false), so folders and every keyword match are there for
+// everyone and nothing about a purchase is seeded. Everything is seeded in the app's own storage
+// shapes before the app loads; every screen after that is reached through the app's own controls.
 // Usage: node capture.cjs <web-build-dir> <captures-dir>
 const path = require("path");
 const { serve, phone, shoot } = require("../../../tools/store-screenshots/capture-lib.cjs");
@@ -65,8 +66,6 @@ const storage = {
     ]),
   }),
   "app:collection:bookmarks": JSON.stringify(bookmarks),
-  // Premium, as the app records a purchase made in its test mode.
-  "app:entitlement": JSON.stringify({ offerId: "yearly", since: ago(20) }),
 };
 
 (async () => {
@@ -74,6 +73,17 @@ const storage = {
   const { browser, page, errors } = await phone({ storage });
   const out = (n) => path.join(outDir, n);
   const wait = (ms) => page.waitForTimeout(ms);
+  // Every capture is of the free build: refuse one that shows anything about buying, or a
+  // padlock or key (Ionicons lock-closed, lock-open, lock-closed-outline, key-outline).
+  const LOCKS = [0xf3c7, 0xf3ca, 0xf3c8, 0xf3a4].map((c) => String.fromCodePoint(c));
+  const snap = async (name) => {
+    const text = await page.evaluate(() => document.body.innerText);
+    const bad =
+      text.match(/\bPremium\b|\bPatron|Restore purchases|Subscribe|free trial|\$\s?\d/)?.[0] ??
+      LOCKS.find((g) => text.includes(g));
+    if (bad) throw new Error(`${name}: shows purchase UI (${JSON.stringify(bad)})`);
+    await shoot(page, out(name));
+  };
   const tab = async (name) => {
     await page.getByRole("tab", { name: new RegExp(name) }).click();
     await wait(1200);
@@ -85,7 +95,7 @@ const storage = {
   // 2. The place kept: the Read tab opens at Romans 8:28; its chapter, at that verse.
   await page.getByLabel("Read all of Romans chapter 8").click();
   await wait(2500);
-  await shoot(page, out("chapter-left-off.png"));
+  await snap("chapter-left-off.png");
   await page.getByText("Back to Read", { exact: true }).click();
   await wait(1500);
 
@@ -94,7 +104,7 @@ const storage = {
   await wait(600);
   await page.getByRole("button", { name: "Show all books" }).click();
   await wait(800);
-  await shoot(page, out("picker-books.png"));
+  await snap("picker-books.png");
 
   // 1. One verse with its study note: Psalm 46:10, chosen in the same picker.
   await page.getByRole("button", { name: "Psalms", exact: true }).click();
@@ -105,7 +115,7 @@ const storage = {
   await wait(1500);
   await page.getByRole("button", { name: "Study note" }).click();
   await wait(1500);
-  await shoot(page, out("read-note.png"));
+  await snap("read-note.png");
 
   // 5. Find any passage: a reference search.
   await tab("Search");
@@ -114,9 +124,9 @@ const storage = {
   await wait(1500);
   await page.getByLabel("Search by reference").blur();
   await wait(1200);
-  await shoot(page, out("search-reference.png"));
+  await snap("search-reference.png");
 
-  // 6. Premium: every keyword match, highlighted.
+  // 6. Every keyword match, highlighted.
   await page.getByLabel("Clear search").click();
   await page.getByRole("tab", { name: "Keywords" }).click();
   await wait(400);
@@ -124,18 +134,18 @@ const storage = {
   await page.getByText(/verses? match$/).first().waitFor({ timeout: 30000 });
   await page.getByLabel("Search by keyword").blur();
   await wait(2500);
-  await shoot(page, out("search-keywords.png"));
+  await snap("search-keywords.png");
 
-  // 7. Premium: folders. 4. Sharing a saved verse as a card.
+  // 7. Folders. 4. Sharing a saved verse as a card.
   await tab("Saved");
   await page.getByLabel(/^Comfort, \d+ verses?$/).click();
   await wait(1800);
-  await shoot(page, out("saved-folder.png"));
+  await snap("saved-folder.png");
   await page.getByLabel(/^All, \d+ verses?$/).click();
   await wait(1200);
   await page.getByLabel("Share John 14:27 as a card").click();
   await wait(1800);
-  await shoot(page, out("share-card.png"));
+  await snap("share-card.png");
 
   console.log("errors:", errors.length ? errors : "none");
   await browser.close();

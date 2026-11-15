@@ -6,32 +6,34 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.appbuilder.fivedinners5hpa",
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.appbuilder.fivedinners5hpa"
+    },
     "plugins": [
       "expo-router",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera to take photos in the app.",
-          "recordAudioAndroid": false
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow $(PRODUCT_NAME) to use photos you choose in the app.",
-          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera to take photos in the app."
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to show what's near you."
-        }
-      ],
       "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "f7bd3d63-ccb1-4404-9577-0322faafcba0"
+      }
+    },
+    "owner": "tayom"
   }
 }

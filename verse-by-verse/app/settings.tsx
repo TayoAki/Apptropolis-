@@ -42,7 +42,8 @@ export default function SettingsScreen() {
   const { textSize, lineSpacing } = useReadingPrefs();
   useSavedTheme();
   const reminder = useReminder();
-  const { isPremium, activeOffer, status, error, restorePurchases } = usePurchases();
+  const { isPremium, activeOffer, status, error, restorePurchases, paywallEnabled } =
+    usePurchases();
   const support = useSupport();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -255,7 +256,7 @@ export default function SettingsScreen() {
                 <SettingsRow
                   icon="journal-outline"
                   label="Study notes disclosure"
-                  subtitle="Human historical curation without generative AI."
+                  subtitle="Commentary, never presented as Scripture."
                   chevron
                   expanded={notesOpen}
                   onPress={() => reveal(notesOpen, setNotesOpen)}
@@ -270,62 +271,65 @@ export default function SettingsScreen() {
                         fontFamily: theme.font.family,
                       }}
                     >
-                      Every study note is written and checked by a person against historical
-                      sources. No generative AI writes, edits or translates them. Notes are
-                      commentary, labelled as commentary, and never presented as Scripture.
+                      Study notes are commentary on the passage, labelled as commentary, and never
+                      presented as Scripture. The verse text itself is the World English Bible,
+                      unchanged.
                     </Text>
                   ) : null}
                 </SettingsRow>
               </SettingsCard>
             </SettingsSection>
 
-            <SettingsSection title="Patronage">
-              <SettingsCard>
-                <SettingsRow
-                  icon="refresh-outline"
-                  label="Restore purchases"
-                  subtitle={
-                    status === "restoring"
-                      ? "Checking your purchases…"
-                      : restoredNow
-                        ? "Your purchases are restored."
-                        : (error ?? "Use this if you bought premium on another device.")
-                  }
-                  onPress={() => void restore()}
-                  accessibilityHint="Restores purchases made with this store account"
-                />
-                <SettingsRow
-                  icon="heart-outline"
-                  label="Patron status"
-                  subtitle={isPremium ? undefined : "Go Premium"}
-                  chevron
-                  onPress={() => openPaywallFrom("settings")}
-                  accessibilityLabel={`Patron status, ${badge.text}`}
-                  accessibilityHint={isPremium ? "Shows your plan" : "Opens the premium plans"}
-                  accessory={
-                    <View
-                      style={{
-                        paddingHorizontal: theme.spacing.sm,
-                        paddingVertical: 4,
-                        borderRadius: theme.radius.sm,
-                        backgroundColor: badge.color,
-                      }}
-                    >
-                      <Text
-                        numberOfLines={1}
+            {/* Restore and plan status exist only while the paywall is on (data/launch.ts). */}
+            {paywallEnabled ? (
+              <SettingsSection title="Patronage">
+                <SettingsCard>
+                  <SettingsRow
+                    icon="refresh-outline"
+                    label="Restore purchases"
+                    subtitle={
+                      status === "restoring"
+                        ? "Checking your purchases…"
+                        : restoredNow
+                          ? "Your purchases are restored."
+                          : (error ?? "Use this if you bought premium on another device.")
+                    }
+                    onPress={() => void restore()}
+                    accessibilityHint="Restores purchases made with this store account"
+                  />
+                  <SettingsRow
+                    icon="heart-outline"
+                    label="Patron status"
+                    subtitle={isPremium ? undefined : "Go Premium"}
+                    chevron
+                    onPress={() => openPaywallFrom("settings")}
+                    accessibilityLabel={`Patron status, ${badge.text}`}
+                    accessibilityHint={isPremium ? "Shows your plan" : "Opens the premium plans"}
+                    accessory={
+                      <View
                         style={{
-                          color: theme.colors.onPrimary,
-                          fontSize: theme.font.size.caption,
-                          fontWeight: theme.font.weight.bold,
+                          paddingHorizontal: theme.spacing.sm,
+                          paddingVertical: 4,
+                          borderRadius: theme.radius.sm,
+                          backgroundColor: badge.color,
                         }}
                       >
-                        {badge.text}
-                      </Text>
-                    </View>
-                  }
-                />
-              </SettingsCard>
-            </SettingsSection>
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: theme.colors.onPrimary,
+                            fontSize: theme.font.size.caption,
+                            fontWeight: theme.font.weight.bold,
+                          }}
+                        >
+                          {badge.text}
+                        </Text>
+                      </View>
+                    }
+                  />
+                </SettingsCard>
+              </SettingsSection>
+            ) : null}
 
             {support.available ? (
               <SettingsSection title="Help">

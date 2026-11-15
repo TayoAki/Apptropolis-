@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "../components/Button";
@@ -8,8 +8,9 @@ import { Penny } from "../components/Penny";
 import { RecipePlate } from "../components/RecipePlate";
 import { useAppState } from "../data/app-state";
 import { appInfo } from "../data/app-info";
+import { PAYWALL_ENABLED } from "../data/launch";
 import { usePlanData } from "../data/plan";
-import { usePurchases, type Offer } from "../data/purchases";
+import { dismissPaywall as leavePaywall, usePurchases, type Offer } from "../data/purchases";
 import {
   MINOR_PACKS,
   formatPantry,
@@ -31,7 +32,23 @@ function splitFeature(text: string): { title: string; body: string } {
   return { title: text, body: "" };
 }
 
-export default function Paywall() {
+/**
+ * The /paywall route. With the launch switch off (data/launch.ts) nothing is sold: it shows no
+ * offer or price and goes straight back (or home, when opened directly).
+ */
+export default function PaywallRoute() {
+  return PAYWALL_ENABLED ? <Paywall /> : <PaywallOff />;
+}
+
+function PaywallOff() {
+  const theme = useTheme();
+  useEffect(() => {
+    leavePaywall();
+  }, []);
+  return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
+}
+
+function Paywall() {
   const theme = useTheme();
   const { answers } = useAppState();
   const {

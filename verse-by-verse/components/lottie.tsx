@@ -4,7 +4,7 @@
 // "sparkle" (a twinkle for premium). They're built here as Lottie JSON, so they need no files,
 // and they follow Reduce Motion and still renders like the rest of components/motion.
 // <Celebrate trigger={…} /> bursts confetti over a screen and taps the phone when a goal is met.
-import LottieView from "lottie-react-native";
+import LottieView, { type AnimationObject } from "lottie-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useTheme } from "../theme/ThemeProvider";
@@ -370,21 +370,22 @@ export function Lottie({
           rgba(theme.colors.success),
           rgba(theme.colors.warning),
         ],
-      }) as object,
+      }) as unknown as AnimationObject,
     [name, color, theme],
   );
   return (
-    <LottieView
-      source={source}
-      autoPlay={!reduced}
-      loop={!reduced && (loop ?? LOOPS[name])}
-      // Reduce Motion and still renders show the finished animation.
-      progress={reduced ? 1 : undefined}
-      onAnimationFinish={(cancelled) => (cancelled ? undefined : onFinish?.())}
-      style={[{ width: size, height: size }, style]}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    />
+    // LottieView takes no accessibility props, so the wrapper hides the decoration instead.
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <LottieView
+        source={source}
+        autoPlay={!reduced}
+        loop={!reduced && (loop ?? LOOPS[name])}
+        // Reduce Motion and still renders show the finished animation.
+        progress={reduced ? 1 : undefined}
+        onAnimationFinish={(cancelled) => (cancelled ? undefined : onFinish?.())}
+        style={[{ width: size, height: size }, style]}
+      />
+    </View>
   );
 }
 

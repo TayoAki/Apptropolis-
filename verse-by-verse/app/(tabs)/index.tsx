@@ -6,7 +6,7 @@ import { haptic } from "../../components/motion";
 import { useTheme } from "../../theme/ThemeProvider";
 
 /**
- * Read: one verse at a time as a card, with its chapter below. Tap any verse, or Next, to read
+ * Read: a single verse as a card, with its chapter below. Tap any verse, or Next, to read
  * on through the whole Bible; the place you reached is remembered for next time. Search, Saved
  * and the chapter view open a verse here by passing its reference in the link.
  */

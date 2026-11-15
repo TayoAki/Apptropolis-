@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { trackSystem } from "./analytics";
 import { appStructure } from "./app-structure";
+import { PAYWALL_ENABLED } from "./launch";
 
 const ONBOARDED_KEY = "app:onboarded";
 const ANSWERS_KEY = "app:answers";
@@ -61,7 +62,8 @@ export async function completeOnboarding(): Promise<void> {
   update({ onboarded: true });
   trackSystem("onboarding_complete");
   router.replace("/");
-  if (appStructure.paywall) setTimeout(() => router.push("/paywall"), 350);
+  // With the paywall off (data/launch.ts) setup ends on the home screen, with nothing on top.
+  if (appStructure.paywall && PAYWALL_ENABLED) setTimeout(() => router.push("/paywall"), 350);
 }
 
 /** Show onboarding again (from Settings). Answers are kept until they are answered again. */
