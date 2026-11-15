@@ -1,0 +1,65 @@
+{
+  "out": ".",
+  "theme": {
+    "bgTop": "#232836",
+    "bgBottom": "#0D0F13",
+    "text": "#F5F6F8",
+    "muted": "#9AA3B2",
+    "accent": "#FFB627",
+    "pill": "#FFB627",
+    "onPill": "#1A1206"
+  },
+  "shots": [
+    {
+      "file": "01-fridays-pints-play-saturday",
+      "headline": ["Friday's pints", "play *Saturday*"],
+      "sub": "Every drink you log counts toward your form for the next game.",
+      "capture": "captures/week-friday.png",
+      "callout": { "crop": [16, 160, 408, 256], "scale": 1.08 }
+    },
+    {
+      "file": "02-know-your-form",
+      "headline": ["Know your form", "before *kickoff*"],
+      "sub": "Log a drink or an alcohol-free day. ShotOClock rates your form out of 100.",
+      "capture": "captures/tonight-thursday.png",
+      "callout": { "crop": [16, 86, 408, 233], "scale": 1.12 }
+    },
+    {
+      "file": "03-form-card-for-matchday",
+      "headline": ["Your form card", "for *matchday*"],
+      "sub": "Your rating, alcohol-free days and next game, ready to share.",
+      "capture": "captures/week-thursday.png",
+      "callout": { "crop": [16, 512, 408, 200], "scale": 1.12 }
+    },
+    {
+      "file": "04-weeks-in-limit-level-up",
+      "headline": ["Weeks in limit", "*level* you up"],
+      "sub": "Each week within your limit counts toward your next level and gear.",
+      "capture": "captures/career-thursday.png",
+      "callout": { "crop": [16, 86, 408, 160], "scale": 1.12 }
+    },
+    {
+      "file": "05-pick-your-weekly-limit",
+      "headline": ["Pick your", "weekly *limit*"],
+      "sub": "3, 7, 10 or 14 drinks a week. Change it any time in Settings.",
+      "capture": "captures/onboarding-limit.png",
+      "callout": { "crop": [16, 344, 408, 76], "scale": 1.15 }
+    },
+    {
+      "file": "06-your-night-before-games",
+      "headline": ["Your night", "before *games*"],
+      "sub": "How your drinking lines up with game days.",
+      "capture": "captures/week-plus-insights.png",
+      "pill": "Plus",
+      "callout": { "crop": [20, 662, 400, 104], "scale": 1.15 }
+    },
+    {
+      "file": "07-lighter-match-week",
+      "headline": ["Go lighter in", "*match* week"],
+      "sub": "Set a lower limit for one week only.",
+      "capture": "captures/settings-lighter-limit.png",
+      "pill": "Plus",
+      "callout": { "crop": [16, 274, 408, 180], "scale": 1.1 }
+    }
+  ]
+}

@@ -141,7 +141,7 @@ async function moveTo(p, time) {
 async function scrollToText(page, text, offset) {
   await page.evaluate(
     ({ text, offset }) => {
-      const el = [...document.querySelectorAll("div")].find(
+      const el = [...document.querySelectorAll("body *")].find(
         (node) => node.textContent === text && node.offsetParent !== null && node.children.length === 0,
       );
       if (!el) throw new Error(`no visible "${text}"`);
@@ -167,7 +167,6 @@ async function scrollToText(page, text, offset) {
   let p = await openPhone(at("2026-10-26 18:30"));
   let page = p.page;
   await tap(page, "Soccer / basketball. Matches, scrimmages and sprints");
-  await shoot(page, out("onboarding-sport.png"));
   await tapText(page, "Next: your weekly limit", 900);
   await tap(page, "Up to 10 drinks a week. Room for a couple of social evenings.");
   await shoot(page, out("onboarding-limit.png"));
@@ -217,14 +216,25 @@ async function scrollToText(page, text, offset) {
   page = p.page;
   await page.reload({ waitUntil: "networkidle" });
   await wait(page, 2500);
-  await shoot(page, out("tonight-friday.png"));
   await openTab(page, "Week");
   await shoot(page, out("week-friday.png"));
   await closePhone(p);
 
-  // ---- The same phone on Thursday evening, upgraded to Plus (test-mode purchase) ----
-  p = await openPhone(at("2026-11-19 19:06"), thursday);
-  page = p.page;
+  await plusScreens(thursday);
+})()
+  .then(() => {
+    console.log("errors:", errors.length ? errors : "none");
+    server.close();
+  })
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+
+/** The same phone on Thursday evening, upgraded to Plus with the test-mode purchase. */
+async function plusScreens(thursday) {
+  const p = await openPhone(at("2026-11-19 19:06"), thursday);
+  const { page } = p;
   await tap(page, "Settings", 1200);
   await tap(page, "ShotOClock Plus", 1500);
   await tap(page, "Start 7-day free trial", 2500);
@@ -233,19 +243,10 @@ async function scrollToText(page, text, offset) {
   await openTab(page, "Week");
   await scrollToText(page, "Trend insights", 28);
   await shoot(page, out("week-plus-insights.png"));
+  await openTab(page, "Tonight");
   await tap(page, "Settings", 1200);
   await tap(page, "Lighter limit this week");
   await radio(page, "6");
   await shoot(page, out("settings-lighter-limit.png"));
-  await page.goBack();
-  await wait(page, 1200);
-  await openTab(page, "Tonight");
-  await shoot(page, out("tonight-lighter-limit.png"));
   await closePhone(p);
-
-  console.log("errors:", errors.length ? errors : "none");
-  server.close();
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+}
