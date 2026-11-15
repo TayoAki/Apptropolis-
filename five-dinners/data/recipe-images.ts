@@ -1,9 +1,8 @@
 // Recipe pictures, by recipe id. They are AI-generated illustrations of each dish (Google's
 // Gemini 3.1 Flash Image via OpenRouter, Nov 15, 2026; prompts in scripts/gen-recipe-images.py),
 // not photos of the finished recipe. A recipe without one shows its diet icon tile instead.
-import type { ImageSourcePropType } from "react-native";
-
-export const RECIPE_IMAGES: Record<string, ImageSourcePropType> = {
+/** Bundled assets (the number Metro gives each required image). */
+export const RECIPE_IMAGES: Record<string, number> = {
   r1: require("../assets/recipes/r1.jpg"),
   r2: require("../assets/recipes/r2.jpg"),
   r3: require("../assets/recipes/r3.jpg"),
@@ -31,6 +30,6 @@ export const RECIPE_IMAGES: Record<string, ImageSourcePropType> = {
   r25: require("../assets/recipes/r25.jpg"),
 };
 
-export function recipeImage(recipeId: string): ImageSourcePropType | undefined {
+export function recipeImage(recipeId: string): number | undefined {
   return RECIPE_IMAGES[recipeId];
 }
