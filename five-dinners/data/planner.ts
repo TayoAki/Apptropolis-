@@ -107,7 +107,8 @@ function makeScorer(inputs: PlanInputs): Scorer {
       const rating = ratings.get(id);
       if (rating === "up") s += 2;
       if (rating === "down") s -= 6;
-      if (lastWeek.has(id) && !kept.has(id) && rating !== "up") s -= 1.5;
+      // Last week again only when kept: a liked dinner can come back, just not every week.
+      if (lastWeek.has(id) && !kept.has(id)) s -= rating === "up" ? 3 : 4;
     }
     let cost = 0;
     for (const pack of PACK_LIST) {
