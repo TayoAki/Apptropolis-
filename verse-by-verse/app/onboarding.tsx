@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useRef, useState, type ComponentRef } from "react";
+import { Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { STARTING_PASSAGES, bookIdOf, useBooks } from "../components/bible";
 import { useBookmarks } from "../components/bookmarks";
@@ -73,6 +73,12 @@ export default function OnboardingScreen() {
   const [declined, setDeclined] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const succeeded = useRef(false);
+  // Where "Pick any book" sits in the first step's scroll, so choosing it can bring the books up.
+  const startScroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const anyBookAt = useRef({ section: 0, group: 0, card: 0 });
+  const at = (part: keyof typeof anyBookAt.current) => (event: LayoutChangeEvent) => {
+    anyBookAt.current[part] = event.nativeEvent.layout.y;
+  };
 
   // The four passages are shown with their text, so their books load first.
   const passages = useBooks(STARTING_PASSAGES.map(bookIdOf));
@@ -229,6 +235,7 @@ export default function OnboardingScreen() {
         {step === 0 ? (
           <>
             <ScrollView
+              ref={startScroll}
               contentContainerStyle={{
                 paddingHorizontal: theme.spacing.lg,
                 paddingTop: theme.spacing.sm,
@@ -245,7 +252,7 @@ export default function OnboardingScreen() {
                 </Text>
               </View>
 
-              <View style={{ gap: theme.spacing.md }}>
+              <View onLayout={at("section")} style={{ gap: theme.spacing.md }}>
                 <View style={{ gap: theme.spacing.xs }}>
                   <Text
                     accessibilityRole="header"
@@ -268,6 +275,7 @@ export default function OnboardingScreen() {
                   <SkeletonList rows={4} />
                 ) : (
                   <View
+                    onLayout={at("group")}
                     accessibilityRole="radiogroup"
                     accessibilityLabel="Starting passage"
                     style={{ gap: theme.spacing.md }}
@@ -285,6 +293,7 @@ export default function OnboardingScreen() {
                         }}
                       />
                     ))}
+                    <View onLayout={at("card")} />
                     <ChoiceCard
                       title="Pick any book"
                       text={
@@ -297,6 +306,12 @@ export default function OnboardingScreen() {
                         haptic("selection");
                         setProblem(null);
                         setChoice(ANY_BOOK);
+                        // Bring the book list up under the choice.
+                        const { section, group, card } = anyBookAt.current;
+                        setTimeout(
+                          () => startScroll.current?.scrollTo({ y: section + group + card, animated: true }),
+                          50,
+                        );
                       }}
                     />
                     {choice === ANY_BOOK ? (

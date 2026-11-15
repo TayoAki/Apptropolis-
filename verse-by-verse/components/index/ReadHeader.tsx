@@ -26,6 +26,16 @@ export function ReadHeader({
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const label = formatReference(current);
+  // Long references ("1 Thessalonians 5:23") step down in size so they fit beside the buttons;
+  // adjustsFontSizeToFit does the rest on a phone, but not on the web.
+  const labelSize =
+    label.length > 18
+      ? theme.font.size.caption + 2
+      : label.length > 15
+        ? theme.font.size.body
+        : label.length > 12
+          ? theme.font.size.body + 2
+          : theme.font.size.title;
 
   return (
     <View style={{ gap: theme.spacing.md }}>
@@ -68,7 +78,7 @@ export function ReadHeader({
                 flexShrink: 1,
                 color: theme.colors.text,
                 fontFamily: theme.font.family,
-                fontSize: theme.font.size.title,
+                fontSize: labelSize,
                 fontWeight: theme.font.weight.bold,
               }}
             >

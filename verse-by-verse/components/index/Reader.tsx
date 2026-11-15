@@ -352,7 +352,11 @@ export function Reader({
             ) : null}
             <View style={{ gap: theme.spacing.xs, marginTop: theme.spacing.sm }}>
               <Text accessibilityRole="header" style={heading}>
-                {wholeChapter ? `All of ${chapterLabel}` : `Continue in ${chapterLabel}`}
+                {wholeChapter
+                  ? `All of ${chapterLabel}`
+                  : listed.length > 0
+                    ? `Continue in ${chapterLabel}`
+                    : `End of ${chapterLabel}`}
               </Text>
               {hint && listed.length > 0 ? (
                 <Text
@@ -375,6 +379,8 @@ export function Reader({
         </Appear>
       )}
       ListEmptyComponent={
+        // At the very end, the card below says it.
+        atEnd && !wholeChapter ? undefined : (
         <Text
           style={{
             color: theme.colors.textMuted,
@@ -391,6 +397,7 @@ export function Reader({
                 ? `That's the end of ${current.book}.`
                 : `That's the end of ${chapterLabel}.`}
         </Text>
+        )
       }
       ListFooterComponent={
         atEnd ? (
