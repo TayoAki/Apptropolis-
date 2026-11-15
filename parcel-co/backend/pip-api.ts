@@ -249,7 +249,10 @@ async function search(params: URLSearchParams) {
            c.store_slug = any($1::text[])
            or to_tsvector('english', c.title || ' ' || coalesce(c.details, '') || ' ' || s.name || ' ' || coalesce(s.category, ''))
               @@ to_tsquery('english', $2))
-         order by (c.store_slug = any($1::text[])) desc, ${COUPON_ORDER} limit $3`,
+         order by (c.store_slug = any($1::text[])) desc,
+           ts_rank(to_tsvector('english', c.title || ' ' || coalesce(c.details, '') || ' ' || s.name || ' ' || coalesce(s.category, '')),
+                   to_tsquery('english', $2)) desc,
+           ${COUPON_ORDER} limit $3`,
         [slugs, query, limit],
       )
     : [];
@@ -262,7 +265,13 @@ async function search(params: URLSearchParams) {
                || ' ' || array_to_string(d.tags, ' ') || ' ' || coalesce(s.name, ''))
                @@ to_tsquery('english', $1))
        and ($3::float8 is null or d.price <= $3)
-     order by (d.store_slug = any($2::text[])) desc, ${DEAL_SAVING} desc, d.rating desc nulls last
+     order by (d.store_slug = any($2::text[])) desc,
+       -- More of the question's words matched first ("gift" + "kids" beats "gift" alone).
+       case when $1::text is null then 0 else ts_rank(
+         to_tsvector('english', d.title || ' ' || coalesce(d.brand, '') || ' ' || coalesce(d.category, '')
+           || ' ' || array_to_string(d.tags, ' ') || ' ' || coalesce(s.name, '')),
+         to_tsquery('english', $1)) end desc,
+       ${DEAL_SAVING} desc, d.rating desc nulls last
      limit $4`,
     [query, slugs, maxPrice, limit],
   );

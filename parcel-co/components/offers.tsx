@@ -60,7 +60,12 @@ export function useSaved() {
       const existing = byKey.get(coupon.key);
       haptic("selection");
       if (existing) return saved.remove(existing.id);
-      await saved.add({ kind: "coupon", key: coupon.key, coupon, savedAt: new Date().toISOString() });
+      await saved.add({
+        kind: "coupon",
+        key: coupon.key,
+        coupon,
+        savedAt: new Date().toISOString(),
+      });
       track("saved", { kind: "coupon" });
     },
     async toggleDeal(deal: Deal) {
@@ -74,7 +79,15 @@ export function useSaved() {
 }
 
 /** A store's logo, or its first letter on a tinted disc when there is no logo. */
-export function StoreAvatar({ name, logoUrl, size = 40 }: { name: string; logoUrl?: string | null; size?: number }) {
+export function StoreAvatar({
+  name,
+  logoUrl,
+  size = 40,
+}: {
+  name: string;
+  logoUrl?: string | null;
+  size?: number;
+}) {
   const theme = useTheme();
   const [failed, setFailed] = useState(false);
   if (logoUrl && !failed) {
@@ -158,7 +171,9 @@ function Meta({ parts }: { parts: Array<string | null | undefined | false> }) {
   const text = parts.filter(Boolean).join(" · ");
   if (!text) return null;
   return (
-    <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, lineHeight: 17 }}>
+    <Text
+      style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, lineHeight: 17 }}
+    >
       {text}
     </Text>
   );
@@ -219,34 +234,57 @@ export function CouponCard({
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-        {showStore ? <StoreAvatar name={coupon.storeName} logoUrl={coupon.storeLogoUrl} size={32} /> : null}
+        {showStore ? (
+          <StoreAvatar name={coupon.storeName} logoUrl={coupon.storeLogoUrl} size={32} />
+        ) : null}
         <View style={{ flex: 1, minWidth: 0 }}>
           {showStore ? (
             <Text
               numberOfLines={1}
-              style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, fontWeight: theme.font.weight.medium }}
+              style={{
+                color: theme.colors.textMuted,
+                fontSize: theme.font.size.caption,
+                fontWeight: theme.font.weight.medium,
+              }}
             >
               {coupon.storeName}
             </Text>
           ) : null}
           <Text
             numberOfLines={1}
-            style={{ color: theme.colors.text, fontSize: theme.font.size.title, fontWeight: theme.font.weight.bold }}
+            style={{
+              color: theme.colors.text,
+              fontSize: theme.font.size.title,
+              fontWeight: theme.font.weight.bold,
+            }}
           >
             {discountLabel(coupon)}
           </Text>
         </View>
         <IconButton
           icon={saved ? "bookmark" : "bookmark-outline"}
-          label={saved ? `Remove ${coupon.storeName} ${discountLabel(coupon)} from saved` : `Save ${coupon.storeName} ${discountLabel(coupon)}`}
+          label={
+            saved
+              ? `Remove ${coupon.storeName} ${discountLabel(coupon)} from saved`
+              : `Save ${coupon.storeName} ${discountLabel(coupon)}`
+          }
           color={saved ? theme.colors.primary : undefined}
           onPress={onToggleSave}
         />
       </View>
 
-      <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}>{coupon.title}</Text>
+      <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 22 }}>
+        {coupon.title}
+      </Text>
       {coupon.details ? (
-        <Text numberOfLines={3} style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption, lineHeight: 17 }}>
+        <Text
+          numberOfLines={3}
+          style={{
+            color: theme.colors.textMuted,
+            fontSize: theme.font.size.caption,
+            lineHeight: 17,
+          }}
+        >
           {coupon.details}
         </Text>
       ) : null}
@@ -254,58 +292,59 @@ export function CouponCard({
 
       <View style={{ flexDirection: "row", alignItems: "stretch", gap: theme.spacing.sm }}>
         {coupon.code ? (
-          <PressScale
-            onPress={copy}
-            disabled={expired}
-            scaleTo={0.97}
-            accessibilityRole="button"
-            accessibilityLabel={copied ? `Copied ${coupon.code}` : `Copy code ${coupon.code}`}
-            style={{
-              flex: 1,
-              minHeight: 48,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: theme.spacing.sm,
-              paddingHorizontal: theme.spacing.md,
-              borderRadius: theme.radius.sm,
-              borderWidth: 1.5,
-              borderStyle: "dashed",
-              borderColor: theme.colors.primary,
-              backgroundColor: theme.colors.background,
-            }}
-          >
-            <Text
-              selectable
-              numberOfLines={1}
+          <View style={{ flex: 1 }}>
+            <PressScale
+              onPress={copy}
+              disabled={expired}
+              scaleTo={0.97}
+              accessibilityRole="button"
+              accessibilityLabel={copied ? `Copied ${coupon.code}` : `Copy code ${coupon.code}`}
               style={{
-                flexShrink: 1,
-                color: theme.colors.text,
-                fontSize: theme.font.size.body,
-                fontWeight: theme.font.weight.bold,
-                letterSpacing: 1,
-                fontVariant: ["tabular-nums"],
+                minHeight: 48,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: theme.spacing.sm,
+                paddingHorizontal: theme.spacing.md,
+                borderRadius: theme.radius.sm,
+                borderWidth: 1.5,
+                borderStyle: "dashed",
+                borderColor: theme.colors.primary,
+                backgroundColor: theme.colors.background,
               }}
             >
-              {coupon.code}
-            </Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <Ionicons
-                name={copied ? "checkmark-circle" : "copy-outline"}
-                size={18}
-                color={copied ? theme.colors.success : theme.colors.primary}
-              />
               <Text
+                selectable
+                numberOfLines={1}
                 style={{
-                  color: copied ? theme.colors.success : theme.colors.primary,
+                  flexShrink: 1,
+                  color: theme.colors.text,
                   fontSize: theme.font.size.body,
                   fontWeight: theme.font.weight.bold,
+                  letterSpacing: 1,
+                  fontVariant: ["tabular-nums"],
                 }}
               >
-                {copied ? "Copied" : "Copy"}
+                {coupon.code}
               </Text>
-            </View>
-          </PressScale>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons
+                  name={copied ? "checkmark-circle" : "copy-outline"}
+                  size={18}
+                  color={copied ? theme.colors.success : theme.colors.primary}
+                />
+                <Text
+                  style={{
+                    color: copied ? theme.colors.success : theme.colors.primary,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                  }}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </Text>
+              </View>
+            </PressScale>
+          </View>
         ) : (
           <View
             style={{
@@ -317,7 +356,9 @@ export function CouponCard({
               backgroundColor: theme.colors.surfaceAlt,
             }}
           >
-            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>No code needed</Text>
+            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.body }}>
+              No code needed
+            </Text>
           </View>
         )}
         <PressScale
@@ -335,7 +376,13 @@ export function CouponCard({
             backgroundColor: theme.colors.primary,
           }}
         >
-          <Text style={{ color: theme.colors.onPrimary, fontSize: theme.font.size.body, fontWeight: theme.font.weight.bold }}>
+          <Text
+            style={{
+              color: theme.colors.onPrimary,
+              fontSize: theme.font.size.body,
+              fontWeight: theme.font.weight.bold,
+            }}
+          >
             Shop
           </Text>
           <Ionicons name="open-outline" size={16} color={theme.colors.onPrimary} />
@@ -343,7 +390,10 @@ export function CouponCard({
       </View>
 
       {problem ? (
-        <Text accessibilityRole="alert" style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}>
+        <Text
+          accessibilityRole="alert"
+          style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}
+        >
           {problem}
         </Text>
       ) : null}
@@ -397,7 +447,12 @@ export function DealCard({
             contentFit="contain"
             onError={() => setImageFailed(true)}
             accessibilityLabel={deal.title}
-            style={{ width: 72, height: 72, borderRadius: theme.radius.sm, backgroundColor: "#FFFFFF" }}
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: theme.radius.sm,
+              backgroundColor: "#FFFFFF",
+            }}
           />
         ) : (
           <View
@@ -416,23 +471,56 @@ export function DealCard({
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <Text numberOfLines={2} style={{ color: theme.colors.text, fontSize: theme.font.size.body, lineHeight: 21, fontWeight: theme.font.weight.medium }}>
+          <Text
+            numberOfLines={2}
+            style={{
+              color: theme.colors.text,
+              fontSize: theme.font.size.body,
+              lineHeight: 21,
+              fontWeight: theme.font.weight.medium,
+            }}
+          >
             {deal.title}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: theme.spacing.sm }}>
-            <Text style={{ color: theme.colors.text, fontSize: theme.font.size.title, fontWeight: theme.font.weight.bold, fontVariant: ["tabular-nums"] }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "baseline",
+              flexWrap: "wrap",
+              columnGap: theme.spacing.sm,
+            }}
+          >
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontSize: theme.font.size.title,
+                fontWeight: theme.font.weight.bold,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
               {formatMoney(deal.price, deal.currency)}
             </Text>
             {deal.wasPrice && deal.wasPrice > deal.price ? (
               <Text
                 accessibilityLabel={`was ${formatMoney(deal.wasPrice, deal.currency)}`}
-                style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body, textDecorationLine: "line-through", fontVariant: ["tabular-nums"] }}
+                style={{
+                  color: theme.colors.textMuted,
+                  fontSize: theme.font.size.body,
+                  textDecorationLine: "line-through",
+                  fontVariant: ["tabular-nums"],
+                }}
               >
                 {formatMoney(deal.wasPrice, deal.currency)}
               </Text>
             ) : null}
             {saving ? (
-              <Text style={{ color: theme.colors.success, fontSize: theme.font.size.body, fontWeight: theme.font.weight.bold }}>
+              <Text
+                style={{
+                  color: theme.colors.success,
+                  fontSize: theme.font.size.body,
+                  fontWeight: theme.font.weight.bold,
+                }}
+              >
                 {`${saving}% less`}
               </Text>
             ) : null}
@@ -440,35 +528,44 @@ export function DealCard({
           <Meta
             parts={[
               deal.storeName ?? deal.brand,
-              deal.rating ? `★ ${deal.rating.toFixed(1)}${deal.reviewCount ? ` (${deal.reviewCount.toLocaleString()})` : ""}` : null,
+              deal.rating
+                ? `★ ${deal.rating.toFixed(1)}${deal.reviewCount ? ` (${deal.reviewCount.toLocaleString()})` : ""}`
+                : null,
               seenLabel(deal.lastSeenAt),
             ]}
           />
         </View>
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-        <PressScale
-          onPress={async () => setProblem(await openLink(deal.url, deal.storeName ?? "the deal"))}
-          scaleTo={0.97}
-          accessibilityRole="link"
-          accessibilityLabel={`View ${deal.title} at ${deal.storeName ?? "the store"}`}
-          style={{
-            flex: 1,
-            minHeight: 44,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-            borderRadius: theme.radius.sm,
-            borderWidth: 1.5,
-            borderColor: theme.colors.primary,
-          }}
-        >
-          <Text style={{ color: theme.colors.primary, fontSize: theme.font.size.body, fontWeight: theme.font.weight.bold }}>
-            View deal
-          </Text>
-          <Ionicons name="open-outline" size={16} color={theme.colors.primary} />
-        </PressScale>
+        <View style={{ flex: 1 }}>
+          <PressScale
+            onPress={async () => setProblem(await openLink(deal.url, deal.storeName ?? "the deal"))}
+            scaleTo={0.97}
+            accessibilityRole="link"
+            accessibilityLabel={`View ${deal.title} at ${deal.storeName ?? "the store"}`}
+            style={{
+              minHeight: 44,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1.5,
+              borderColor: theme.colors.primary,
+            }}
+          >
+            <Text
+              style={{
+                color: theme.colors.primary,
+                fontSize: theme.font.size.body,
+                fontWeight: theme.font.weight.bold,
+              }}
+            >
+              View deal
+            </Text>
+            <Ionicons name="open-outline" size={16} color={theme.colors.primary} />
+          </PressScale>
+        </View>
         <IconButton
           icon={saved ? "bookmark" : "bookmark-outline"}
           label={saved ? `Remove ${deal.title} from saved` : `Save ${deal.title}`}
@@ -477,7 +574,10 @@ export function DealCard({
         />
       </View>
       {problem ? (
-        <Text accessibilityRole="alert" style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}>
+        <Text
+          accessibilityRole="alert"
+          style={{ color: theme.colors.danger, fontSize: theme.font.size.caption }}
+        >
           {problem}
         </Text>
       ) : null}

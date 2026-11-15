@@ -1,0 +1,51 @@
+{
+  "out": ".",
+  "theme": { "bgTop": "#FAF5EC", "bgBottom": "#EAD9C2", "text": "#3A2A1F", "muted": "#6E5C4C", "accent": "#A05101" },
+  "shots": [
+    {
+      "file": "01-ask-before-you-pay",
+      "headline": ["Ask before", "you *pay*"],
+      "sub": "Pip checks the codes it has collected and tells you which one to use.",
+      "capture": "captures/ask-code.png",
+      "callout": { "crop": [14, 298, 366, 172], "scale": 1.14 }
+    },
+    {
+      "file": "02-copy-the-code",
+      "headline": ["One tap.", "Code *copied*."],
+      "sub": "Then Shop opens the store. Paste the code at checkout.",
+      "capture": "captures/ask-copied.png",
+      "callout": { "crop": [16, 592, 358, 56], "scale": 1.4 }
+    },
+    {
+      "file": "03-gift-ideas",
+      "headline": ["Gift ideas,", "*on budget*"],
+      "sub": "Ask in plain words. Pip answers from the deals it found.",
+      "capture": "captures/ask-gift.png",
+      "callout": { "crop": [12, 480, 372, 150], "scale": 1.12 }
+    },
+    {
+      "file": "04-codes-for-your-stores",
+      "headline": ["Codes for", "*your* stores"],
+      "sub": "Follow the stores you shop at. Their codes come first.",
+      "capture": "captures/home.png"
+    },
+    {
+      "file": "05-every-store",
+      "headline": ["Every store,", "one *search*"],
+      "sub": "See how many live codes and deals each store has.",
+      "capture": "captures/stores.png"
+    },
+    {
+      "file": "06-store-page",
+      "headline": ["Every code", "in one *place*"],
+      "sub": "When each one ends, and when Pip last saw it.",
+      "capture": "captures/store-kestrel.png"
+    },
+    {
+      "file": "07-save-for-later",
+      "headline": ["Save codes", "for *later*"],
+      "sub": "Keep a code for the day you check out.",
+      "capture": "captures/saved.png"
+    }
+  ]
+}
