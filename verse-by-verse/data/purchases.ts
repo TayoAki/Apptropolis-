@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import Purchases, { type CustomerInfo, type PurchasesPackage } from "react-native-purchases";
 import { trackSystem } from "./analytics";
+import { PAYWALL_ENABLED } from "./launch";
 import { monetization } from "./monetization";
 import { payments } from "./payments";
 
@@ -45,6 +46,8 @@ const ENTITLEMENT_KEY = "app:entitlement";
 
 /** RevenueCat's key for this platform, when purchases are real here (a store or TestFlight build). */
 function storeApiKey(): string | null {
+  // With the paywall off (data/launch.ts) RevenueCat is never configured.
+  if (!PAYWALL_ENABLED) return null;
   if (Platform.OS === "web" || Constants.executionEnvironment === "storeClient") return null;
   const key = Platform.OS === "ios" ? payments.iosApiKey : payments.androidApiKey;
   return key || null;
@@ -103,7 +106,11 @@ function entitlementFrom(info: CustomerInfo): Entitlement | null {
 
 let loading: Promise<void> | null = null;
 function load(): Promise<void> {
-  loading ??= live ? loadStore() : loadSimulated();
+  loading ??= !PAYWALL_ENABLED
+    ? Promise.resolve(update({ ready: true }))
+    : live
+      ? loadStore()
+      : loadSimulated();
   return loading;
 }
 
@@ -138,6 +145,8 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Buy an offer. Resolves true when premium is active. */
 export async function purchase(offerId: string): Promise<boolean> {
+  // Paywall off: nothing is sold, and nothing is simulated.
+  if (!PAYWALL_ENABLED) return false;
   const offer = monetization.offers.find((o) => o.id === offerId);
   if (!offer) {
     update({ error: "That plan isn't available." });
@@ -184,6 +193,8 @@ function trackPurchase(offer: Offer, simulated: boolean): void {
 
 /** Restore earlier purchases. Resolves true when premium is active afterwards. */
 export async function restorePurchases(): Promise<boolean> {
+  // Paywall off: nothing was sold, so there is nothing to restore.
+  if (!PAYWALL_ENABLED) return false;
   update({ status: "restoring", error: null });
   let entitlement: Entitlement | null = null;
   if (live) {
@@ -209,6 +220,7 @@ export async function restorePurchases(): Promise<boolean> {
 
 /** Open the paywall (from a locked premium feature, a banner, or Settings). */
 export function openPaywall(): void {
+  if (!PAYWALL_ENABLED) return;
   router.push("/paywall");
 }
 
@@ -240,7 +252,10 @@ export function usePurchases() {
   const { packages: _packages, ...visible } = state;
   return {
     ...visible,
-    isPremium: state.entitlement !== null,
+    // Paywall off (data/launch.ts): every premium feature is open to everyone.
+    isPremium: !PAYWALL_ENABLED || state.entitlement !== null,
+    /** Whether the paywall exists at all; when false no purchase UI is shown anywhere. */
+    paywallEnabled: PAYWALL_ENABLED,
     /** The offer the user has, when premium. */
     activeOffer: offer,
     offers,
@@ -249,7 +264,7 @@ export function usePurchases() {
       : (offers[0]?.id ?? monetization.defaultOfferId),
     premiumFeatures: monetization.premiumFeatures,
     /** Purchases are simulated (Expo Go, the preview, or RevenueCat not connected). */
-    testMode: !live,
+    testMode: PAYWALL_ENABLED && !live,
     purchase,
     restorePurchases,
     openPaywall,
