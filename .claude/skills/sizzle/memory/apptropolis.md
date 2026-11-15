@@ -13,6 +13,9 @@ Read this at the start of every job. Save every correction as a rule with its re
 
 ## Brand kit
 - Verse by Verse: `videos/verse-by-verse/src/brand.ts` (Parchment tokens from `verse-by-verse/theme/tokens.ts`)
+- Five Dinners: `videos/five-dinners/src/brand.ts` (Larder tokens from `five-dinners/theme/tokens.ts`;
+  Inter for the system sans, Ionicons; Penny the bag mascot in `public/penny-*.png`, from the app's own
+  image URLs in `five-dinners/data/images.ts`)
 - Fonts: Gelasio (OFL, Georgia-metric stand-in for the app's Georgia), Inter (OFL), Ionicons (MIT,
   the app's icon font) in `videos/verse-by-verse/public/fonts/`
 - Logo / lockup: none yet (no app icon); the app's Flourish ornament + "Verse by Verse" in Gelasio
@@ -26,6 +29,11 @@ Read this at the start of every job. Save every correction as a rule with its re
 | Generic lock screen + app notification | `LockScreen`, `Notification` | reminder copy |
 | Generic message thread | `Thread` | incoming message, sent image, Delivered |
 | Status bar, home bar, tab bar, Flourish, AppMark | videos/verse-by-verse/src/ui/parts.tsx | — |
+| Five Dinners Week screen (basket, five dinners, What's left bar) | videos/five-dinners/src/ui/screens.tsx `WeekScreen` | week 1 (Nov 15–21), week 2 planned around leftovers |
+| Five Dinners Shop screen (estimate, paid so far, by aisle, produce rows) | `ShopScreen` | onions / spinach ticking 0 → 1 |
+| Five Dinners Cook screen (week circles, dinner cards, What's left) | `CookScreen` | Monday next → cooked, bars filling |
+| Five Dinners status bar, tab bar (Week/Shop/Cook), meter, recipe photo | videos/five-dinners/src/ui/parts.tsx | — |
+| Screen check against the app's captures | videos/five-dinners/src/ScreenCheck.tsx | all four end states at 1 px/pt |
 
 ## Taste (approved)
 - Camera and pacing: frame each subject close (reminder, verse card, share card, thread); holds
@@ -43,6 +51,13 @@ Read this at the start of every job. Save every correction as a rule with its re
   as full-range yuvj420p, which some social players show with crushed tones.
 - Never say "one verse at a time" or "scroll the Bible" for Verse by Verse: it is Scroll The Bible's
   own App Store copy (see the competitor research).
+- Measure recreated screens from the app's own 3x captures (pt = px / 3, add the 54 pt status bar)
+  and check them side by side at 1 px/pt before filming: it caught a misplaced list and a wrong
+  title wrap on the Five Dinners screens.
+- In a vertical cut that needs taps on the tab bar, play the phone in a window under the type band
+  (soft 64 px top fade) and pan to the tab bar before the tap, rather than shrinking the phone: the
+  tap stays above the platform's caption zone and the type stays clear.
+- Label paid features where they appear (Five Dinners: "With Unlimited weekly plans"), with no price.
 - Keep the 360 px check on the hook: zoom the reminder until its text reads, but never let the phone
   cover the band.
 
@@ -51,3 +66,4 @@ Read this at the start of every job. Save every correction as a rule with its re
 |---|---|---|---|
 | Verse by Verse v1 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | rim missing on the right; replaced |
 | Verse by Verse v2 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | videos/verse-by-verse/renders/ |
+| Five Dinners v1 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | videos/five-dinners/renders/ |
