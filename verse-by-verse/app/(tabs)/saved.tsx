@@ -390,6 +390,8 @@ export default function SavedScreen() {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const layouts = useRef<Record<string, { x: number; width: number }>>({});
   const glideReady = useRef(false);
+  /** The chip row's scroll position and width, so it scrolls only to bring a chip into view. */
+  const chipView = useRef({ x: 0, width: 0 });
   const glideX = useRef(new Animated.Value(0)).current;
   const glideW = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.9)).current;
@@ -451,10 +453,19 @@ export default function SavedScreen() {
         }),
       ]).start();
     }
-    scrollRef.current?.scrollTo({
-      x: Math.max(0, target.x - theme.spacing.lg),
-      animated: !reduced,
-    });
+    // Scroll only when the chosen chip isn't fully in view (scrolling every time pushed "All"
+    // half off the left edge when picking a folder that was already showing).
+    const { x, width } = chipView.current;
+    const inView =
+      width > 0 &&
+      target.x - theme.spacing.lg >= x &&
+      target.x + target.width + theme.spacing.lg <= x + width;
+    if (!inView) {
+      scrollRef.current?.scrollTo({
+        x: Math.max(0, target.x - theme.spacing.lg),
+        animated: !reduced,
+      });
+    }
   }, [activeFilter, layoutTick, glideX, glideW, reduced, theme.spacing.lg]);
 
   // The card preview scales up from a little smaller when it opens.
@@ -714,6 +725,13 @@ export default function SavedScreen() {
           ref={scrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
+          onLayout={(event) => {
+            chipView.current.width = event.nativeEvent.layout.width;
+          }}
+          onScroll={(event) => {
+            chipView.current.x = event.nativeEvent.contentOffset.x;
+          }}
+          scrollEventThrottle={32}
           contentContainerStyle={{
             paddingHorizontal: theme.spacing.lg,
             paddingVertical: theme.spacing.xs,

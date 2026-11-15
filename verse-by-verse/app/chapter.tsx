@@ -10,7 +10,7 @@ import { HeaderAction, ScreenHeader } from "../components/ScreenHeader";
 import { useBookmarks } from "../components/bookmarks";
 import { VerseLine } from "../components/chapter/VerseLine";
 import { useBooks } from "../components/bible";
-import { Appear, PressScale, Skeleton, Stagger, haptic } from "../components/motion";
+import { Appear, PressScale, Skeleton, haptic } from "../components/motion";
 import { useSavedTheme } from "../components/reading";
 import { useAppState } from "../data/app-state";
 import { BOOKS, bookOf, chapterTitle, chapterVerses, type BookInfo } from "../data/bible";
@@ -71,6 +71,10 @@ export default function ChapterScreen() {
   const [picked, setPicked] = useState<string | null>(null);
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrolled = useRef(false);
+  // Where the verse list starts in the scroll (a Psalm's title can sit above it) and where the
+  // verse to open at sits in the list: the page scrolls once both are known.
+  const listY = useRef<number | null>(null);
+  const targetY = useRef<number | null>(null);
   useSavedTheme();
 
   const position = marks.place;
@@ -106,16 +110,25 @@ export default function ChapterScreen() {
 
   const loading = (!text.ready && !text.failed) || marks.loading;
 
-  function onRowLayout(verse: Verse, y: number) {
-    if (scrolled.current || !target || verse.id !== target.id || y <= 0) return;
+  function scrollToTarget() {
+    if (scrolled.current || listY.current === null || targetY.current === null) return;
     scrolled.current = true;
-    scroller.current?.scrollTo({ y: Math.max(0, theme.spacing.lg + y - 96), animated: false });
+    const y = listY.current + targetY.current;
+    if (y > 96) scroller.current?.scrollTo({ y: y - 96, animated: false });
+  }
+
+  function onRowLayout(verse: Verse, y: number) {
+    if (!target || verse.id !== target.id) return;
+    targetY.current = y;
+    scrollToTarget();
   }
 
   /** Open another chapter on this page, from its first verse. */
   function turnTo(next: { book: BookInfo; chapter: number }) {
     haptic("selection");
     scrolled.current = false;
+    listY.current = null;
+    targetY.current = null;
     setPicked(null);
     router.setParams({ book: next.book.name, chapter: String(next.chapter), verse: "1" });
     scroller.current?.scrollTo({ y: 0, animated: false });
@@ -201,21 +214,33 @@ export default function ChapterScreen() {
                 {title}
               </Text>
             ) : null}
-            <Stagger key={`${book} ${chapterNumber}`} step={55} style={{ gap: theme.spacing.xs }}>
-              {chapter.map((verse) => (
+            {/* Each row is measured outside its entrance animation, so its place in the list is
+                known (inside Stagger's wrappers every row measured 0 and the page never scrolled
+                to the verse it opened at). The rows still arrive one after another. */}
+            <View
+              key={`${book} ${chapterNumber}`}
+              onLayout={(event) => {
+                listY.current = event.nativeEvent.layout.y;
+                scrollToTarget();
+              }}
+              style={{ gap: theme.spacing.xs }}
+            >
+              {chapter.map((verse, index) => (
                 <View
                   key={verse.id}
                   onLayout={(event) => onRowLayout(verse, event.nativeEvent.layout.y)}
                 >
-                  <VerseLine
-                    verse={verse}
-                    isTarget={target?.id === verse.id}
-                    picked={picked === verse.id}
-                    onPress={() => readFrom(verse)}
-                  />
+                  <Appear delay={Math.min(index, 9) * 55}>
+                    <VerseLine
+                      verse={verse}
+                      isTarget={target?.id === verse.id}
+                      picked={picked === verse.id}
+                      onPress={() => readFrom(verse)}
+                    />
+                  </Appear>
                 </View>
               ))}
-            </Stagger>
+            </View>
             <Appear delay={350} style={{ marginTop: theme.spacing.xl, gap: theme.spacing.lg }}>
               <Flourish />
               <View

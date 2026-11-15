@@ -43,9 +43,9 @@ const REMINDER_TIMES: [number, number][] = [
   [19, 0],
 ];
 
-/** 24-hour times, the same way onboarding writes them ("9:30", "17:00"). */
+/** 12-hour times: "9:30 AM", "5:00 PM". */
 function formatTime(hour: number, minute: number): string {
-  return `${hour}:${String(minute).padStart(2, "0")}`;
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -324,7 +324,8 @@ export default function SettingsScreen() {
   const pantry = { items: planData.pantry, loading: planData.loading };
 
   const [timeOpen, setTimeOpen] = useState(false);
-  const [planNote, setPlanNote] = useState<string | null>(null);
+  // What the last change did to this week's plan, shown under the control that changed it.
+  const [planNote, setPlanNoteState] = useState<{ at: "household" | "foods"; text: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
@@ -344,6 +345,8 @@ export default function SettingsScreen() {
 
   /** Save an answer and apply it to the plan this week, so it changes what the app does now. */
   async function change(key: string, value: string) {
+    const at = key === "servings" || key === "weeklybudget" ? "household" : "foods";
+    const setPlanNote = (text: string | null) => setPlanNoteState(text ? { at, text } : null);
     await setAnswer(key, value);
     const swaps = await applyAnswersToPlan({ ...answers, [key]: value }, purchases.isPremium);
     if (key === "servings" && planData.status === "active") {
@@ -406,6 +409,22 @@ export default function SettingsScreen() {
     : planData.inFreeWeek
       ? `Free week · ends ${freeLastDay}`
       : `Free week ended ${freeLastDay}`;
+
+  const noteView = planNote ? (
+    <Text
+      accessibilityLiveRegion="polite"
+      style={{
+        color: theme.colors.text,
+        fontSize: theme.font.size.body,
+        fontFamily: theme.font.family,
+        backgroundColor: theme.colors.surfaceAlt,
+        borderRadius: theme.radius.md,
+        padding: theme.spacing.sm + 4,
+      }}
+    >
+      {planNote.text}
+    </Text>
+  ) : null;
 
   const linkRow = (label: string, icon: React.ComponentProps<typeof Ionicons>["name"], url: string) => (
     <Pressable
@@ -517,21 +536,7 @@ export default function SettingsScreen() {
           ) : null}
         </Section>
 
-        {planNote ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={{
-              color: theme.colors.text,
-              fontSize: note,
-              fontFamily: theme.font.family,
-              backgroundColor: theme.colors.surfaceAlt,
-              borderRadius: theme.radius.md,
-              padding: theme.spacing.sm + 4,
-            }}
-          >
-            {planNote}
-          </Text>
-        ) : null}
+        {planNote?.at === "household" ? noteView : null}
 
         <View style={{ gap: theme.spacing.sm }}>
           <Section title="Prices">
@@ -635,6 +640,7 @@ export default function SettingsScreen() {
             Dinners not cooked yet are swapped to fit straight away.
           </Body>
         </Section>
+        {planNote?.at === "foods" ? noteView : null}
 
         <Section title="Plan reminder">
           <View

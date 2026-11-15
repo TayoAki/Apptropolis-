@@ -101,6 +101,10 @@ async function moveTo(page, time) {
   if (time.toDateString() !== before) {
     await page.reload({ waitUntil: "networkidle" });
     await wait(page, 1200);
+    if (process.env.DEBUG_SHOTS) {
+      const t = await page.evaluate(() => document.body.innerText.slice(0, 60).replace(/\n/g, " | "));
+      console.error("reload", time.toISOString(), JSON.stringify(t));
+    }
   }
 }
 
@@ -178,6 +182,7 @@ async function storage(page) {
   await wait(page, 2500);
   await shoot(page, out("tonight-thursday.png"));
   const thursday = await storage(page);
+  if (process.env.DEBUG_SHOTS) fs.writeFileSync(path.join(process.env.DEBUG_SHOTS, "thursday-storage.json"), JSON.stringify(thursday, null, 1));
   await openTab(page, "Week");
   await shoot(page, out("week-thursday.png"));
   await openTab(page, "Career");

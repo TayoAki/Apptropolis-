@@ -1,0 +1,64 @@
+{
+  "out": ".",
+  "theme": {
+    "bgTop": "#2A2C33",
+    "bgBottom": "#0A0A0B",
+    "text": "#FFFFFF",
+    "muted": "#9BA1AA",
+    "accent": "#FB4E4A",
+    "pill": "#FB4E4A",
+    "onPill": "#1F0706"
+  },
+  "shots": [
+    {
+      "file": "01-see-the-combo",
+      "headline": ["See the combo.", "*Throw* it."],
+      "sub": "Every 3 seconds the next punch flashes up in big letters, until the round ends.",
+      "capture": "captures/train-live.png",
+      "callout": { "crop": [24, 280, 392, 112], "scale": 1.2 }
+    },
+    {
+      "file": "02-one-challenge-a-day",
+      "headline": ["One challenge", "*every* day"],
+      "sub": "Rounds, rest and punches set for your level. Prop the phone up and press start.",
+      "capture": "captures/train-idle.png",
+      "callout": { "crop": [16, 598, 408, 206], "scale": 1.1 }
+    },
+    {
+      "file": "03-streak",
+      "headline": ["Challenge *done*.", "Streak: 7 days."],
+      "sub": "+39 XP, saved when the last round ends. Train tomorrow to make it 8.",
+      "capture": "captures/train-done.png",
+      "callout": { "crop": [284, 10, 102, 40], "scale": 1.9 }
+    },
+    {
+      "file": "04-every-round-counts",
+      "headline": ["Every round", "earns *XP*"],
+      "sub": "10 XP a round plus 1 a minute. Watch your level and your week fill up.",
+      "capture": "captures/progress.png",
+      "callout": { "crop": [16, 76, 408, 114], "scale": 1.1 }
+    },
+    {
+      "file": "05-ask-for-a-drill",
+      "headline": ["Ask a question,", "get a *drill*"],
+      "sub": "Say what keeps going wrong. The answer comes with a round to run.",
+      "capture": "captures/coach.png",
+      "callout": { "crop": [28, 400, 336, 88], "scale": 1.1 }
+    },
+    {
+      "file": "06-drill-on-the-timer",
+      "headline": ["The drill loads", "on the *timer*"],
+      "sub": "One tap on the answer: its punches, rounds and rest, ready to start.",
+      "capture": "captures/train-drill.png",
+      "callout": { "crop": [24, 246, 392, 140], "scale": 1.12 }
+    },
+    {
+      "file": "07-scout-a-partner",
+      "headline": ["Scout a partner,", "drill the *plan*"],
+      "sub": "One photo in, a 3-round plan out.",
+      "capture": "captures/scout-sample.png",
+      "pill": "Pro",
+      "callout": { "crop": [16, 548, 408, 150], "scale": 1.1 }
+    }
+  ]
+}

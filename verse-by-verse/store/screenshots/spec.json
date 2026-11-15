@@ -1,0 +1,59 @@
+{
+  "out": ".",
+  "theme": {
+    "bgTop": "#F7F1E6",
+    "bgBottom": "#E5D6BF",
+    "text": "#1F1812",
+    "muted": "#6E5D4B",
+    "accent": "#9F440F",
+    "pill": "#835529",
+    "onPill": "#FFF9F0"
+  },
+  "shots": [
+    {
+      "file": "01-one-verse",
+      "headline": ["One verse.", "Then put it *down*."],
+      "sub": "A single verse on a calm card. Twenty well-known verses carry a short study note.",
+      "capture": "captures/read-note.png"
+    },
+    {
+      "file": "02-right-where-you-left-off",
+      "headline": ["Right where", "you *left off*"],
+      "sub": "One quiet reminder a day. Your verse waits right where you stopped.",
+      "capture": "captures/chapter-left-off.png",
+      "callout": { "crop": [12, 774, 416, 24], "scale": 1.25 }
+    },
+    {
+      "file": "03-the-whole-bible",
+      "headline": ["The *whole*", "Bible"],
+      "sub": "All 66 books of the World English Bible. Jump to any book, chapter or verse.",
+      "capture": "captures/picker-books.png"
+    },
+    {
+      "file": "04-share-a-card",
+      "headline": ["Share a verse", "as a *card*"],
+      "sub": "Send it as an image to someone who needs it today.",
+      "capture": "captures/share-card.png"
+    },
+    {
+      "file": "05-find-any-passage",
+      "headline": ["Find any", "*passage*"],
+      "sub": "Type Psalm 23, John 3:16 or just Romans, and read on from there.",
+      "capture": "captures/search-reference.png"
+    },
+    {
+      "file": "06-search-every-word",
+      "headline": ["Search every", "*word*"],
+      "sub": "Every match in the whole Bible, with the words highlighted.",
+      "capture": "captures/search-keywords.png",
+      "pill": "Premium"
+    },
+    {
+      "file": "07-folders",
+      "headline": ["Folders for", "your *verses*"],
+      "sub": "Keep saved verses together, like Comfort and Promises.",
+      "capture": "captures/saved-folder.png",
+      "pill": "Premium"
+    }
+  ]
+}

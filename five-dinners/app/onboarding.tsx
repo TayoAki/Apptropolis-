@@ -64,7 +64,7 @@ const REMINDER_HOURS = [8, 9, 10, 18];
 const staplePacks = PACK_LIST.filter((p) => p.staple);
 
 function formatHour(hour: number): string {
-  return `${hour}:00`;
+  return `${hour % 12 || 12} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 export default function Onboarding() {
@@ -448,7 +448,8 @@ export default function Onboarding() {
             ? "Nothing to leave out? Just continue."
             : `Your dinners leave out ${EXCLUSION_CHOICES.filter((c) => excluded.has(c.key))
                 .map((c) => (c.key === "vegetarian" ? "meat and fish" : c.label.replace("No ", "")))
-                .join(", ")}.`}
+                .join(", ")
+                .replace(/, ([^,]*)$/, " and $1")}.`}
         </Text>
       </View>
     );

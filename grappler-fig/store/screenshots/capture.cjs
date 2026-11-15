@@ -7,7 +7,7 @@
 // the Train screen saves each session as it would on a phone. That gives ten days of sessions
 // with one rest day, so today's challenge makes a 7-day streak. Today the challenge is filmed
 // mid-round (clock paused while a punch is showing), finished, then one real coach question is
-// asked (one AI call). The scouting screen is the app's own labelled sample report.
+// asked (one AI call) and its drill is loaded on the timer. The scouting screen is the app's own labelled sample report.
 //
 // Usage: node capture.cjs <web-build-dir> <captures-dir> [--keep-token <file>]
 //   --keep-token writes the demo account's token to <file> for retakes; keep it out of the repo.
@@ -136,15 +136,18 @@ async function open(page, url, wait = 2500) {
   await page.waitForTimeout(2500);
   await shoot(page, out("coach.png"));
 
-  // 6. Progress: level and XP, the last 7 days, and the Fight night card.
+  // 6. "Run drill" on the answer loads the coach's drill on the timer, ready to start.
+  await page.getByRole("button", { name: /^Run drill: / }).click();
+  await page.waitForTimeout(2500);
+  await scroll(36); // the "Run a scouted plan" heading clears the tab bar
+  await shoot(page, out("train-drill.png"));
+
+  // 7. Progress: level and XP, the last 7 days, and the Fight night card.
   await open(page, server.url + "/progress", 5000); // a 7-day streak plays the confetti once
   await shoot(page, out("progress.png"));
-  await scroll(330);
-  await shoot(page, out("progress-card.png"));
 
-  // 7. Scout: the sample report the app ships with (no photo of a real person is used).
+  // 8. Scout: the sample report the app ships with (no photo of a real person is used).
   await open(page, server.url + "/scout");
-  await shoot(page, out("scout.png"));
   await page.getByText("Sample: southpaw partner", { exact: true }).first().click();
   await page.waitForTimeout(2500);
   await shoot(page, out("scout-sample.png"));
