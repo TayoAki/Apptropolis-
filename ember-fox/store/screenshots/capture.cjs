@@ -104,6 +104,15 @@ async function moveTo(page, time) {
     if (process.env.DEBUG_SHOTS) {
       const t = await page.evaluate(() => document.body.innerText.slice(0, 60).replace(/\n/g, " | "));
       console.error("reload", time.toISOString(), JSON.stringify(t));
+      if (!t) {
+        const info = await page.evaluate(() => ({ html: document.documentElement.outerHTML.length, root: document.getElementById("root")?.innerHTML.length, ls: Object.keys(localStorage), now: new Date().toString() }));
+        console.error("blank info", JSON.stringify(info));
+        await page.waitForTimeout(4000);
+        console.error("after 4s", JSON.stringify(await page.evaluate(() => document.body.innerText.slice(0, 60))));
+        await page.reload({ waitUntil: "networkidle" });
+        await page.waitForTimeout(2000);
+        console.error("after 2nd reload", JSON.stringify(await page.evaluate(() => document.body.innerText.slice(0, 60))));
+      }
     }
   }
 }

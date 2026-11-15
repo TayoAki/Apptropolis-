@@ -12,45 +12,83 @@
   "shots": [
     {
       "file": "01-one-verse",
-      "headline": ["One verse.", "Then put it *down*."],
+      "headline": [
+        "One verse.",
+        "Then put it *down*."
+      ],
       "sub": "A single verse on a calm card. Twenty well-known verses carry a short study note.",
       "capture": "captures/read-note.png"
     },
     {
       "file": "02-right-where-you-left-off",
-      "headline": ["Right where", "you *left off*"],
+      "headline": [
+        "Right where",
+        "you *left off*"
+      ],
       "sub": "One quiet reminder a day. Your verse waits right where you stopped.",
       "capture": "captures/chapter-left-off.png",
-      "callout": { "crop": [12, 774, 416, 24], "scale": 1.25 }
+      "callout": {
+        "crop": [
+          22,
+          775,
+          180,
+          22
+        ],
+        "scale": 2.4
+      }
     },
     {
       "file": "03-the-whole-bible",
-      "headline": ["The *whole*", "Bible"],
+      "headline": [
+        "The *whole*",
+        "Bible"
+      ],
       "sub": "All 66 books of the World English Bible. Jump to any book, chapter or verse.",
       "capture": "captures/picker-books.png"
     },
     {
       "file": "04-share-a-card",
-      "headline": ["Share a verse", "as a *card*"],
+      "headline": [
+        "Share a verse",
+        "as a *card*"
+      ],
       "sub": "Send it as an image to someone who needs it today.",
-      "capture": "captures/share-card.png"
+      "capture": "captures/share-card.png",
+      "callout": {
+        "crop": [
+          16,
+          205,
+          408,
+          272
+        ],
+        "scale": 1.1
+      }
     },
     {
       "file": "05-find-any-passage",
-      "headline": ["Find any", "*passage*"],
+      "headline": [
+        "Find any",
+        "*passage*"
+      ],
       "sub": "Type Psalm 23, John 3:16 or just Romans, and read on from there.",
       "capture": "captures/search-reference.png"
     },
     {
       "file": "06-search-every-word",
-      "headline": ["Search every", "*word*"],
+      "headline": [
+        "Search every",
+        "*word*"
+      ],
       "sub": "Every match in the whole Bible, with the words highlighted.",
       "capture": "captures/search-keywords.png",
       "pill": "Premium"
     },
     {
       "file": "07-folders",
-      "headline": ["Folders for", "your *verses*"],
+      "headline": [
+        "Folders for",
+        "your *verses*"
+      ],
       "sub": "Keep saved verses together, like Comfort and Promises.",
       "capture": "captures/saved-folder.png",
       "pill": "Premium"
