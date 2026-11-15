@@ -206,7 +206,8 @@ async function main() {
   await shoot(page, out("shop-week2.png"));
   await page.getByRole("button", { name: "Price history" }).click();
   await page.waitForTimeout(500);
-  await scrollTo(page.getByRole("button", { name: "Price history" }), 150);
+  // The list is short enough to end here: start the screen on a whole row (the broccoli).
+  await scrollTo(page.getByRole("checkbox", { name: /^Broccoli florets/ }), 0);
   await shoot(page, out("price-history.png"));
   await note("history", page.getByRole("button", { name: "Price history" }));
 

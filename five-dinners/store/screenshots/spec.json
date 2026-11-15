@@ -1,0 +1,160 @@
+{
+  "out": ".",
+  "theme": {
+    "bgTop": "#FBF6E8",
+    "bgBottom": "#E8D6B3",
+    "text": "#2A1F16",
+    "muted": "#675946",
+    "accent": "#994000",
+    "pill": "#4D6220",
+    "onPill": "#FFFFFF"
+  },
+  "shots": [
+    {
+      "file": "01-five-dinners-for-your-household",
+      "headline": [
+        "Five dinners for",
+        "your *household*"
+      ],
+      "sub": "Say who's eating, your budget and what you skip. The week comes back planned.",
+      "capture": "captures/week1.png",
+      "callout": {
+        "crop": [
+          16,
+          96,
+          408,
+          226
+        ],
+        "scale": 1.06
+      }
+    },
+    {
+      "file": "02-one-list-in-whole-packs",
+      "headline": [
+        "One list, in",
+        "*whole packs*"
+      ],
+      "sub": "Every pack as it sits on the shelf, with what the week uses and what's left over.",
+      "capture": "captures/shop-ticking.png",
+      "callout": {
+        "crop": [
+          8,
+          414,
+          424,
+          92
+        ],
+        "scale": 1.1
+      }
+    },
+    {
+      "file": "03-next-week-starts-with-whats-left",
+      "headline": [
+        "Next week starts",
+        "with *what's left*"
+      ],
+      "sub": "Leftover chicken and eggs go in first.",
+      "capture": "captures/week2.png",
+      "pill": "Unlimited",
+      "callout": {
+        "crop": [
+          16,
+          462,
+          408,
+          258
+        ],
+        "scale": 1.06
+      }
+    },
+    {
+      "file": "04-know-whats-left-in-every-pack",
+      "headline": [
+        "Know what's left",
+        "in every *pack*"
+      ],
+      "sub": "Mark a dinner cooked and each pack goes down by what it used.",
+      "capture": "captures/cook-midweek.png",
+      "callout": {
+        "crop": [
+          66,
+          284,
+          356,
+          134
+        ],
+        "scale": 1.15
+      }
+    },
+    {
+      "file": "05-swap-a-dinner",
+      "headline": [
+        "Swap a dinner,",
+        "see the *change*"
+      ],
+      "sub": "Each option shows what it adds to or takes off this week's list.",
+      "capture": "captures/week1-swap.png",
+      "callout": {
+        "crop": [
+          16,
+          98,
+          408,
+          270
+        ],
+        "scale": 1.05
+      }
+    },
+    {
+      "file": "06-every-recipe-scaled-for-four",
+      "headline": [
+        "Every recipe",
+        "scaled for *four*"
+      ],
+      "sub": "Cups, spoons and cans for your table, plus the packs each dinner uses.",
+      "capture": "captures/recipe.png",
+      "callout": {
+        "crop": [
+          16,
+          334,
+          408,
+          282
+        ],
+        "scale": 1.05
+      }
+    },
+    {
+      "file": "07-leave-out-what-you-dont-eat",
+      "headline": [
+        "Leave out what",
+        "you *don't eat*"
+      ],
+      "sub": "No pork, no fish, no nuts: every plan and every swap skips them.",
+      "capture": "captures/onboarding-foods.png",
+      "callout": {
+        "crop": [
+          8,
+          156,
+          424,
+          160
+        ],
+        "scale": 1.08
+      }
+    },
+    {
+      "file": "08-what-you-paid-shop-by-shop",
+      "headline": [
+        "What you paid,",
+        "*shop by shop*"
+      ],
+      "sub": "Shelf prices against the estimate.",
+      "capture": "captures/price-history.png",
+      "pill": "Unlimited",
+      "callout": {
+        "crop": [
+          8,
+          407,
+          424,
+          262
+        ],
+        "scale": 1.06
+      }
+    }
+  ]
+}
