@@ -8,105 +8,79 @@ import { EmptyState, LoadingState } from "../../components/EmptyState";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { DinnerCard, type LeftLine } from "../../components/cook/DinnerCard";
 import { track } from "../../data/analytics";
-import { useCollection } from "../../data/repo";
+import { cookDinner, rateDinner, uncookDinner, usePlanData } from "../../data/plan";
+import { remainingStock } from "../../data/planner";
 import { usePurchases } from "../../data/purchases";
 import {
+  MINOR_PACKS,
   PACKS,
-  buildBasket,
+  addDays,
+  dayName,
+  dinnerDate,
+  formatLeftover,
+  formatLongDate,
   formatQty,
   getRecipe,
-  scaleQty,
-  weekStartOf,
-  type PantryItem,
+  round2,
   type PlanDinner,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-/** Seasonings and cooking oil: too small to be worth tracking as leftovers. */
-const SKIP = new Set(["oil", "onion", "garlic", "stock", "cumin", "paprika", "curry"]);
-
-function carryLabel(key: string, amount: number): string {
-  const pack = PACKS[key]!;
-  if (pack.unit === "each") return formatQty(pack, amount);
-  return `${formatQty(pack, amount)} ${pack.name.toLowerCase()}`;
-}
+/** Seasonings, oil and onions: too small or too everyday to list as leftovers. */
+const SKIP = MINOR_PACKS;
 
 export default function CookScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const dinnerData = useCollection<PlanDinner>("plan_dinners");
-  const pantryData = useCollection<PantryItem>("pantry_items");
+  const { plan, status, dinners, planPantry: pantry, loading } = usePlanData();
   const { isPremium, openPaywall } = usePurchases();
 
-  const week = weekStartOf();
-  const loading = dinnerData.loading || pantryData.loading;
-
-  const dinners = useMemo(
-    () =>
-      dinnerData.items
-        .filter((d) => d.weekStart === week)
-        .sort((a, b) => a.dayIndex - b.dayIndex),
-    [dinnerData.items, week],
-  );
-
   const { leftByDinner, carry } = useMemo(() => {
-    const inputs = dinners.map((d) => ({ recipeId: d.recipeId, servings: d.servings }));
-    const basket = buildBasket(inputs, pantryData.items);
-    const total = new Map<string, number>();
-    const remaining = new Map<string, number>();
-    for (const line of basket) {
-      const available = line.inCupboard + line.packs * line.pack.size;
-      total.set(line.pack.key, available);
-      remaining.set(line.pack.key, available);
-    }
-
+    const { lines, available } = remainingStock(dinners, pantry);
+    // Walk the cooked dinners in order, taking what each one used from the packs.
+    const remaining = new Map(available);
     const leftByDinner: Record<string, LeftLine[]> = {};
     for (const d of dinners) {
       if (!d.cooked) continue;
-      const recipe = getRecipe(d.recipeId);
-      if (!recipe) continue;
       const lines: LeftLine[] = [];
-      for (const [key, per] of recipe.ingredients) {
+      for (const [key, used] of Object.entries(d.used ?? {})) {
         const pack = PACKS[key];
-        if (!pack) continue;
-        const used = scaleQty(pack, per, d.servings);
-        const rem = Math.max(0, (remaining.get(key) ?? 0) - used);
+        const have = available.get(key) ?? 0;
+        if (!pack || !remaining.has(key)) continue;
+        const rem = Math.max(0, round2(remaining.get(key)! - used));
         remaining.set(key, rem);
-        const available = total.get(key) ?? 0;
-        if (SKIP.has(key) || available <= 0) continue;
+        if (SKIP.has(key) || have <= 0) continue;
         lines.push({
           key,
           name: pack.name,
-          amount: `${formatQty(pack, rem)} of ${formatQty(pack, available)}`,
-          pct: (rem / available) * 100,
+          amount: `${formatQty(pack, rem)} of ${formatQty(pack, have)}`,
+          pct: (rem / have) * 100,
         });
       }
       leftByDinner[d.id] = lines.slice(0, 3);
     }
 
+    // Once all five are cooked, this is what goes into the cupboard for next week.
     const carry: string[] = [];
-    for (const line of basket) {
-      if (SKIP.has(line.pack.key) || line.leftover <= 0) continue;
-      const fromPantry = pantryData.items.some(
-        (p) => p.confirmed && p.ingredient === line.pack.name && !p.isStaple,
-      );
-      if (line.packs > 0 || fromPantry) carry.push(carryLabel(line.pack.key, line.leftover));
+    for (const line of lines) {
+      if (SKIP.has(line.pack.key) || line.leftover <= 0 || line.pack.staple) continue;
+      carry.push(formatLeftover(line.pack.key, line.leftover));
     }
     return { leftByDinner, carry: carry.slice(0, 8) };
-  }, [dinners, pantryData.items]);
+  }, [dinners, pantry]);
 
   const cookedCount = dinners.filter((d) => d.cooked).length;
   const nextId = dinners.find((d) => !d.cooked)?.id;
   const allCooked = dinners.length > 0 && cookedCount === dinners.length;
+  const ended = status === "ended";
 
   const markCooked = (d: PlanDinner) => {
-    void dinnerData.update(d.id, { cooked: true, liked: true });
+    void cookDinner(d.id);
     track("dinner_cooked", { recipe: d.recipeId });
   };
-  const toggleLiked = (d: PlanDinner) => {
-    void dinnerData.update(d.id, { liked: !d.liked });
-    track("dinner_rated", { liked: !d.liked });
+  const rate = (d: PlanDinner, rating: PlanDinner["rating"]) => {
+    void rateDinner(d.id, rating);
+    track("dinner_rated", { liked: rating === "up" });
   };
 
   const pennyMood = allCooked ? "happy" : carry.length > 0 ? "half-full" : "neutral";
@@ -128,21 +102,23 @@ export default function CookScreen() {
       <ScreenHeader
         title="Cook"
         subtitle={
-          dinners.length === 0
+          dinners.length === 0 || !plan
             ? undefined
-            : allCooked
-              ? "All five cooked. Here's what carries over."
-              : `${cookedCount} of ${dinners.length} cooked this week`
+            : ended
+              ? `This plan ended ${formatLongDate(addDays(plan.weekStart, 6))}`
+              : allCooked
+                ? `All ${dinners.length} cooked. Here's what carries over.`
+                : `${cookedCount} of ${dinners.length} cooked this week`
         }
       />
 
       {loading ? (
         <LoadingState label="Loading this week's dinners" />
-      ) : dinners.length === 0 ? (
+      ) : dinners.length === 0 || !plan ? (
         <EmptyState
           icon="flame-outline"
           title="No dinners to cook yet"
-          body="Plan your five dinners on the Week tab and they'll line up here, Monday to Friday."
+          body="Plan your five dinners on the Week tab and they'll line up here, one for each weekday."
           actionLabel="Plan this week"
           onAction={() => router.push("/")}
         />
@@ -156,11 +132,11 @@ export default function CookScreen() {
               paddingVertical: theme.spacing.sm,
             }}
           >
-            {dinners.map((d, i) => (
+            {dinners.map((d) => (
               <View
                 key={d.id}
                 accessible
-                accessibilityLabel={`${DAY_LABELS[d.dayIndex - 1] ?? DAY_LABELS[i]}: ${d.cooked ? "cooked" : "not cooked yet"}`}
+                accessibilityLabel={`${dayName(dinnerDate(plan.weekStart, d.dayIndex))}: ${d.cooked ? "cooked" : "not cooked yet"}`}
                 style={{ alignItems: "center", gap: theme.spacing.xs + 2 }}
               >
                 <View
@@ -187,29 +163,29 @@ export default function CookScreen() {
                     fontWeight: d.cooked ? theme.font.weight.bold : theme.font.weight.regular,
                   }}
                 >
-                  {DAY_LABELS[d.dayIndex - 1] ?? DAY_LABELS[i]}
+                  {dayName(dinnerDate(plan.weekStart, d.dayIndex))}
                 </Text>
               </View>
             ))}
           </View>
 
-          {dinners.map((d, i) => {
+          {dinners.map((d) => {
             const recipe = getRecipe(d.recipeId);
             const name = recipe?.name ?? "Dinner";
             return (
               <DinnerCard
                 key={d.id}
-                day={DAY_LABELS[d.dayIndex - 1] ?? DAY_LABELS[i] ?? ""}
+                day={dayName(dinnerDate(plan.weekStart, d.dayIndex))}
                 dinner={d}
                 name={name}
                 minutes={recipe?.minutes ?? 30}
                 state={d.cooked ? "cooked" : d.id === nextId ? "next" : "later"}
                 left={leftByDinner[d.id] ?? []}
-                onOpen={() => router.push(`/recipe/${d.recipeId}`)}
-                onStart={() => router.push(`/recipe/${d.recipeId}`)}
+                onOpen={() => router.push(`/recipe/${d.id}`)}
+                onStart={() => router.push(`/recipe/${d.id}`)}
                 onMarkCooked={() => markCooked(d)}
-                onToggleLiked={() => toggleLiked(d)}
-                onUndo={() => void dinnerData.update(d.id, { cooked: false })}
+                onRate={(rating) => rate(d, rating)}
+                onUndo={() => void uncookDinner(d.id)}
               />
             );
           })}
@@ -281,12 +257,14 @@ export default function CookScreen() {
                       fontSize: theme.font.size.body,
                     }}
                   >
-                    These go into next Sunday's plan.
+                    {ended
+                      ? "These are in your cupboard now, and next week's plan starts with them."
+                      : "When the week ends these go into your cupboard, and next week's plan starts with them."}
                   </Text>
                 ) : (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Unlock leftover carry-over with Premium"
+                    accessibilityLabel="Unlock next week planned around these"
                     onPress={openPaywall}
                     hitSlop={8}
                     style={({ pressed }) => ({
@@ -307,7 +285,7 @@ export default function CookScreen() {
                         fontWeight: theme.font.weight.medium,
                       }}
                     >
-                      Plan next Sunday around these
+                      Plan next week around these
                     </Text>
                   </Pressable>
                 )

@@ -9,28 +9,31 @@ import { useAppState } from "../data/app-state";
 import { appInfo } from "../data/app-info";
 import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
-import { useCollection } from "../data/repo";
+import { applyAnswersToPlan, setStaple, usePlanData } from "../data/plan";
+import type { Replacement } from "../data/planner";
 import {
-  HOME_STORE,
+  EXCLUSION_CHOICES,
+  MAX_SERVINGS,
   PACK_LIST,
+  PRICE_SOURCE,
+  PRICE_SOURCE_LINE,
   RECIPES,
-  STORES,
   addDays,
   formatLongDate,
-  parseBudget,
-  parseServings,
-  todayISO,
-  weekStartOf,
-  type PantryItem,
+  getRecipe,
+  readHousehold,
 } from "../data/schema";
 import { useAppearance, useTheme } from "../theme/ThemeProvider";
 
-const EXCLUSIONS: { key: string; label: string }[] = [
-  { key: "pork", label: "No pork" },
-  { key: "mushrooms", label: "No mushrooms" },
-  { key: "fish", label: "No fish" },
-  { key: "nuts", label: "No nuts" },
-];
+const BUDGET_STEP = 5;
+const MIN_BUDGET = 10;
+const MAX_BUDGET = 200;
+
+function describeSwaps(swaps: Replacement[]): string {
+  return swaps
+    .map((s) => `${getRecipe(s.from)?.name ?? "A dinner"} is now ${getRecipe(s.to)?.name ?? "another dinner"}`)
+    .join(". ");
+}
 
 const REMINDER_TIMES: [number, number][] = [
   [8, 0],
@@ -317,29 +320,48 @@ export default function SettingsScreen() {
   const purchases = usePurchases();
   const reminder = useReminder();
   const [appearance, setAppearance] = useAppearance();
-  const pantry = useCollection<PantryItem>("pantry_items");
+  const planData = usePlanData();
+  const pantry = { items: planData.pantry, loading: planData.loading };
 
-  const [storeOpen, setStoreOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
+  const [planNote, setPlanNote] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
-  const servings = answers.servings ? Math.min(5, Math.max(1, parseServings(answers.servings))) : 2;
-  const budget = answers.weeklybudget ? parseBudget(answers.weeklybudget) : 25;
-  const store = answers.store || HOME_STORE;
+  const household = readHousehold(answers);
+  const servings = household.servings;
+  const budget = household.budget;
   const excluded = (answers.excluded ?? "").split(",").filter(Boolean);
-  const vegNights = Math.min(5, Math.max(0, parseInt(answers.vegnights ?? "0", 10) || 0));
+  const allVegetarian = excluded.includes("vegetarian");
+  const vegNights = household.vegNights;
   const hasSetupAnswers = Boolean(answers.servings || answers.weeklybudget);
 
   const staples = pantry.items.filter((p) => p.isStaple);
   const missingStaples = PACK_LIST.filter(
-    (pack) => pack.staple && !staples.some((s) => s.ingredient === pack.name),
+    (pack) => pack.staple && !staples.some((s) => s.packKey === pack.key),
   );
+
+  /** Save an answer and apply it to the plan this week, so it changes what the app does now. */
+  async function change(key: string, value: string) {
+    await setAnswer(key, value);
+    const swaps = await applyAnswersToPlan({ ...answers, [key]: value }, purchases.isPremium);
+    if (key === "servings" && planData.status === "active") {
+      setPlanNote(
+        `This week's dinners not cooked yet are now for ${value}.${swaps.length ? ` ${describeSwaps(swaps)}.` : ""}`,
+      );
+    } else if (swaps.length) {
+      setPlanNote(`${describeSwaps(swaps)}.`);
+    } else if (planData.status === "active" && key !== "weeklybudget") {
+      setPlanNote("This week's plan already fits.");
+    } else {
+      setPlanNote(null);
+    }
+  }
 
   function toggleExclusion(key: string) {
     const next = excluded.includes(key) ? excluded.filter((k) => k !== key) : [...excluded, key];
-    void setAnswer("excluded", next.join(","));
+    void change("excluded", next.join(","));
   }
 
   async function toggleReminder(on: boolean) {
@@ -369,17 +391,21 @@ export default function SettingsScreen() {
   }
 
   const defaultOffer = purchases.offers.find((o) => o.id === purchases.defaultOfferId);
-  // A one-off purchase has nothing to manage in the store's subscription settings.
+  // A one-time purchase has nothing to manage in the store's subscription settings.
   const activeIsOneOff = purchases.activeOffer
-    ? purchases.activeOffer.period === "lifetime" ||
-      /one-?off|one-time/i.test(purchases.activeOffer.label)
+    ? purchases.activeOffer.period === "lifetime"
     : false;
   const manageUrl =
     Platform.OS === "ios"
       ? "https://apps.apple.com/account/subscriptions"
       : "https://play.google.com/store/account/subscriptions";
   const hasLegal = Boolean(appInfo.supportEmail || appInfo.privacyUrl || appInfo.termsUrl);
-  const freeEnds = formatLongDate(addDays(weekStartOf(todayISO()), 6));
+  const freeLastDay = planData.firstPlan ? formatLongDate(addDays(planData.firstPlan.weekStart, 6)) : "";
+  const freeLine = !planData.firstPlan
+    ? "Free week · starts with your first plan"
+    : planData.inFreeWeek
+      ? `Free week · ends ${freeLastDay}`
+      : `Free week ended ${freeLastDay}`;
 
   const linkRow = (label: string, icon: React.ComponentProps<typeof Ionicons>["name"], url: string) => (
     <Pressable
@@ -446,9 +472,9 @@ export default function SettingsScreen() {
               label="Cooking for"
               value={String(servings)}
               canDecrease={servings > 1}
-              canIncrease={servings < 5}
-              onDecrease={() => void setAnswer("servings", String(servings - 1))}
-              onIncrease={() => void setAnswer("servings", String(servings + 1))}
+              canIncrease={servings < MAX_SERVINGS}
+              onDecrease={() => void change("servings", String(servings - 1))}
+              onIncrease={() => void change("servings", String(servings + 1))}
             />
           </View>
           <View style={{ gap: theme.spacing.xs }}>
@@ -466,15 +492,19 @@ export default function SettingsScreen() {
               <Stepper
                 noun="budget"
                 label="Dinner budget for the week"
-                value={`£${Math.round(budget)}`}
-                canDecrease={budget > 10}
-                canIncrease={budget < 100}
-                onDecrease={() => void setAnswer("weeklybudget", `£${Math.max(10, budget - 5)}`)}
-                onIncrease={() => void setAnswer("weeklybudget", `£${Math.min(100, budget + 5)}`)}
+                value={`$${Math.round(budget)}`}
+                canDecrease={budget > MIN_BUDGET}
+                canIncrease={budget < MAX_BUDGET}
+                onDecrease={() =>
+                  void change("weeklybudget", `$${Math.max(MIN_BUDGET, Math.round(budget) - BUDGET_STEP)}`)
+                }
+                onIncrease={() =>
+                  void change("weeklybudget", `$${Math.min(MAX_BUDGET, Math.round(budget) + BUDGET_STEP)}`)
+                }
               />
             </View>
             <Body muted size={note}>
-              For the five dinners, not the whole shop.
+              For the five dinners, not the whole shop. Next week's plan is chosen to fit it.
             </Body>
           </View>
           {hasSetupAnswers ? (
@@ -487,33 +517,33 @@ export default function SettingsScreen() {
           ) : null}
         </Section>
 
+        {planNote ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{
+              color: theme.colors.text,
+              fontSize: note,
+              fontFamily: theme.font.family,
+              backgroundColor: theme.colors.surfaceAlt,
+              borderRadius: theme.radius.md,
+              padding: theme.spacing.sm + 4,
+            }}
+          >
+            {planNote}
+          </Text>
+        ) : null}
+
         <View style={{ gap: theme.spacing.sm }}>
           <Section title="Prices">
-            <NavRow
-              label="Home store"
-              value={store}
-              expanded={storeOpen}
-              onPress={() => setStoreOpen((v) => !v)}
-            />
-            {storeOpen ? (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                {STORES.map((s) => (
-                  <Chip
-                    key={s}
-                    label={s}
-                    selected={s === store}
-                    tone="primary"
-                    onPress={() => {
-                      void setAnswer("store", s);
-                      setStoreOpen(false);
-                    }}
-                  />
-                ))}
-              </View>
-            ) : null}
+            <View style={{ minHeight: 44, justifyContent: "center", gap: 2 }}>
+              <Body>Aldi · ZIP {PRICE_SOURCE.zip}</Body>
+              <Body muted size={note}>
+                {PRICE_SOURCE.area}
+              </Body>
+            </View>
           </Section>
           {small(
-            "Prices are checked by hand and dated. Aldi prices can vary in Scotland, Wales, Aldi Local and online.",
+            `${PRICE_SOURCE_LINE} Meat and zucchini are sold by weight, so those prices are aldi.us estimates per pack. Paid prices you log are kept in Price history.`,
           )}
         </View>
 
@@ -524,25 +554,23 @@ export default function SettingsScreen() {
             <View style={{ gap: theme.spacing.sm }}>
               {staples.length === 0 ? (
                 <Body muted>
-                  No staples yet. Add the oil, rice and tins you always have so they never land on
-                  the shopping list.
+                  No staples yet. Add the oil, rice and cans you keep in stock so they come off the
+                  shopping list.
                 </Body>
               ) : null}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                {staples.map((item) => (
-                  <Chip
-                    key={item.id}
-                    label={item.ingredient}
-                    selected={item.confirmed}
-                    accessibilityLabel={`${item.ingredient}, ${item.confirmed ? "in the cupboard" : "not in the cupboard"}`}
-                    onPress={() =>
-                      void pantry.update(item.id, {
-                        confirmed: !item.confirmed,
-                        updatedAt: todayISO(),
-                      })
-                    }
-                  />
-                ))}
+                {staples.map((item) => {
+                  const on = item.confirmed && item.quantity > 0;
+                  return (
+                    <Chip
+                      key={item.id}
+                      label={item.ingredient}
+                      selected={on}
+                      accessibilityLabel={`${item.ingredient}, ${on ? "in the cupboard" : "not in the cupboard"}`}
+                      onPress={() => void setStaple(item.packKey, !on)}
+                    />
+                  );
+                })}
                 {missingStaples.length > 0 ? (
                   <Chip
                     label={addOpen ? "Done" : "Add staple"}
@@ -559,17 +587,7 @@ export default function SettingsScreen() {
                       label={pack.name}
                       icon="add"
                       accessibilityLabel={`Add ${pack.name} as a staple`}
-                      onPress={() =>
-                        void pantry.add({
-                          ingredient: pack.name,
-                          quantity: pack.size,
-                          unit: pack.unit,
-                          isStaple: true,
-                          fromWeek: "",
-                          confirmed: true,
-                          updatedAt: todayISO(),
-                        })
-                      }
+                      onPress={() => void setStaple(pack.key, true)}
                     />
                   ))}
                 </View>
@@ -580,7 +598,7 @@ export default function SettingsScreen() {
 
         <Section title="Foods we don't eat">
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            {EXCLUSIONS.map((e) => (
+            {EXCLUSION_CHOICES.map((e) => (
               <Chip
                 key={e.key}
                 label={e.label}
@@ -590,27 +608,32 @@ export default function SettingsScreen() {
               />
             ))}
           </View>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: theme.spacing.sm,
-            }}
-          >
-            <View style={{ flexShrink: 1 }}>
-              <Body>Vegetarian nights</Body>
+          {allVegetarian ? null : (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: theme.spacing.sm,
+              }}
+            >
+              <View style={{ flexShrink: 1 }}>
+                <Body>Vegetarian nights</Body>
+              </View>
+              <Stepper
+                noun="vegetarian nights"
+                label="Vegetarian nights a week"
+                value={vegNights === 0 ? "None" : String(vegNights)}
+                canDecrease={vegNights > 0}
+                canIncrease={vegNights < 5}
+                onDecrease={() => void change("vegnights", String(vegNights - 1))}
+                onIncrease={() => void change("vegnights", String(vegNights + 1))}
+              />
             </View>
-            <Stepper
-              noun="vegetarian nights"
-              label="Vegetarian nights a week"
-              value={vegNights === 0 ? "None" : String(vegNights)}
-              canDecrease={vegNights > 0}
-              canIncrease={vegNights < 3}
-              onDecrease={() => void setAnswer("vegnights", String(vegNights - 1))}
-              onIncrease={() => void setAnswer("vegnights", String(vegNights + 1))}
-            />
-          </View>
+          )}
+          <Body muted size={note}>
+            Dinners not cooked yet are swapped to fit straight away.
+          </Body>
         </Section>
 
         <Section title="Plan reminder">
@@ -662,7 +685,7 @@ export default function SettingsScreen() {
             </Body>
           ) : (
             <Body muted size={note}>
-              Repeats every day at this time, so Sunday planning never slips by.
+              Repeats every day at this time, so planning never slips by.
             </Body>
           )}
         </Section>
@@ -671,10 +694,10 @@ export default function SettingsScreen() {
           <View style={{ minHeight: 44, justifyContent: "center" }}>
             {purchases.isPremium ? (
               <Body weight="500">
-                Premium{purchases.activeOffer ? ` · ${purchases.activeOffer.label}` : ""}
+                {purchases.activeOffer ? purchases.activeOffer.label : "Premium"} · paid once
               </Body>
             ) : (
-              <Body>Free week · ends {freeEnds}</Body>
+              <Body>{freeLine}</Body>
             )}
           </View>
           {purchases.isPremium ? (
@@ -699,7 +722,7 @@ export default function SettingsScreen() {
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Keep cooking, see the one-off offer"
+              accessibilityLabel="Unlimited weekly plans, see the one-time offer"
               onPress={() => purchases.openPaywall()}
               style={({ pressed }) => ({
                 minHeight: 44,
@@ -719,7 +742,7 @@ export default function SettingsScreen() {
                   fontFamily: theme.font.family,
                 }}
               >
-                Keep cooking{defaultOffer ? ` — ${defaultOffer.price} one-off` : ""}
+                Unlimited weekly plans{defaultOffer ? ` — ${defaultOffer.price} once` : ""}
               </Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
             </Pressable>

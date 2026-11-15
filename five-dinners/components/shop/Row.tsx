@@ -156,7 +156,7 @@ export function ShopRow({
                 paid > 0 && diff < 0 ? { color: theme.colors.success } : null,
               ]}
             >
-              {paid > 0 ? (diff === 0 ? "±£0.00" : formatPriceDiff(diff)) : "Paid?"}
+              {paid > 0 ? (diff === 0 ? "±$0.00" : formatPriceDiff(diff)) : "Paid?"}
             </Text>
           </View>
         ) : (

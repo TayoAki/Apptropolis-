@@ -10,7 +10,7 @@ export interface LeftLine {
   key: string;
   /** The pack, e.g. "Penne". */
   name: string;
-  /** What remains of what there was, e.g. "280 g of 450 g". */
+  /** What remains of what there was, e.g. "4 oz of 1 lb". */
   amount: string;
   /** 0 to 100: how much of the pack is still left. */
   pct: number;
@@ -28,7 +28,7 @@ export function DinnerCard({
   onOpen,
   onStart,
   onMarkCooked,
-  onToggleLiked,
+  onRate,
   onUndo,
 }: {
   day: string;
@@ -40,7 +40,7 @@ export function DinnerCard({
   onOpen: () => void;
   onStart: () => void;
   onMarkCooked: () => void;
-  onToggleLiked: () => void;
+  onRate: (rating: PlanDinner["rating"]) => void;
   onUndo: () => void;
 }) {
   const theme = useTheme();
@@ -93,32 +93,54 @@ export function DinnerCard({
                 <Text style={title}>{name}</Text>
                 <Text style={meta}>{`Cooked · for ${dinner.servings}`}</Text>
               </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  dinner.liked
-                    ? "You liked this dinner. Tap to mark it as not for us"
-                    : "Marked not for us. Tap to mark it as liked"
-                }
-                onPress={onToggleLiked}
-                hitSlop={8}
-                style={({ pressed }) => ({
-                  minHeight: 44,
-                  minWidth: 44,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  gap: theme.spacing.xs,
-                  opacity: pressed ? 0.6 : 1,
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                {dinner.rating === "down" ? (
+                  <Text style={meta}>Not for us</Text>
+                ) : null}
+                {(["up", "down"] as const).map((value) => {
+                  const on = dinner.rating === value;
+                  if (dinner.rating && !on) return null;
+                  return (
+                    <Pressable
+                      key={value}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={
+                        on
+                          ? value === "up"
+                            ? "You liked this dinner. Tap to clear"
+                            : "Marked not for us. Tap to clear"
+                          : value === "up"
+                            ? "Liked it"
+                            : "Not for us"
+                      }
+                      onPress={() => onRate(on ? "" : value)}
+                      hitSlop={6}
+                      style={({ pressed }) => ({
+                        minHeight: 44,
+                        minWidth: 40,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: pressed ? 0.6 : 1,
+                      })}
+                    >
+                      <Ionicons
+                        name={
+                          value === "up"
+                            ? on
+                              ? "thumbs-up"
+                              : "thumbs-up-outline"
+                            : on
+                              ? "thumbs-down"
+                              : "thumbs-down-outline"
+                        }
+                        size={24}
+                        color={on ? theme.colors.primary : theme.colors.textMuted}
+                      />
+                    </Pressable>
+                  );
                 })}
-              >
-                <Ionicons
-                  name={dinner.liked ? "thumbs-up" : "thumbs-down-outline"}
-                  size={24}
-                  color={dinner.liked ? theme.colors.primary : theme.colors.textMuted}
-                />
-                {!dinner.liked ? <Text style={meta}>Not for us</Text> : null}
-              </Pressable>
+              </View>
             </View>
 
             {left.length > 0 ? (

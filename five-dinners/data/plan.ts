@@ -14,10 +14,12 @@ import {
   addDays,
   basketTotal,
   buildBasket,
+  cupboardStock,
   dinnerCosts,
   dinnerUsage,
   formatPackSize,
   getRecipe,
+  pantryFromSnapshot,
   readHousehold,
   todayISO,
   type BasketLine,
@@ -73,7 +75,11 @@ async function writeCupboard(plan: WeekPlan, dinners: PlanDinner[], pantry: Pant
   for (const id of changes.remove) await repo.remove(PANTRY, id);
   for (const item of changes.put) await repo.put(PANTRY, item);
   for (const item of changes.add) await repo.put(PANTRY, { ...item, id: newId() });
-  await repo.put(PLANS, { ...plan, closed: true });
+  await repo.put(PLANS, {
+    ...plan,
+    closed: true,
+    cupboardAtClose: Object.fromEntries(cupboardStock(pantry)),
+  });
 }
 
 /** Write the current plan's leftovers into the cupboard once its seven days are over. */
@@ -315,6 +321,25 @@ export function savePaidPrice(plan: WeekPlan, line: BasketLine, amount: number) 
   });
 }
 
+let cleaned: Promise<void> | null = null;
+/**
+ * Earlier builds seeded a demo week (UK packs, no plan ids). Those rows match nothing in the
+ * current catalogue, so they are cleared once rather than shown as someone's leftovers.
+ */
+function clearLegacyRows(): Promise<void> {
+  cleaned ??= exclusive(async () => {
+    const [dinners, pantry, checks] = await Promise.all([
+      repo.list<PlanDinner>(DINNERS),
+      repo.list<PantryItem>(PANTRY),
+      repo.list<PriceCheck>(CHECKS),
+    ]);
+    for (const d of dinners) if (!d.planId) await repo.remove(DINNERS, d.id);
+    for (const p of pantry) if (!p.packKey || !PACKS[p.packKey]) await repo.remove(PANTRY, p.id);
+    for (const c of checks) if (!c.planId) await repo.remove(CHECKS, c.id);
+  });
+  return cleaned;
+}
+
 /** The current plan and everything priced from it: the one source for every screen's numbers. */
 export function usePlanData() {
   const plansCol = useCollection<WeekPlan>(PLANS);
@@ -333,13 +358,18 @@ export function usePlanData() {
     [plan, dinnersCol.items],
   );
   const pantry = pantryCol.items;
+  // A closed plan stays priced against the cupboard it was planned with, not today's.
+  const planPantry = useMemo(
+    () => (plan?.closed && plan.cupboardAtClose ? pantryFromSnapshot(plan.cupboardAtClose) : pantry),
+    [plan, pantry],
+  );
   const inputs = useMemo(
     () => dinners.map((d) => ({ recipeId: d.recipeId, servings: d.servings })),
     [dinners],
   );
-  const lines = useMemo(() => buildBasket(inputs, pantry), [inputs, pantry]);
+  const lines = useMemo(() => buildBasket(inputs, planPantry), [inputs, planPantry]);
   const total = basketTotal(lines);
-  const costs = useMemo(() => dinnerCosts(inputs, pantry), [inputs, pantry]);
+  const costs = useMemo(() => dinnerCosts(inputs, planPantry), [inputs, planPantry]);
   const costOf = (dinnerId: string) => costs[dinners.findIndex((d) => d.id === dinnerId)] ?? 0;
 
   const leftovers = pantry.filter((p) => !p.isStaple && p.fromWeek && p.quantity > 0);
@@ -349,6 +379,10 @@ export function usePlanData() {
   // The free week is the first plan's seven days.
   const freeWeekEnds = firstPlan ? planEnds(firstPlan) : "";
   const inFreeWeek = Boolean(firstPlan) && today < freeWeekEnds;
+
+  useEffect(() => {
+    void clearLegacyRows();
+  }, []);
 
   useEffect(() => {
     if (!loading && plan && status === "ended" && !plan.closed) void closeEndedPlan();
@@ -363,6 +397,7 @@ export function usePlanData() {
     dinners,
     allDinners: dinnersCol.items,
     pantry,
+    planPantry,
     lines,
     total,
     costs,

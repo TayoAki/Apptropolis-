@@ -33,6 +33,7 @@ import {
   formatShortDate,
   getRecipe,
   isAllowed,
+  leftoverSummary,
   readHousehold,
   round2,
   scaleQty,
@@ -59,7 +60,7 @@ function leftoverNote(recipe: Recipe, servings: number, pantry: PantryItem[]): s
 }
 
 function carriedList(items: PantryItem[]): string {
-  return items.map((p) => `${formatPantry(p)} ${p.ingredient.toLowerCase()}`).join(", ");
+  return leftoverSummary(items);
 }
 
 export default function WeekScreen() {
@@ -70,7 +71,7 @@ export default function WeekScreen() {
   const { isPremium, openPaywall } = usePurchases();
   const { ref, share, sharing } = useShareImage();
   const data = usePlanData();
-  const { plan, plans, status, dinners, pantry, lines, total, costs, leftovers, carried, allCooked } =
+  const { plan, plans, status, dinners, pantry, total, costs, leftovers, carried, allCooked } =
     data;
 
   const [openSwap, setOpenSwap] = useState<string | null>(null);
@@ -78,6 +79,7 @@ export default function WeekScreen() {
   const [editBudget, setEditBudget] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [planNote, setPlanNote] = useState<string | null>(null);
+  const [checkInOpen, setCheckInOpen] = useState(false);
 
   const household = readHousehold(answers);
   const budget = household.budget;
@@ -193,6 +195,8 @@ export default function WeekScreen() {
     opacity: pressed ? 0.6 : 1,
   });
 
+  // Before planning, the leftovers are asked about in full; during a week they fold away.
+  const checkInShown = status !== "active" || checkInOpen;
   const checkIn =
     leftovers.length > 0 ? (
       <View
@@ -202,18 +206,37 @@ export default function WeekScreen() {
           overflow: "hidden",
         }}
       >
-        <Text
-          style={{
-            ...base,
-            fontSize: theme.font.size.body,
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`What's left from last week, ${leftovers.length} items. ${checkInShown ? "Hide" : "Check what's still in the cupboard"}`}
+          accessibilityState={{ expanded: checkInShown }}
+          disabled={status !== "active"}
+          onPress={() => setCheckInOpen((v) => !v)}
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "center",
+            gap: theme.spacing.sm,
+            minHeight: 48,
             padding: theme.spacing.md,
-            paddingBottom: theme.spacing.sm,
-          }}
+            paddingBottom: checkInShown ? theme.spacing.sm : theme.spacing.md,
+            opacity: pressed ? 0.7 : 1,
+          })}
         >
-          <Text style={{ fontWeight: theme.font.weight.bold }}>What's left</Text> · Still in the
-          cupboard?
-        </Text>
-        {leftovers.map((item) => {
+          <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body }}>
+            <Text style={{ fontWeight: theme.font.weight.bold }}>What's left</Text>
+            {checkInShown
+              ? " · Still in the cupboard?"
+              : ` · ${leftovers.length} ${leftovers.length === 1 ? "item" : "items"} from last week`}
+          </Text>
+          {status === "active" ? (
+            <Ionicons
+              name={checkInShown ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={theme.colors.textMuted}
+            />
+          ) : null}
+        </Pressable>
+        {(checkInShown ? leftovers : []).map((item) => {
           const pack = PACKS[item.packKey];
           return (
             <View

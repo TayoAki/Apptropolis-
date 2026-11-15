@@ -10,41 +10,39 @@ import { Meter } from "../../components/Meter";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ShopRow } from "../../components/shop/Row";
 import { useAppState } from "../../data/app-state";
+import { savePaidPrice, setReceipt as saveReceipt, setTicked as saveTicked, usePlanData } from "../../data/plan";
 import { useCollection } from "../../data/repo";
 import { usePurchases } from "../../data/purchases";
 import {
-  HOME_STORE,
+  PRICE_SOURCE,
+  PRICE_SOURCE_LINE,
   basketTotal,
-  buildBasket,
   formatPackSize,
   formatPrice,
   formatPriceDiff,
   formatQty,
+  formatRecipeQty,
   formatShortDate,
   getRecipe,
-  parseBudget,
-  scaleQty,
-  todayISO,
-  weekStartOf,
+  readHousehold,
+  weekRange,
   type BasketLine,
-  type PantryItem,
-  type PlanDinner,
   type PriceCheck,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
 const AISLES: { title: string; keys: string[] }[] = [
   {
-    title: "Fresh produce",
-    keys: ["onion", "garlic", "spinach", "peppers", "carrots", "potatoes", "sweetPotato", "broccoli", "courgette", "mushrooms", "ginger"],
+    title: "Produce",
+    keys: ["onion", "garlic", "spinach", "peppers", "carrots", "potatoes", "sweetPotato", "zucchini", "mushrooms", "ginger"],
   },
-  { title: "Meat & fish", keys: ["chickenThigh", "chickenBreast", "mince", "sausages", "bacon", "salmon"] },
-  { title: "Dairy & eggs", keys: ["eggs", "cheddar", "feta", "yoghurt"] },
+  { title: "Meat & seafood", keys: ["chickenThigh", "chickenBreast", "beef", "sausage", "bacon"] },
+  { title: "Dairy & eggs", keys: ["eggs", "cheddar", "feta", "yogurt"] },
   {
-    title: "Tins & dry",
-    keys: ["oil", "rice", "penne", "spaghetti", "tomatoes", "stock", "cumin", "paprika", "curry", "chickpeas", "kidneyBeans", "lentils", "coconut", "noodles", "soy", "pesto", "tuna"],
+    title: "Pantry",
+    keys: ["oil", "rice", "penne", "spaghetti", "tomatoes", "stock", "cumin", "paprika", "curry", "chickpeas", "kidneyBeans", "lentils", "coconut", "soy", "pesto", "tuna"],
   },
-  { title: "Frozen & bakery", keys: ["peas", "tortillas"] },
+  { title: "Frozen & bakery", keys: ["peas", "broccoli", "salmon", "tortillas"] },
 ];
 
 interface Item {
@@ -63,8 +61,7 @@ export default function ShopScreen() {
   const insets = useSafeAreaInsets();
   const { answers } = useAppState();
   const { isPremium, openPaywall } = usePurchases();
-  const dinnersCol = useCollection<PlanDinner>("plan_dinners");
-  const pantryCol = useCollection<PantryItem>("pantry_items");
+  const { plan, dinners, lines, loading: planLoading } = usePlanData();
   const checksCol = useCollection<PriceCheck>("price_checks");
 
   const [mode, setMode] = useState<"aisle" | "dinner">("aisle");
@@ -72,54 +69,32 @@ export default function ShopScreen() {
   const [coveredOpen, setCoveredOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptText, setReceiptText] = useState("");
-  const [receipt, setReceipt] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const initialised = useRef(false);
+  // Ticks show at once and are saved in order; each save carries the whole set.
+  const tickedRef = useRef<Set<string>>(new Set());
+  const loadedFor = useRef<string | null>(null);
 
-  const loading = dinnersCol.loading || pantryCol.loading || checksCol.loading;
+  const loading = planLoading || checksCol.loading;
+  const planId = plan?.id ?? "";
+  const receipt = plan && plan.receipt > 0 ? plan.receipt : null;
 
-  const weekStart = useMemo(() => {
-    const current = weekStartOf();
-    if (dinnersCol.items.some((d) => d.weekStart === current)) return current;
-    const all = dinnersCol.items.map((d) => d.weekStart).sort();
-    return all[all.length - 1] ?? current;
-  }, [dinnersCol.items]);
-
-  const dinners = useMemo(
-    () =>
-      dinnersCol.items
-        .filter((d) => d.weekStart === weekStart)
-        .sort((a, b) => a.dayIndex - b.dayIndex),
-    [dinnersCol.items, weekStart],
-  );
-
-  const lines = useMemo(
-    () =>
-      buildBasket(
-        dinners.map((d) => ({ recipeId: d.recipeId, servings: d.servings })),
-        pantryCol.items,
-      ),
-    [dinners, pantryCol.items],
-  );
+  // This plan's ticks, as saved. Another week's list starts unticked.
+  useEffect(() => {
+    if (loading || !plan || loadedFor.current === plan.id) return;
+    loadedFor.current = plan.id;
+    const saved = new Set(plan.ticked ?? []);
+    tickedRef.current = saved;
+    setTicked(saved);
+  }, [loading, plan]);
 
   const weekChecks = useMemo(
-    () => checksCol.items.filter((c) => c.weekStart === weekStart),
-    [checksCol.items, weekStart],
+    () => checksCol.items.filter((c) => c.planId === planId),
+    [checksCol.items, planId],
   );
 
   function checkFor(line: BasketLine): PriceCheck | undefined {
-    const matches = weekChecks.filter((c) => c.ingredient === line.pack.name);
-    return matches.find((c) => c.store === HOME_STORE) ?? matches[0];
+    return weekChecks.find((c) => c.packKey === line.pack.key);
   }
-
-  // Items already logged as paid start ticked, once the data has loaded.
-  useEffect(() => {
-    if (loading || initialised.current) return;
-    initialised.current = true;
-    const paidKeys = lines.filter((l) => l.packs > 0 && (checkFor(l)?.paidPrice ?? 0) > 0).map((l) => l.pack.key);
-    if (paidKeys.length) setTicked(new Set(paidKeys));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
 
   const shoppable = lines.filter((l) => l.packs > 0);
   const covered = lines.filter((l) => l.packs === 0);
@@ -135,39 +110,29 @@ export default function ShopScreen() {
   const difference = Math.round((paidSoFar - compareTo) * 100) / 100;
   const pct = shoppable.length ? tickedLines.length / shoppable.length : 0;
   const allTicked = shoppable.length > 0 && tickedLines.length === shoppable.length;
-  const budget = parseBudget(answers.weeklybudget ?? "");
+  const budget = readHousehold(answers).budget;
 
-  const latestCheck = weekChecks.map((c) => c.estimateDate).sort().pop() ?? "";
-  const storeLine =
-    HOME_STORE.replace(" – ", " · ") +
-    (latestCheck ? ` · prices checked ${formatShortDate(latestCheck)}` : "");
+  const storeLine = `Aldi · ZIP ${PRICE_SOURCE.zip} · prices ${formatShortDate(PRICE_SOURCE.checked)}`;
+
+  function commitTicks(next: Set<string>) {
+    tickedRef.current = next;
+    setTicked(next);
+    if (planId) void saveTicked(planId, [...next]);
+  }
 
   function toggle(key: string) {
-    setTicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    const next = new Set(tickedRef.current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    commitTicks(next);
   }
 
   async function savePaid(line: BasketLine, amount: number) {
-    setTicked((prev) => new Set(prev).add(line.pack.key));
-    const existing = checkFor(line);
-    if (existing) {
-      await checksCol.update(existing.id, { paidPrice: amount, paidDate: todayISO() });
-    } else {
-      await checksCol.add({
-        ingredient: line.pack.name,
-        packSize: formatPackSize(line.pack),
-        store: HOME_STORE,
-        estimatedPrice: line.cost,
-        estimateDate: todayISO(),
-        paidPrice: amount,
-        paidDate: todayISO(),
-        weekStart,
-      });
-    }
+    if (!plan) return;
+    const next = new Set(tickedRef.current).add(line.pack.key);
+    tickedRef.current = next;
+    setTicked(next);
+    await savePaidPrice(plan, line, amount);
   }
 
   function subtitleFor(line: BasketLine): string {
@@ -204,7 +169,7 @@ export default function ShopScreen() {
       for (const [key, per] of recipe.ingredients) {
         const line = lines.find((l) => l.pack.key === key);
         if (!line) continue;
-        const qty = formatQty(line.pack, scaleQty(line.pack, per, d.servings));
+        const qty = formatRecipeQty(line.pack, per, d.servings);
         data.push({
           key: `${d.id}-${key}`,
           line,
@@ -230,7 +195,7 @@ export default function ShopScreen() {
     );
   }
 
-  if (dinners.length === 0) {
+  if (!plan || dinners.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background, ...screenPad }}>
         <ScreenHeader title="Shop" />
@@ -239,7 +204,7 @@ export default function ShopScreen() {
           <EmptyState
             icon={null}
             title="No list until there's a plan"
-            body="Pick this Sunday's five dinners and the full-pack shopping list, priced at your home store, appears here."
+            body="Plan your five dinners on the Week tab and the full-pack shopping list, priced at Aldi, appears here."
             actionLabel="Plan the week"
             onAction={() => router.push("/")}
           />
@@ -276,7 +241,7 @@ export default function ShopScreen() {
         paddingBottom: theme.spacing.sm,
       }}
     >
-      <ScreenHeader title="Shop" subtitle={storeLine} />
+      <ScreenHeader title="Shop" subtitle={`${weekRange(plan.weekStart)} · ${storeLine}`} />
 
       <View
         style={{
@@ -473,7 +438,7 @@ export default function ShopScreen() {
         <View style={{ alignItems: "center", gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md }}>
           <Penny mood="happy" width={96} />
           <Text style={{ ...label, textAlign: "center" }}>
-            Whole list ticked. Log the receipt, then Cook shows what's left in each pack.
+            Whole list ticked. Log the receipt, then Cook shows what's left of each pack.
           </Text>
         </View>
       ) : null}
@@ -498,7 +463,7 @@ export default function ShopScreen() {
               returnKeyType="done"
               placeholder={formatPrice(estimate)}
               placeholderTextColor={theme.colors.textMuted}
-              accessibilityLabel="Receipt total in pounds"
+              accessibilityLabel="Receipt total in dollars"
               style={{
                 height: 48,
                 paddingHorizontal: theme.spacing.md,
@@ -519,7 +484,7 @@ export default function ShopScreen() {
                 onPress={() => {
                   const n = parseFloat(receiptText.replace(/[^0-9.]/g, ""));
                   if (Number.isFinite(n) && n > 0) {
-                    setReceipt(Math.round(n * 100) / 100);
+                    void saveReceipt(plan.id, Math.round(n * 100) / 100);
                     setReceiptOpen(false);
                   }
                 }}
@@ -529,7 +494,7 @@ export default function ShopScreen() {
                 variant="outline"
                 onPress={() => {
                   if (receipt !== null) {
-                    setReceipt(null);
+                    void saveReceipt(plan.id, 0);
                     setReceiptText("");
                   }
                   setReceiptOpen(false);
@@ -553,10 +518,22 @@ export default function ShopScreen() {
         )}
       </View>
 
+      <Text
+        style={{
+          ...label,
+          color: theme.colors.textMuted,
+          fontSize: theme.font.size.caption + 1,
+          paddingHorizontal: theme.spacing.md,
+        }}
+      >
+        {PRICE_SOURCE_LINE} Meat and zucchini are sold by weight, so their prices are
+        aldi.us estimates.
+      </Text>
+
       <View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={isPremium ? "Price history across shops" : "Price history across shops, locked. Unlock"}
+          accessibilityLabel={isPremium ? "Price history" : "Price history, locked. Unlock"}
           onPress={() => (isPremium ? setHistoryOpen((o) => !o) : openPaywall())}
           style={({ pressed }) => ({
             flexDirection: "row",
@@ -573,7 +550,7 @@ export default function ShopScreen() {
             size={18}
             color={isPremium ? theme.colors.text : theme.colors.textMuted}
           />
-          <Text style={{ ...label, flex: 1 }}>Price history across shops</Text>
+          <Text style={{ ...label, flex: 1 }}>Price history</Text>
           {isPremium ? (
             <Ionicons name={historyOpen ? "chevron-up" : "chevron-down"} size={20} color={theme.colors.textMuted} />
           ) : (
@@ -594,7 +571,7 @@ export default function ShopScreen() {
                 padding: theme.spacing.md,
               }}
             >
-              Nothing logged yet. Enter what you paid for an item and it appears here, by store and date.
+              Nothing logged yet. Enter what you paid for an item and it appears here, by date.
             </Text>
           ) : (
             historyRows.map((c) => {
@@ -655,7 +632,7 @@ export default function ShopScreen() {
                               : theme.colors.textMuted,
                       }}
                     >
-                      {`  ${d === 0 ? "±£0.00" : formatPriceDiff(d)}`}
+                      {`  ${d === 0 ? "±$0.00" : formatPriceDiff(d)}`}
                     </Text>
                   </Text>
                 </View>
@@ -673,6 +650,8 @@ export default function ShopScreen() {
         sections={sections}
         keyExtractor={(item) => item.key}
         stickySectionHeadersEnabled={false}
+        // A week's list is short (about 25 rows): render it all, so nothing pops in on scroll.
+        initialNumToRender={60}
         // Keeps the "what you paid" boxes and the receipt total above the keyboard.
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
@@ -720,13 +699,11 @@ export default function ShopScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Tick everything in ${section.title}`}
-                  onPress={() =>
-                    setTicked((prev) => {
-                      const next = new Set(prev);
-                      tickable.forEach((i) => next.add(i.line.pack.key));
-                      return next;
-                    })
-                  }
+                  onPress={() => {
+                    const next = new Set(tickedRef.current);
+                    tickable.forEach((i) => next.add(i.line.pack.key));
+                    commitTicks(next);
+                  }}
                   style={({ pressed }) => ({
                     width: 52,
                     minHeight: 44,
@@ -754,7 +731,7 @@ export default function ShopScreen() {
               onToggle={() => toggle(line.pack.key)}
               showPrice={mode === "aisle" && !covers}
               estimate={line.cost}
-              dateLabel={check ? formatShortDate(check.estimateDate) : ""}
+              dateLabel={formatShortDate(check?.estimateDate || PRICE_SOURCE.checked)}
               paid={check?.paidPrice ?? 0}
               onPaid={(n) => void savePaid(line, n)}
             />

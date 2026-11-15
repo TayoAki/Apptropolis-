@@ -8,33 +8,21 @@ import { Penny } from "../components/Penny";
 import { RecipePlate } from "../components/RecipePlate";
 import { useAppState } from "../data/app-state";
 import { appInfo } from "../data/app-info";
+import { usePlanData } from "../data/plan";
 import { usePurchases, type Offer } from "../data/purchases";
-import { useCollection } from "../data/repo";
 import {
-  addDays,
+  MINOR_PACKS,
   formatPantry,
   formatPrice,
-  formatShortDate,
+  leftoverSummary,
   getRecipe,
-  parseBudget,
-  parseISODate,
-  round2,
-  weekStartOf,
-  type PantryItem,
-  type PlanDinner,
+  readHousehold,
+  weekRange,
 } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
-function weekRange(start: string): string {
-  const end = addDays(start, 6);
-  const a = parseISODate(start);
-  const b = parseISODate(end);
-  if (a.getMonth() === b.getMonth()) return `${a.getDate()}–${formatShortDate(end)}`;
-  return `${formatShortDate(start)} – ${formatShortDate(end)}`;
-}
-
 function isOneOff(offer: Offer): boolean {
-  return offer.period === "lifetime" || /one-?off|one-time/i.test(offer.label);
+  return offer.period === "lifetime";
 }
 
 function splitFeature(text: string): { title: string; body: string } {
@@ -59,19 +47,11 @@ export default function Paywall() {
     restorePurchases,
     dismissPaywall,
   } = usePurchases();
-  const dinnersData = useCollection<PlanDinner>("plan_dinners");
-  const pantryData = useCollection<PantryItem>("pantry_items");
+  const { plan, plans, dinners, total, carried: leftovers, loading: cardLoading } = usePlanData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [restoredMessage, setRestoredMessage] = useState<string | null>(null);
 
-  const week = weekStartOf();
-  const dinners = dinnersData.items
-    .filter((d) => d.weekStart === week)
-    .sort((a, b) => a.dayIndex - b.dayIndex);
-  const total = round2(dinners.reduce((sum, d) => sum + d.estimatedCost, 0));
-  const budget = parseBudget(answers.weeklybudget ?? "");
-  const leftovers = pantryData.items.filter((p) => !p.isStaple && p.quantity > 0);
-  const cardLoading = dinnersData.loading || pantryData.loading;
+  const budget = readHousehold(answers).budget;
 
   const effectiveId = selectedId ?? defaultOfferId;
   const selected = offers.find((o) => o.id === effectiveId) ?? offers[0];
@@ -101,7 +81,7 @@ export default function Paywall() {
   async function onRestore() {
     setRestoredMessage(null);
     const ok = await restorePurchases();
-    if (ok) setRestoredMessage("Purchase restored. Your weeks are unlocked.");
+    if (ok) setRestoredMessage("Purchase restored. Unlimited weekly plans are on.");
   }
 
   const primaryLabel = !selected
@@ -109,21 +89,23 @@ export default function Paywall() {
     : selected.trialDays > 0
       ? "Start free trial"
       : isOneOff(selected)
-        ? `Unlock four weeks for ${selected.price}`
+        ? `Unlock for ${selected.price}`
         : "Continue";
 
   const smallPrint = !selected
     ? ""
     : isOneOff(selected)
-      ? `One-time purchase of ${selected.price}. No auto-renew. Your plans and cupboard stay saved either way.`
+      ? `One-time purchase of ${selected.price}. Not a subscription: nothing renews. Your plans and cupboard stay saved either way.`
       : `Renews automatically at ${selected.price}/${selected.period} unless canceled at least 24 hours before the end of the period. Cancel anytime in your App Store or Google Play settings.`;
 
   function renderReceipt() {
     if (cardLoading) return <LoadingState label="Loading your week" />;
-    if (dinners.length === 0) return null;
+    if (!plan || dinners.length === 0) return null;
     const under = total <= budget;
-    const first = leftovers[0];
-    const carried = leftovers.slice(0, 2).map((p) => `${formatPantry(p)} ${p.ingredient.toLowerCase()}`);
+    const summary = leftoverSummary(leftovers, 3);
+    const first = [...leftovers].sort(
+      (a, b) => Number(MINOR_PACKS.has(a.packKey)) - Number(MINOR_PACKS.has(b.packKey)),
+    )[0];
     return (
       <View
         style={{
@@ -146,7 +128,9 @@ export default function Paywall() {
             gap: theme.spacing.xs,
           }}
         >
-          <Text style={small}>Your free week · {weekRange(week)}</Text>
+          <Text style={small}>
+            {plans.length === 1 ? "Your free week" : "This week"} · {weekRange(plan.weekStart)}
+          </Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
             <Ionicons
               name={under ? "checkmark-circle" : "alert-circle"}
@@ -202,9 +186,9 @@ export default function Paywall() {
             })}
           </View>
           <Text style={small}>
-            {carried.length > 0
-              ? `Carried over: ${carried.join(", ")}`
-              : "Nothing carried over yet. Cook this week and it appears here."}
+            {summary
+              ? `Carried over: ${summary}`
+              : "Nothing carried over yet. What's left of this week's packs appears here when the week ends."}
           </Text>
           {/* The torn receipt edge: a row of diamonds in the page color. */}
           <View
@@ -323,8 +307,8 @@ export default function Paywall() {
             }}
           >
             {isPremium
-              ? `Premium is on${activeOffer ? `: ${activeOffer.label}` : ""}. Your weeks and cupboard are unlocked.`
-              : "Four more weeks of planned dinners. Pay once, no subscription."}
+              ? `${activeOffer ? activeOffer.label : "Premium"} is on. Plan a new week whenever the last one is over.`
+              : `Unlimited weekly plans for ${selected?.price ?? "$4.99"}, once. No subscription.`}
           </Text>
         </View>
 
@@ -367,7 +351,7 @@ export default function Paywall() {
                     key={offer.id}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: active }}
-                    accessibilityLabel={`${offer.label}, ${offer.price}${oneOff ? ", one-off payment" : `, per ${offer.period}`}`}
+                    accessibilityLabel={`${offer.label}, ${offer.price}${oneOff ? ", one-time payment" : `, per ${offer.period}`}`}
                     onPress={() => setSelectedId(offer.id)}
                     style={({ pressed }) => ({
                       flexDirection: "row",
@@ -400,7 +384,7 @@ export default function Paywall() {
                     </View>
                     <View style={{ flex: 1, alignItems: "flex-start", gap: theme.spacing.xs }}>
                       <Text style={text}>
-                        {oneOff ? "One-off · four weeks" : `Per ${offer.period}`}
+                        {oneOff ? "One-time · unlimited weeks" : `Per ${offer.period}`}
                       </Text>
                       {offer.trialDays > 0 ? (
                         <Text style={small}>{offer.trialDays}-day free trial</Text>

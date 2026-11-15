@@ -11,32 +11,35 @@ import { RecipePlate } from "../../components/RecipePlate";
 import { Section } from "../../components/recipe/Section";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
-import { openPaywall, usePurchases } from "../../data/purchases";
-import { useCollection } from "../../data/repo";
 import {
-  HOME_STORE,
+  cookDinner,
+  rateDinner,
+  setDinnerServings,
+  setKeepNextWeek,
+  uncookDinner,
+  usePlanData,
+} from "../../data/plan";
+import { openPaywall, usePurchases } from "../../data/purchases";
+import {
   PACKS,
+  PRICE_SOURCE,
   basketTotal,
   buildBasket,
   fillSteps,
   formatPackSize,
   formatPrice,
   formatQty,
+  formatRecipeQty,
   formatShortDate,
   getRecipe,
-  parseServings,
+  readHousehold,
   recipeIngredients,
-  round2,
-  scaleQty,
-  type PantryItem,
-  type PlanDinner,
-  type PriceCheck,
   type Recipe,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 
 const MIN_SERVINGS = 1;
-const MAX_SERVINGS = 8;
+const MAX_SERVINGS = 12;
 
 function stepContent(step: string, recipe: Recipe, servings: number): ReactNode[] {
   return step.split(/(\{\w+\})/).map((part, i) => {
@@ -48,7 +51,7 @@ function stepContent(step: string, recipe: Recipe, servings: number): ReactNode[
     if (!ing || !pack) return "";
     return (
       <Text key={i} style={{ fontWeight: "700" }}>
-        {formatQty(pack, scaleQty(pack, ing[1], servings))}
+        {formatRecipeQty(pack, ing[1], servings)}
       </Text>
     );
   });
@@ -60,47 +63,40 @@ export default function RecipeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { answers } = useAppState();
   const { isPremium } = usePurchases();
-  const dinners = useCollection<PlanDinner>("plan_dinners");
-  const pantry = useCollection<PantryItem>("pantry_items");
-  const checks = useCollection<PriceCheck>("price_checks");
+  const data = usePlanData();
 
   const [override, setOverride] = useState<number | null>(null);
   const [doneSteps, setDoneSteps] = useState<number[]>([]);
-  const [rating, setRating] = useState<"up" | "down" | null>(null);
 
+  // Opened with a dinner id from the plan; a bare recipe id shows this week's dinner of that
+  // recipe, or the recipe on its own.
   const dinner = useMemo(
     () =>
-      dinners.items.find((d) => d.id === id) ??
-      dinners.items
-        .filter((d) => d.recipeId === id)
-        .sort((a, b) => b.weekStart.localeCompare(a.weekStart))[0],
-    [dinners.items, id],
+      data.allDinners.find((d) => d.id === id) ??
+      data.dinners.find((d) => d.recipeId === id),
+    [data.allDinners, data.dinners, id],
   );
+  const inPlan = Boolean(dinner && data.dinners.some((d) => d.id === dinner.id));
   const recipe = getRecipe(dinner?.recipeId ?? String(id));
-  const servings = override ?? dinner?.servings ?? parseServings(answers.servings ?? "2");
+  const editable = Boolean(dinner && inPlan && !dinner.cooked && data.status === "active");
+  const servings = editable
+    ? dinner!.servings
+    : (override ?? dinner?.servings ?? readHousehold(answers).servings);
 
   const lines = useMemo(() => (recipe ? recipeIngredients(recipe, servings) : []), [recipe, servings]);
+  const planLine = (key: string) => data.lines.find((l) => l.pack.key === key);
 
+  // A planned dinner costs its share of the week's basket: the same number the Week tab shows.
   const estimate = useMemo(() => {
     if (!recipe) return 0;
-    if (dinner) return round2((dinner.estimatedCost * servings) / Math.max(1, dinner.servings));
-    return basketTotal(buildBasket([{ recipeId: recipe.id, servings }], pantry.items));
-  }, [recipe, dinner, servings, pantry.items]);
-
-  const priceDate = useMemo(() => {
-    if (!recipe) return "";
-    const names = new Set(recipe.ingredients.map(([key]) => PACKS[key]?.name));
-    return checks.items
-      .filter((c) => names.has(c.ingredient) && c.estimateDate)
-      .map((c) => c.estimateDate)
-      .sort()
-      .pop() ?? "";
-  }, [recipe, checks.items]);
+    if (dinner && inPlan) return data.costOf(dinner.id);
+    return basketTotal(buildBasket([{ recipeId: recipe.id, servings }], data.pantry));
+  }, [recipe, dinner, inPlan, data, servings]);
 
   // The header sits on the page color, like the tab screens, with the plain back chevron.
   const headerStyle = { backgroundColor: theme.colors.background };
 
-  if (dinners.loading || pantry.loading || checks.loading) {
+  if (data.loading) {
     return (
       <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.colors.background }}>
         <Stack.Screen options={{ title: "Recipe", headerStyle }} />
@@ -124,18 +120,18 @@ export default function RecipeScreen() {
     );
   }
 
-  const storeName = HOME_STORE.split(" – ")[0]!;
   const stepTexts = fillSteps(recipe, servings);
-  const heroPrompt = `${recipe.name}, plated home-cooked dinner seen from above, soft watercolour illustration`;
+  const heroPrompt = `${recipe.name}, plated home-cooked dinner seen from above, soft watercolor illustration`;
   const hasPicture = aiImageUrl(heroPrompt) !== null;
   const cooked = dinner?.cooked ?? false;
   const kept = dinner?.keepNextWeek ?? false;
-  const liked = dinner?.liked ?? false;
+  const rating = dinner?.rating ?? "";
+  const liked = rating === "up";
 
   const chips = [
     `${recipe.minutes} min`,
     `For ${servings}`,
-    `${formatPrice(estimate)}${priceDate ? ` · ${storeName} · ${formatShortDate(priceDate)}` : ` · ${storeName}`}`,
+    `${formatPrice(estimate)} · Aldi · ${formatShortDate(PRICE_SOURCE.checked)}`,
   ];
 
   function toggleStep(index: number) {
@@ -146,8 +142,12 @@ export default function RecipeScreen() {
 
   async function toggleCooked() {
     if (!dinner) return;
-    await dinners.update(dinner.id, { cooked: !cooked });
-    if (!cooked) track("dinner_cooked", { diet: recipe!.diet, servings });
+    if (cooked) {
+      await uncookDinner(dinner.id);
+    } else {
+      await cookDinner(dinner.id);
+      track("dinner_cooked", { diet: recipe!.diet, servings });
+    }
   }
 
   async function toggleKeep() {
@@ -156,17 +156,21 @@ export default function RecipeScreen() {
       openPaywall();
       return;
     }
-    await dinners.update(dinner.id, { keepNextWeek: !kept });
+    await setKeepNextWeek(dinner.id, !kept);
     if (!kept) track("dinner_kept", { diet: recipe!.diet });
   }
 
   async function rate(value: "up" | "down") {
     if (!dinner) return;
-    setRating(value);
-    await dinners.update(dinner.id, { liked: value === "up" });
+    await rateDinner(dinner.id, rating === value ? "" : value);
   }
 
-  const heartLabel = liked ? "Remove from favourites" : "Add to favourites";
+  function changeServings(next: number) {
+    if (editable && dinner) void setDinnerServings(dinner.id, next);
+    else setOverride(next);
+  }
+
+  const heartLabel = liked ? "Remove from favorites" : "Add to favorites";
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -175,14 +179,14 @@ export default function RecipeScreen() {
           title: recipe.name,
           headerTitle: "",
           headerStyle,
-          headerRight: dinner
+          headerRight: dinner && inPlan
             ? () => (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={heartLabel}
                   accessibilityState={{ selected: liked }}
                   hitSlop={6}
-                  onPress={() => void dinners.update(dinner.id, { liked: !liked })}
+                  onPress={() => void rate("up")}
                   style={({ pressed }) => ({
                     width: 40,
                     height: 40,
@@ -283,16 +287,29 @@ export default function RecipeScreen() {
             justifyContent: "space-between",
           }}
         >
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.title,
-              fontFamily: theme.font.family,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            Scaled for {servings}
-          </Text>
+          <View style={{ flexShrink: 1, gap: 2 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontSize: theme.font.size.title,
+                fontFamily: theme.font.family,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              Scaled for {servings}
+            </Text>
+            {editable ? (
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontSize: theme.font.size.caption + 1,
+                  fontFamily: theme.font.family,
+                }}
+              >
+                Changing it updates your list and prices
+              </Text>
+            ) : null}
+          </View>
           <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
             {(["minus", "plus"] as const).map((kind) => {
               const disabled =
@@ -304,7 +321,7 @@ export default function RecipeScreen() {
                   accessibilityLabel={kind === "minus" ? "Fewer servings" : "More servings"}
                   accessibilityState={{ disabled }}
                   disabled={disabled}
-                  onPress={() => setOverride(servings + (kind === "minus" ? -1 : 1))}
+                  onPress={() => changeServings(servings + (kind === "minus" ? -1 : 1))}
                   style={({ pressed }) => ({
                     width: 48,
                     height: 48,
@@ -329,17 +346,14 @@ export default function RecipeScreen() {
 
         <Section title="Packs used">
           {lines.map(({ pack, qty, text }) => {
-            const stock = pantry.items
-              .filter((p) => p.confirmed && p.ingredient === pack.name && p.unit === pack.unit)
+            const line = inPlan ? planLine(pack.key) : undefined;
+            const stock = data.pantry
+              .filter((p) => p.confirmed && p.packKey === pack.key)
               .reduce((sum, p) => sum + p.quantity, 0);
-            const fromCupboard = stock >= qty;
-            const bought = Math.ceil(qty / pack.size - 1e-9);
-            const left = bought * pack.size - qty;
-            const usesText =
-              pack.unit === "each"
-                ? `uses ${qty} of ${pack.size}`
-                : `uses ${text} of ${formatPackSize(pack)}`;
-            const leftText = left > 0 ? ` · ${formatQty(pack, left)} left` : "";
+            const fromCupboard = line ? line.packs === 0 : stock >= qty;
+            const usesText = `uses ${formatQty(pack, qty)} of a ${formatPackSize(pack)}`;
+            const leftText =
+              line && line.leftover > 0 ? ` · ${formatQty(pack, line.leftover)} left this week` : "";
             return (
               <View
                 key={pack.key}
@@ -356,7 +370,10 @@ export default function RecipeScreen() {
                   }}
                 >
                   <Text style={{ fontWeight: theme.font.weight.bold }}>{pack.name}</Text>
-                  {fromCupboard ? ` — ${text}` : ` — ${usesText}${leftText}`}
+                  {` — ${text}`}
+                  <Text style={{ color: theme.colors.textMuted }}>
+                    {fromCupboard ? "" : ` · ${usesText}${leftText}`}
+                  </Text>
                 </Text>
                 {fromCupboard ? (
                   <View
@@ -438,7 +455,7 @@ export default function RecipeScreen() {
         </Section>
       </ScrollView>
 
-      {dinner ? (
+      {dinner && inPlan ? (
         <View
           style={{
             backgroundColor: theme.colors.surface,
@@ -487,14 +504,14 @@ export default function RecipeScreen() {
                 fontFamily: theme.font.family,
               }}
             >
-              {cooked && rating
+              {rating
                 ? rating === "up"
                   ? "Noted, we'll plan more like this."
                   : "Noted, we'll steer away from this one."
                 : "How was it?"}
             </Text>
             {(["up", "down"] as const).map((value) => {
-              const active = value === "up" ? liked : rating === "down";
+              const active = rating === value;
               return (
                 <Pressable
                   key={value}
@@ -547,7 +564,7 @@ export default function RecipeScreen() {
               textAlign: "center",
             }}
           >
-            This dinner isn't in this week's plan, so it can't be marked cooked.
+            This dinner isn't in your current plan, so it can't be marked cooked.
           </Text>
         </View>
       )}

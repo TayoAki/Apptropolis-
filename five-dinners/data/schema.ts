@@ -13,6 +13,8 @@ export interface WeekPlan {
   receipt: number;
   /** What was left of the packs has been written to the cupboard. */
   closed: boolean;
+  /** The cupboard (pack key to amount) the plan was priced against, kept when it closes. */
+  cupboardAtClose?: Record<string, number>;
 }
 
 export interface PlanDinner {
@@ -588,8 +590,12 @@ function trim1(n: number): string {
   return String(Math.round(n * 10) / 10);
 }
 
-/** An amount in the pack's own unit: "7.5 oz", "1.85 lb", "12 fl oz", "1½ onions". */
+/** An amount in the pack's own unit: "7.5 oz", "1.85 lb", "12 fl oz", "1½ onions", "2½ cans". */
 export function formatQty(pack: Pack, qty: number): string {
+  if (pack.measure?.unit === "can" && pack.measure.per === pack.size) {
+    const n = formatFraction(qty / pack.size);
+    return `${n} ${plural(n, "can", "cans")}`;
+  }
   if (pack.unit === "each") {
     const [one, many] = pack.noun ?? ["item", "items"];
     const text = formatFraction(Math.round(qty * 2) / 2);
@@ -604,6 +610,31 @@ export function formatPackSize(pack: Pack): string {
   return pack.label;
 }
 
+function plural(n: string, one: string, many: string): string {
+  return n === "1" || /^[¼⅓½⅔¾]$/.test(n) ? one : many;
+}
+
+/** Oil, onions, garlic, stock, spices and sauces: kept track of, but not worth headlining. */
+export const MINOR_PACKS = new Set(["oil", "onion", "garlic", "stock", "cumin", "paprika", "curry", "soy", "ginger"]);
+
+/** "11.6 oz chicken thighs", "8 eggs", "½ can diced tomatoes". */
+export function formatLeftover(packKey: string, quantity: number): string {
+  const pack = PACKS[packKey];
+  if (!pack) return `${Math.round(quantity * 10) / 10} ${packKey}`;
+  if (pack.unit === "each") return formatQty(pack, quantity);
+  return `${formatQty(pack, quantity)} ${pack.name.toLowerCase()}`;
+}
+
+/** The leftovers worth naming first, then "and 3 more". */
+export function leftoverSummary(items: { packKey: string; quantity: number }[], max = 4): string {
+  const sorted = [...items].sort(
+    (a, b) => Number(MINOR_PACKS.has(a.packKey)) - Number(MINOR_PACKS.has(b.packKey)),
+  );
+  const shown = sorted.slice(0, max).map((i) => formatLeftover(i.packKey, i.quantity));
+  const more = sorted.length - shown.length;
+  return shown.join(", ") + (more > 0 ? ` and ${more} more` : "");
+}
+
 /** A pantry amount in words, using the pack's noun when there is one. */
 export function formatPantry(item: PantryItem): string {
   const pack = PACKS[item.packKey];
@@ -611,9 +642,6 @@ export function formatPantry(item: PantryItem): string {
   return `${Math.round(item.quantity * 10) / 10} ${item.unit === "each" ? "" : item.unit}`.trim();
 }
 
-function plural(n: string, one: string, many: string): string {
-  return n === "1" || /^[¼⅓½⅔¾]$/.test(n) ? one : many;
-}
 
 /** A recipe amount in kitchen measures: "1⅓ tbsp", "¾ cup", "1½ cans", else pack units. */
 export function formatRecipeQty(pack: Pack, perServing: number, servings: number): string {
@@ -800,6 +828,21 @@ export function cupboardStock(pantry: PantryItem[]): Map<string, number> {
     stock.set(p.packKey, round2((stock.get(p.packKey) ?? 0) + p.quantity));
   }
   return stock;
+}
+
+/** A stand-in cupboard from a saved snapshot, for pricing a plan that has closed. */
+export function pantryFromSnapshot(snapshot: Record<string, number>): PantryItem[] {
+  return Object.entries(snapshot).map(([packKey, quantity]) => ({
+    id: `snapshot-${packKey}`,
+    packKey,
+    ingredient: PACKS[packKey]?.name ?? packKey,
+    quantity,
+    unit: PACKS[packKey]?.unit ?? "oz",
+    isStaple: Boolean(PACKS[packKey]?.staple),
+    fromWeek: "",
+    confirmed: true,
+    updatedAt: "",
+  }));
 }
 
 export function buildBasket(dinners: DinnerInput[], pantry: PantryItem[]): BasketLine[] {

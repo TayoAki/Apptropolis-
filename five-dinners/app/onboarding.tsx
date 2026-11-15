@@ -8,50 +8,56 @@ import { LoadingState } from "../components/EmptyState";
 import { PackIcon } from "../components/PackIcon";
 import { Penny } from "../components/Penny";
 import { useAppState } from "../data/app-state";
-import { useCollection } from "../data/repo";
-import { PACK_LIST, todayISO, type PantryItem } from "../data/schema";
+import { applyAnswersToPlan, createPlan, setStaple, usePlanData } from "../data/plan";
+import { usePurchases } from "../data/purchases";
+import { EXCLUSION_CHOICES, PACK_LIST } from "../data/schema";
 import { useReminder } from "../data/reminders";
 import { useTheme } from "../theme/ThemeProvider";
 
-type StepId = "servings" | "budget" | "staples" | "reminder";
-const STEPS: StepId[] = ["servings", "budget", "staples", "reminder"];
+type StepId = "servings" | "budget" | "foods" | "staples" | "reminder";
+const STEPS: StepId[] = ["servings", "budget", "foods", "staples", "reminder"];
 
 const SERVINGS = [
   { value: "1", note: "Just me" },
   { value: "2", note: "Two of us" },
-  { value: "3–4", note: "A small family" },
-  { value: "5+", note: "A full table" },
+  { value: "3", note: "A small family" },
+  { value: "4", note: "A family of four" },
+  { value: "5", note: "A big family" },
+  { value: "6", note: "A full table" },
 ];
 
 const BUDGETS = [
-  { value: "£15", note: "Lean and careful" },
-  { value: "£25", note: "A steady weekly shop" },
-  { value: "£35", note: "Room for a treat" },
-  { value: "£50", note: "Feeding a crowd" },
+  { value: "$35", note: "Lean and careful" },
+  { value: "$50", note: "A steady weekly shop" },
+  { value: "$65", note: "Room for a treat" },
+  { value: "$80", note: "Feeding a crowd" },
 ];
 
 const SHORT_NAMES: Record<string, string> = {
-  stock: "Stock cubes",
-  curry: "Curry powder",
-  rice: "Basmati rice",
+  stock: "Veggie stock",
+  curry: "Tikka masala",
+  rice: "Rice",
+  tomatoes: "Diced tomatoes",
+  onion: "Onions",
+  cumin: "Cumin",
 };
 
 const PICTURES: Record<string, string> = {
   oil: "a bottle of olive oil, soft hand-drawn illustration",
-  rice: "a green paper bag of rice, soft hand-drawn illustration",
-  penne: "a paper bag of penne pasta, soft hand-drawn illustration",
+  rice: "a bag of long grain rice, soft hand-drawn illustration",
+  penne: "a box of penne pasta, soft hand-drawn illustration",
   spaghetti: "a bundle of dried spaghetti, soft hand-drawn illustration",
-  tomatoes: "a tin of chopped tomatoes, soft hand-drawn illustration",
-  onion: "a brown onion, soft hand-drawn illustration",
+  tomatoes: "a can of diced tomatoes, soft hand-drawn illustration",
+  onion: "a yellow onion, soft hand-drawn illustration",
   garlic: "a bulb of garlic, soft hand-drawn illustration",
-  stock: "a few yellow stock cubes, soft hand-drawn illustration",
+  stock: "a carton of vegetable stock, soft hand-drawn illustration",
   cumin: "a small jar of ground spice, soft hand-drawn illustration",
   paprika: "a small jar of red paprika, soft hand-drawn illustration",
-  curry: "a small jar of yellow curry powder, soft hand-drawn illustration",
+  curry: "a small jar of orange tikka masala seasoning, soft hand-drawn illustration",
 };
 
 const SHELF_PICTURE =
-  "a wooden kitchen shelf with a bottle of olive oil, a bag of rice, a bag of pasta, a tin of tomatoes, a string of onions and a garlic bulb, soft hand-drawn illustration";
+  "a wooden kitchen shelf with a bottle of olive oil, a bag of rice, a box of pasta, a can of tomatoes, a bag of onions and a garlic bulb, soft hand-drawn illustration";
 
 const REMINDER_HOURS = [8, 9, 10, 18];
 
@@ -66,13 +72,19 @@ export default function Onboarding() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { answers, setAnswer, completeOnboarding } = useAppState();
+  const { isPremium } = usePurchases();
   const reminder = useReminder();
-  const pantry = useCollection<PantryItem>("pantry_items");
+  const planData = usePlanData();
+  const pantry = { items: planData.pantry, loading: planData.loading };
 
   const [step, setStep] = useState(0);
   const [servings, setServings] = useState<string>(answers.servings ?? "");
   const [budget, setBudget] = useState<string>(answers.weeklybudget ?? "");
+  const [excluded, setExcluded] = useState<Set<string>>(
+    new Set((answers.excluded ?? "").split(",").filter(Boolean)),
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [finishing, setFinishing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hour, setHour] = useState(9);
   const [enabling, setEnabling] = useState(false);
@@ -85,7 +97,7 @@ export default function Onboarding() {
     seeded.current = true;
     const keys = staplePacks
       .filter((pack) =>
-        pantry.items.some((i) => i.ingredient === pack.name && i.confirmed && i.quantity > 0),
+        pantry.items.some((i) => i.packKey === pack.key && i.confirmed && i.quantity > 0),
       )
       .map((p) => p.key);
     setSelected(new Set(keys));
@@ -123,6 +135,43 @@ export default function Onboarding() {
     void setAnswer("weeklybudget", value);
   }
 
+  function toggleFood(key: string) {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function saveFoods() {
+    void setAnswer("excluded", [...excluded].join(","));
+    setStep((s) => s + 1);
+  }
+
+  /**
+   * Plan the first week from the answers (the free week), or apply them to the current plan
+   * when onboarding is replayed, then open the app.
+   */
+  async function finish() {
+    setFinishing(true);
+    try {
+      const final = {
+        ...answers,
+        ...(servings ? { servings } : {}),
+        ...(budget ? { weeklybudget: budget } : {}),
+        excluded: [...excluded].join(","),
+      };
+      const result = await createPlan(final, isPremium);
+      if (!result.ok) await applyAnswersToPlan(final, isPremium);
+    } catch {
+      // The plan can be made from the Week tab; never trap someone in onboarding.
+    } finally {
+      setFinishing(false);
+    }
+    await completeOnboarding();
+  }
+
   function toggle(key: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -137,31 +186,7 @@ export default function Onboarding() {
     try {
       const names = staplePacks.filter((p) => selected.has(p.key)).map((p) => p.name);
       await setAnswer("staples", names.join(", "));
-      for (const pack of staplePacks) {
-        const on = selected.has(pack.key);
-        const existing = pantry.items.find((i) => i.ingredient === pack.name);
-        if (existing) {
-          if (!existing.isStaple) continue;
-          const needsStock = on && existing.quantity <= 0;
-          if (existing.confirmed !== on || needsStock) {
-            await pantry.update(existing.id, {
-              confirmed: on,
-              quantity: needsStock ? pack.size : existing.quantity,
-              updatedAt: todayISO(),
-            });
-          }
-        } else if (on) {
-          await pantry.add({
-            ingredient: pack.name,
-            quantity: pack.size,
-            unit: pack.unit,
-            isStaple: true,
-            fromWeek: "",
-            confirmed: true,
-            updatedAt: todayISO(),
-          });
-        }
-      }
+      for (const pack of staplePacks) await setStaple(pack.key, selected.has(pack.key));
     } catch {
       // The ticks are a convenience; never block onboarding on them.
     } finally {
@@ -184,30 +209,30 @@ export default function Onboarding() {
       ok = false;
     }
     setEnabling(false);
-    if (ok) void completeOnboarding();
+    if (ok) void finish();
     else setDeclined(true);
   }
 
   function onPrimary() {
     if (id === "servings" || id === "budget") setStep((s) => s + 1);
+    else if (id === "foods") saveFoods();
     else if (id === "staples") void saveStaples();
-    else if (declined) void completeOnboarding();
+    else if (declined) void finish();
     else void turnOnReminders();
   }
 
   const primaryLabel =
-    id === "staples"
-      ? "See my five dinners"
-      : id === "reminder"
-        ? declined
-          ? "Start planning"
-          : "Turn on reminders"
-        : "Continue";
+    id === "reminder"
+      ? declined
+        ? "See my five dinners"
+        : "Turn on reminders"
+      : "Continue";
 
   const primaryDisabled =
     (id === "servings" && !servings) ||
     (id === "budget" && !budget) ||
-    (id === "staples" && pantry.loading);
+    (id === "staples" && pantry.loading) ||
+    finishing;
 
   const penny = id === "reminder" ? "happy" : id === "staples" ? "half-full" : "neutral";
 
@@ -221,7 +246,12 @@ export default function Onboarding() {
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel={label}
-        style={{ gap: theme.spacing.sm, marginTop: theme.spacing.lg }}
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: theme.spacing.sm,
+          marginTop: theme.spacing.lg,
+        }}
       >
         {options.map((option) => {
           const on = current === option.value;
@@ -233,7 +263,8 @@ export default function Onboarding() {
               accessibilityLabel={`${option.value}, ${option.note}`}
               onPress={() => onPick(option.value)}
               style={({ pressed }) => ({
-                minHeight: 68,
+                width: Math.floor((contentWidth - theme.spacing.sm) / 2),
+                minHeight: 76,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -364,6 +395,65 @@ export default function Onboarding() {
     );
   }
 
+  function renderFoods() {
+    return (
+      <View style={{ marginTop: theme.spacing.lg, gap: theme.spacing.md }}>
+        <View
+          accessibilityLabel="Foods you don't eat"
+          style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}
+        >
+          {EXCLUSION_CHOICES.map((choice) => {
+            const on = excluded.has(choice.key);
+            return (
+              <Pressable
+                key={choice.key}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+                accessibilityLabel={choice.label}
+                onPress={() => toggleFood(choice.key)}
+                style={({ pressed }) => ({
+                  minHeight: 48,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.xs,
+                  paddingHorizontal: theme.spacing.md,
+                  borderRadius: theme.radius.pill,
+                  borderWidth: on ? 2 : 1.5,
+                  borderColor: on ? theme.colors.primary : theme.colors.textMuted,
+                  backgroundColor: on ? theme.colors.primary + "14" : theme.colors.surface,
+                  opacity: pressed ? 0.85 : 1,
+                })}
+              >
+                <Ionicons
+                  name={on ? "checkmark" : "add"}
+                  size={16}
+                  color={on ? theme.colors.primary : theme.colors.textMuted}
+                />
+                <Text
+                  style={{
+                    ...textBase,
+                    color: on ? theme.colors.primary : theme.colors.text,
+                    fontSize: theme.font.size.body,
+                    fontWeight: on ? theme.font.weight.bold : theme.font.weight.regular,
+                  }}
+                >
+                  {choice.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={{ ...subStyle, textAlign: "left" }}>
+          {excluded.size === 0
+            ? "Nothing to leave out? Just continue."
+            : `Your dinners leave out ${EXCLUSION_CHOICES.filter((c) => excluded.has(c.key))
+                .map((c) => (c.key === "vegetarian" ? "meat and fish" : c.label.replace("No ", "")))
+                .join(", ")}.`}
+        </Text>
+      </View>
+    );
+  }
+
   function renderReminder() {
     return (
       <View style={{ marginTop: theme.spacing.lg, gap: theme.spacing.md }}>
@@ -479,18 +569,22 @@ export default function Onboarding() {
       ? "How many are you cooking for?"
       : id === "budget"
         ? "Your dinner budget for the week"
-        : id === "staples"
-          ? "Tick what's already in the cupboard"
-          : "A Sunday nudge to plan";
+        : id === "foods"
+          ? "Anything you don't eat?"
+          : id === "staples"
+            ? "Tick what's already in the cupboard"
+            : "A nudge to plan";
 
   const sub =
     id === "servings"
       ? "We scale every recipe and pack so the list fits your table."
       : id === "budget"
-        ? "Just the five dinners. You can change it every Sunday."
-        : id === "staples"
-          ? "Anything you tick comes off the shopping list, and your first five dinners appear straight away."
-          : "One reminder a day at a time you choose, so on Sunday morning you can confirm your leftovers and plan the next five dinners. Nothing else.";
+        ? "Just the five dinners, priced at Aldi. You can change it any time."
+        : id === "foods"
+          ? "We leave these out of every plan and every swap."
+          : id === "staples"
+            ? "Anything you tick comes off the shopping list. Your first five dinners are planned next."
+            : "One reminder a day at a time you choose, so you can check what's left and plan the next five dinners. Nothing else.";
 
   return (
     <View
@@ -553,7 +647,8 @@ export default function Onboarding() {
           accessibilityRole="button"
           accessibilityLabel="Skip onboarding"
           hitSlop={8}
-          onPress={() => void completeOnboarding()}
+          disabled={finishing}
+          onPress={() => void finish()}
           style={({ pressed }) => ({
             minWidth: 44,
             height: 44,
@@ -592,6 +687,7 @@ export default function Onboarding() {
         <Text style={{ ...subStyle, marginTop: theme.spacing.sm }}>{sub}</Text>
         {id === "servings" ? renderChoice(SERVINGS, servings, pickServings, "Household size") : null}
         {id === "budget" ? renderChoice(BUDGETS, budget, pickBudget, "Weekly dinner budget") : null}
+        {id === "foods" ? renderFoods() : null}
         {id === "staples" ? renderStaples() : null}
         {id === "reminder" ? renderReminder() : null}
       </ScrollView>
@@ -628,7 +724,7 @@ export default function Onboarding() {
                 fontVariant: ["tabular-nums"],
               }}
             >
-              Cooking for {servings || "—"} · {budget || "£—"} a week. Change any time in Settings.
+              Cooking for {servings || "—"} · {budget || "$—"} a week. Change any time in Settings.
             </Text>
           ) : (
             <View style={{ flex: 1 }} />
@@ -641,14 +737,14 @@ export default function Onboarding() {
           label={primaryLabel}
           onPress={onPrimary}
           disabled={primaryDisabled}
-          loading={saving || enabling}
+          loading={saving || enabling || finishing}
         />
         {id === "reminder" && !declined ? (
           <Button
             label="Not now"
             variant="ghost"
-            onPress={() => void completeOnboarding()}
-            disabled={enabling}
+            onPress={() => void finish()}
+            disabled={enabling || finishing}
           />
         ) : null}
       </View>
