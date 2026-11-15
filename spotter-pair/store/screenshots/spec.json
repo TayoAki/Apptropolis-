@@ -1,0 +1,151 @@
+{
+  "out": ".",
+  "theme": {
+    "bgTop": "#25282D",
+    "bgBottom": "#0E0F11",
+    "text": "#F4F4F5",
+    "muted": "#B3B7BE",
+    "accent": "#FF6B2C",
+    "pill": "#FF6B2C",
+    "onPill": "#120A06"
+  },
+  "shots": [
+    {
+      "file": "01-miss-a-session",
+      "headline": [
+        "Miss a session,",
+        "you buy *coffee*."
+      ],
+      "sub": "Set a stake with your partner. Finish the week under 100% and it's on you.",
+      "capture": "captures/partner-before.png",
+      "callout": {
+        "crop": [
+          10,
+          288,
+          420,
+          144
+        ],
+        "scale": 1.08
+      }
+    },
+    {
+      "file": "02-one-set-left",
+      "headline": [
+        "One set left",
+        "for *3 of 3*"
+      ],
+      "sub": "Log the last set, mark the workout complete, and this week is 3 of 3.",
+      "capture": "captures/today-last-set.png",
+      "callout": {
+        "crop": [
+          8,
+          4,
+          424,
+          146
+        ],
+        "scale": 1.08
+      }
+    },
+    {
+      "file": "03-you-showed-up",
+      "headline": [
+        "3 of 3.",
+        "You *showed up*."
+      ],
+      "sub": "Send the weekly scorecard to your partner. It counts sessions, never weights.",
+      "capture": "captures/partner-after.png",
+      "callout": {
+        "crop": [
+          16,
+          14,
+          408,
+          263
+        ],
+        "scale": 1.06
+      }
+    },
+    {
+      "file": "04-week-from-three-answers",
+      "headline": [
+        "A week of lifts",
+        "from *3 answers*"
+      ],
+      "sub": "Your goal, training days and equipment. Every lift fits what you have.",
+      "capture": "captures/setup-plan.png"
+    },
+    {
+      "file": "05-weights-stay-private",
+      "headline": [
+        "Your weights",
+        "stay *private*"
+      ],
+      "sub": "Sets stay on this phone. Your partner only sees that you trained.",
+      "capture": "captures/today-complete.png",
+      "callout": {
+        "crop": [
+          14,
+          649,
+          412,
+          56
+        ],
+        "scale": 1.2
+      }
+    },
+    {
+      "file": "06-swap-a-lift",
+      "headline": [
+        "Swap a lift",
+        "in *one tap*"
+      ],
+      "sub": "Same muscle group, your equipment. The swap carries into the weeks ahead.",
+      "capture": "captures/plan-friday.png",
+      "callout": {
+        "crop": [
+          14,
+          332,
+          412,
+          80
+        ],
+        "scale": 1.15
+      }
+    },
+    {
+      "file": "07-every-week-on-record",
+      "headline": [
+        "Every week,",
+        "*on record*"
+      ],
+      "sub": "See each past week's score, not just this one.",
+      "capture": "captures/pro-history.png",
+      "pill": "Pro",
+      "callout": {
+        "crop": [
+          4,
+          484,
+          432,
+          218
+        ],
+        "scale": 1.06
+      }
+    },
+    {
+      "file": "08-write-your-own-stake",
+      "headline": [
+        "Write your",
+        "own *stake*"
+      ],
+      "sub": "Lunch, chores, the dog walk: type the stake you both agreed on.",
+      "capture": "captures/pro-stake.png",
+      "pill": "Pro",
+      "callout": {
+        "crop": [
+          14,
+          240,
+          412,
+          134
+        ],
+        "scale": 1.12
+      }
+    }
+  ]
+}

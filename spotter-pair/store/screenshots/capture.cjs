@@ -251,7 +251,7 @@ async function tab(page, name) {
   await page.getByRole("button", { name: "Mark workout complete" }).click();
   await page.waitForTimeout(3000);
   await page.evaluate(() => { globalThis.__appbuilderStill = true; });
-  await scrollTo(page, page.getByText("3 of 3 sessions done this week", { exact: true }), 34);
+  await scrollTo(page, page.getByLabel("Mon, done", { exact: true }), 12);
   await shoot(page, out("today-complete.png"));
 
   // Partner at 3 of 3: the scorecard that gets shared.
@@ -276,7 +276,6 @@ async function tab(page, name) {
   await scrollTo(page, page.getByText("THE STAKE", { exact: true }), 34);
   await shoot(page, out("pro-stake.png"));
 
-  fs.writeFileSync(out("demo-storage.json"), JSON.stringify(await dump(page), null, 1));
   console.log("errors:", errors.length ? errors : "none");
   await browser.close();
   server.close();
