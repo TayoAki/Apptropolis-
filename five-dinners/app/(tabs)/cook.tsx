@@ -177,6 +177,7 @@ export default function CookScreen() {
                 key={d.id}
                 day={dayName(dinnerDate(plan.weekStart, d.dayIndex))}
                 dinner={d}
+                diet={recipe?.diet}
                 name={name}
                 minutes={recipe?.minutes ?? 30}
                 state={d.cooked ? "cooked" : d.id === nextId ? "next" : "later"}

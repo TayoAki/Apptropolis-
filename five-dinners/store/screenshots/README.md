@@ -7,12 +7,12 @@ Eight iPhone screenshots, in upload order, at both sizes App Store Connect asks 
 
 | # | File | Headline | Line under it | Screen | Paid |
 |---|---|---|---|---|---|
-| 1 | `01-five-dinners-for-your-household` | Five dinners for / your **household** | Say who's eating, your budget and what you skip. The week comes back planned. | Week, Nov 15–21, "for 4": the basket card (zoomed) over the five dinners at 4 servings each | |
+| 1 | `01-five-dinners-for-your-household` | Five dinners for / your **household** | Say who's eating, your budget and what you skip. The week comes back planned. | Week, Nov 15–21, "for 4": the basket card over the five dinners, Monday's and Tuesday's rows (picture, cost, 4 servings) zoomed | |
 | 2 | `02-one-list-in-whole-packs` | One list, in / **whole packs** | Every pack as it sits on the shelf, with what the week uses and what's left over. | Shop at the store: 7 of 15 ticked, Produce done, the onions row zoomed ("Buy 1 × 3 lb bag, about 8 · uses 10 onions · 8 onions from cupboard · 6 onions left") | |
 | 3 | `03-next-week-starts-with-whats-left` | Next week starts / with **what's left** | Leftover chicken and eggs go in first. | Week 2, Nov 22–28: "Carried over" and dinners marked "Uses 11.6 oz leftover chicken thighs", "Uses 8 eggs leftover large eggs", "Uses 2 tortillas leftover flour tortillas" (zoomed) | Unlimited |
-| 4 | `04-know-whats-left-in-every-pack` | Know what's left / in every **pack** | Mark a dinner cooked and each pack goes down by what it used. | Cook on Wednesday evening: Mon–Wed cooked, Monday's "What's left" bars (penne, diced tomatoes, spinach) zoomed | |
-| 5 | `05-swap-a-dinner` | Swap a dinner, / see the **change** | Each option shows what it adds to or takes off this week's list. | Week 1 with Monday's swap options open: two starter recipes with their change to the list (zoomed) | |
-| 6 | `06-every-recipe-scaled-for-four` | Every recipe / scaled for **four** | Cups, spoons and cans for your table, plus the packs each dinner uses. | Wednesday's chili: "Scaled for 4" and its packs (1 lb beef, 1 can beans, 2 cans tomatoes) zoomed | |
+| 4 | `04-know-whats-left-in-every-pack` | Know what's left / in every **pack** | Mark a dinner cooked and each pack goes down by what it used. | Cook on Wednesday evening: Mon–Wed cooked, Monday's card with its picture strip and "What's left" bars (penne, diced tomatoes, spinach) zoomed | |
+| 5 | `05-swap-a-dinner` | Swap a dinner, / see the **change** | Each option shows what it adds to or takes off this week's list. | Week 1 with Monday's swap options open: two starter recipes with thumbnails and their change to the list (the whole card zoomed) | |
+| 6 | `06-every-recipe-scaled-for-four` | Every recipe / scaled for **four** | Change who's eating and every amount and pack on your list follows. | Wednesday's chili: the picture (captioned "Illustration"), then title, "For 4" and "Scaled for 4 · Changing it updates your list and prices" zoomed | |
 | 7 | `07-leave-out-what-you-dont-eat` | Leave out what / you **don't eat** | No pork, no fish, no nuts: every plan and every swap skips them. | Onboarding's "Anything you don't eat?" step with No pork picked (chips zoomed) | |
 | 8 | `08-what-you-paid-shop-by-shop` | What you paid, / **shop by shop** | Shelf prices against the estimate. | Shop, week 2: Price history open, prices logged on Nov 15 and Nov 22 against the estimate (zoomed) | Unlimited |
 
@@ -23,6 +23,25 @@ show paid features (a week after the free one, planned around leftovers; price h
 screenshot shows a paid feature. The app's own locked rows ("14 more tested recipes in the full
 library · Unlock", "Plan next week around what's left · Unlock", the padlocked "Keep for next
 week") appear on screens 5 and 6 as marked upsells, not as paid screens.
+
+## Recipe pictures: AI illustrations, not photos
+
+The food pictures on screens 1, 3, 4, 5 and 6 are the app's own recipe pictures
+(`assets/recipes/`). They are **AI-generated illustrations**, made with Google's Gemini 3.1 Flash
+Image model via OpenRouter on Nov 15, 2026 (prompts in `scripts/gen-recipe-images.py`). They are
+**not CC0 or public-domain photos**, and not photos of these recipes being cooked. The app is
+upfront about this: the recipe page captions its picture "Illustration", and Settings says
+"Recipe pictures are AI-generated illustrations of each dish, so your dinner will look a little
+different."
+
+**Flag for the owner:** the screenshot rules prefer CC0 photos, and these are not CC0. They show
+in the screenshots only because they are part of the app as shipped. Two things to decide:
+
+- whether App Store screenshots should show AI food imagery;
+- whether to swap in CC0 photos later (each photo must match its recipe's real ingredients).
+
+If not, retake with the pictures cropped out (recipe hero, Cook strips) or before they were
+added.
 
 ## How they were made
 
@@ -68,8 +87,9 @@ python3 ../tools/store-screenshots/check_shots.py store/screenshots/6.5 --slot 6
 python3 ../tools/store-screenshots/package_upload.py store/screenshots <out.zip>
 ```
 
-The capture script serves the build on port 8137 and writes `crops.json`, the boxes of the parts
-the callouts zoom. If the screens change, check the callout crops in `spec.json` (app points,
+The capture script serves the build on port 8137 and writes `crops.json`: the boxes of the parts
+the callouts zoom, and the rendered boxes of the recipe pictures (Week row, swap thumbnail,
+recipe hero, Cook card strip), for anyone recreating these screens. If the screens change, check the callout crops in `spec.json` (app points,
 440 × 868). A pill plus a two-line sub doesn't fit above the phone on the 6.5" size, so paid
 shots keep their sub to one line.
 
@@ -88,7 +108,9 @@ shots keep their sub to one line.
   health claims.
 - No "save time and money", "plan in minutes", "what's for dinner?", recipe counts as a hook, or
   food montage.
-- No photos (so no credits) and no people. The paper bag is the app's own mascot.
+- No stock or third-party photos and no people. The food pictures are the app's own recipe
+  pictures, AI-generated illustrations (see above), not CC0 photos. The paper bag is the app's
+  own mascot.
 - Two lines per headline, at most 16 characters a line, one accent word or phrase.
 
 ## Upload

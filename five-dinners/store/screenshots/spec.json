@@ -21,9 +21,9 @@
       "callout": {
         "crop": [
           16,
-          96,
+          400,
           408,
-          226
+          174
         ],
         "scale": 1.06
       }
@@ -60,9 +60,9 @@
           16,
           462,
           408,
-          258
+          296
         ],
-        "scale": 1.06
+        "scale": 1.05
       }
     },
     {
@@ -76,9 +76,9 @@
       "callout": {
         "crop": [
           66,
-          284,
+          408,
           356,
-          134
+          132
         ],
         "scale": 1.15
       }
@@ -94,11 +94,11 @@
       "callout": {
         "crop": [
           16,
-          98,
+          54,
           408,
-          270
+          298
         ],
-        "scale": 1.05
+        "scale": 1.04
       }
     },
     {
@@ -107,16 +107,16 @@
         "Every recipe",
         "scaled for *four*"
       ],
-      "sub": "Cups, spoons and cans for your table, plus the packs each dinner uses.",
+      "sub": "Change who's eating and every amount and pack on your list follows.",
       "capture": "captures/recipe.png",
       "callout": {
         "crop": [
           16,
-          334,
+          424,
           408,
-          282
+          196
         ],
-        "scale": 1.05
+        "scale": 1.06
       }
     },
     {

@@ -550,6 +550,9 @@ export default function SettingsScreen() {
           {small(
             `${PRICE_SOURCE_LINE} Meat and zucchini are sold by weight, so those prices are aldi.us estimates per pack. Paid prices you log are kept in Price history.`,
           )}
+          {small(
+            "Recipe pictures are AI-generated illustrations of each dish, so your dinner will look a little different.",
+          )}
         </View>
 
         <Section title="Always in the cupboard">

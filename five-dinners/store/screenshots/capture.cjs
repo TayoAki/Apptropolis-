@@ -83,6 +83,21 @@ async function main() {
     const b = await locator.first().boundingBox();
     crops[name] = b && [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)];
   }
+  /** Note the box of the i-th recipe picture on screen, and of the card that holds it. */
+  async function notePhoto(name, i = 0) {
+    const img = page.locator('img[src*="recipes/r"]').nth(i);
+    await img.waitFor();
+    const boxes = await img.evaluate((el) => {
+      const r = (b) => [b.x, b.y, b.width, b.height].map((v) => Math.round(v * 10) / 10);
+      // expo-image's <img> fills its box; the parent chain leads to the card around it.
+      const box = el;
+      let card = el.parentElement;
+      while (card && !(parseFloat(getComputedStyle(card).borderTopWidth) >= 1 && getComputedStyle(card).overflow === "hidden"))
+        card = card.parentElement;
+      return { photo: r(box.getBoundingClientRect()), card: card ? r(card.getBoundingClientRect()) : null };
+    });
+    crops[name] = boxes;
+  }
   async function logPaid(week) {
     for (const [name, amount] of Object.entries(PAID[week])) {
       const box = page.getByLabel(`What you paid for ${name}`);
@@ -116,6 +131,7 @@ async function main() {
   await go("/");
   await shoot(page, out("week1.png"));
   await note("week1-basket", page.getByText("This week's basket"));
+  await notePhoto("week-row-photo (first row, screen not scrolled)");
 
   // Swap options for Monday's dinner, cheapest first, with the change to the list.
   let { dinners } = await plan();
@@ -125,6 +141,7 @@ async function main() {
   await page.waitForTimeout(500);
   await scrollTo(page.getByText("Five dinners", { exact: true }), 12);
   await shoot(page, out("week1-swap.png"));
+  await notePhoto("swap-thumb (first option)", 1);
   await note("swap-panel", page.getByText(/^Swap for one of these/));
   await note("swap-locked", page.getByRole("button", { name: /more recipes$/ }));
   await page.getByRole("button", { name: `Close swap options for ${mondayName}` }).click();
@@ -158,6 +175,7 @@ async function main() {
       // Wednesday: open the recipe before cooking it.
       await go(`/recipe/${d.id}`);
       await shoot(page, out("recipe.png"));
+      await notePhoto("recipe-hero");
       await scrollTo(page.getByText("Method", { exact: true }), 96);
       await shoot(page, out("recipe-method.png"));
       await note("recipe-method", page.getByText("Method", { exact: true }));
@@ -166,6 +184,7 @@ async function main() {
       await page.waitForTimeout(400);
       await go("/cook");
       await shoot(page, out("cook-midweek.png"));
+      await notePhoto("cook-card-photo (first card)");
       await note("cook-left", page.getByText("What's left").first());
       continue;
     }

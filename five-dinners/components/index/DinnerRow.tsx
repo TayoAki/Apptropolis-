@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
 import { DayTab } from "../DayTab";
-import { RecipePlate } from "../RecipePlate";
+import { RecipePhoto } from "../RecipePhoto";
 import {
   formatPackSize,
   formatPrice,
@@ -100,10 +100,12 @@ export function DinnerRow({
               opacity: pressed ? 0.7 : 1,
             })}
           >
-            <RecipePlate
-              prompt={`${recipe.name}, home-cooked dinner on a plate, overhead photo`}
+            <RecipePhoto
+              recipeId={recipe.id}
               diet={recipe.diet}
-              size={44}
+              width={64}
+              height={64}
+              radius={theme.radius.sm}
             />
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={{ ...text, fontWeight: theme.font.weight.medium }}>{recipe.name}</Text>
@@ -242,6 +244,13 @@ export function DinnerRow({
                   opacity: pressed ? 0.6 : 1,
                 })}
               >
+                <RecipePhoto
+                  recipeId={c.recipe.id}
+                  diet={c.recipe.diet}
+                  width={44}
+                  height={44}
+                  radius={theme.radius.sm}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={{ ...text, fontWeight: theme.font.weight.medium }}>
                     {c.recipe.name}

@@ -29,3 +29,11 @@ Apple Developer account).
 - `components/` shared UI
 - `theme/` five theme packs (`theme/tokens.ts`) and the theme provider
 - `data/` data types, seed data and the storage layer (`useCollection`)
+- `assets/recipes/` one picture per recipe (`r1.jpg` … `r25.jpg`, wired in by `data/recipe-images.ts`)
+
+## Recipe pictures
+
+The recipe pictures are AI-generated illustrations, not photos: made with Google's Gemini 3.1
+Flash Image model via OpenRouter on Nov 15, 2026, one per recipe, with the prompts in
+`scripts/gen-recipe-images.py`. The app labels them "Illustration" on the recipe page and says so
+in Settings.

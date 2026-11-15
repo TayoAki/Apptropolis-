@@ -3,11 +3,10 @@ import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { aiImageUrl } from "../../components/AiImage";
 import { Button } from "../../components/Button";
 import { EmptyState, LoadingState } from "../../components/EmptyState";
 import { PackIcon } from "../../components/PackIcon";
-import { RecipePlate } from "../../components/RecipePlate";
+import { RecipePhoto } from "../../components/RecipePhoto";
 import { Section } from "../../components/recipe/Section";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
@@ -121,8 +120,6 @@ export default function RecipeScreen() {
   }
 
   const stepTexts = fillSteps(recipe, servings);
-  const heroPrompt = `${recipe.name}, plated home-cooked dinner seen from above, soft watercolor illustration`;
-  const hasPicture = aiImageUrl(heroPrompt) !== null;
   const cooked = dinner?.cooked ?? false;
   const kept = dinner?.keepNextWeek ?? false;
   const rating = dinner?.rating ?? "";
@@ -216,23 +213,28 @@ export default function RecipeScreen() {
           alignSelf: "center",
         }}
       >
+        {/* The hero runs edge to edge across the column, out past its padding. */}
+        <View
+          style={{
+            marginHorizontal: -theme.spacing.md,
+            marginTop: -theme.spacing.sm,
+            marginBottom: -theme.spacing.sm,
+            gap: theme.spacing.xs,
+          }}
+        >
+          <RecipePhoto recipeId={recipe.id} diet={recipe.diet} width="100%" aspectRatio={4 / 3} />
+          <Text
+            style={{
+              paddingHorizontal: theme.spacing.md,
+              color: theme.colors.textMuted,
+              fontSize: theme.font.size.caption,
+              fontFamily: theme.font.family,
+            }}
+          >
+            Illustration
+          </Text>
+        </View>
         <View style={{ alignItems: "center", gap: theme.spacing.md }}>
-          {hasPicture ? (
-            <View
-              style={{
-                width: 220,
-                height: 220,
-                borderRadius: 110,
-                backgroundColor: theme.colors.surface,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <RecipePlate prompt={heroPrompt} diet={recipe.diet} size={168} />
-            </View>
-          ) : (
-            <RecipePlate prompt={heroPrompt} diet={recipe.diet} size={112} />
-          )}
           <Text
             accessibilityRole="header"
             style={{
