@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Line } from "react-native-svg";
+import { bookIdOf, useBooks } from "../../components/bible";
 import { useBookmarks } from "../../components/bookmarks";
 import { EmptyState } from "../../components/EmptyState";
 import {
@@ -31,6 +32,7 @@ import { openPaywallFrom } from "../../components/paywall/source";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { useShareImage } from "../../components/share";
 import { SavedRow } from "../../components/saved/SavedRow";
+import { getVerse, normalizeRef } from "../../data/bible";
 import { usePurchases } from "../../data/purchases";
 import {
   daysSince,
@@ -393,9 +395,24 @@ export default function SavedScreen() {
   const cardScale = useRef(new Animated.Value(0.9)).current;
   const cardFade = useRef(new Animated.Value(0)).current;
 
-  const saved = useMemo(
+  const stored = useMemo(
     () => savedBookmarks(items).filter((b) => !removedIds.includes(b.id)),
     [items, removedIds],
+  );
+  // Each saved verse shows the text the reader shows. A verse saved by an earlier version keeps
+  // its book, chapter and verse, so it is found again here; its stored copy of the text is only
+  // shown until its book has loaded.
+  const texts = useBooks(stored.map(bookIdOf));
+  const saved = useMemo(
+    () =>
+      stored.map((b) => {
+        const ref = normalizeRef(b);
+        const verse = ref ? getVerse(ref) : undefined;
+        return verse && verse.text !== b.text ? { ...b, text: verse.text } : b;
+      }),
+    // texts.ready flips once the books have loaded; getVerse reads them from then on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stored, texts.ready],
   );
   // Suggested folders first, then any folder already holding verses.
   const folders = useMemo(() => {

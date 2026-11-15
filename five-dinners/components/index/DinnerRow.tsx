@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import { DayTab } from "../DayTab";
 import { RecipePlate } from "../RecipePlate";
@@ -14,7 +13,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 
 export interface Candidate {
   recipe: Recipe;
-  /** Basket total after the swap minus the total now, in £. */
+  /** Basket total after the swap minus the total now, in $. */
   delta: number;
 }
 
@@ -34,6 +33,8 @@ export function DinnerRow({
   swap,
   candidates,
   lockedCount,
+  canSwap = true,
+  onOpen,
   onToggle,
   onPick,
   onUndo,
@@ -49,6 +50,9 @@ export function DinnerRow({
   swap?: SwapInfo;
   candidates: Candidate[];
   lockedCount: number;
+  /** A cooked dinner stays as it is. */
+  canSwap?: boolean;
+  onOpen: () => void;
   onToggle: () => void;
   onPick: (recipeId: string) => void;
   onUndo: () => void;
@@ -86,7 +90,7 @@ export function DinnerRow({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Open recipe: ${recipe.name}${cooked ? ", cooked" : ""}`}
-            onPress={() => router.push(`/recipe/${recipe.id}`)}
+            onPress={onOpen}
             style={({ pressed }) => ({
               flex: 1,
               flexDirection: "row",
@@ -121,6 +125,7 @@ export function DinnerRow({
               ) : null}
             </View>
           </Pressable>
+          {canSwap ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={open ? `Close swap options for ${recipe.name}` : `Swap ${recipe.name}`}
@@ -149,6 +154,7 @@ export function DinnerRow({
               {open ? "Close" : "Swap"}
             </Text>
           </Pressable>
+          ) : null}
         </View>
 
         {swap && !open ? (
@@ -217,7 +223,7 @@ export function DinnerRow({
               Swap for one of these (cheapest first), with the change to your basket:
             </Text>
             {candidates.length === 0 ? (
-              <Text style={muted}>No other dinners fit your exclusions.</Text>
+              <Text style={muted}>No other dinners fit your answers.</Text>
             ) : null}
             {candidates.map((c) => (
               <Pressable

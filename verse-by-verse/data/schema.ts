@@ -9,6 +9,10 @@ export const READING_POSITION = "__reading_position";
 /** How many keyword matches the free search shows. Premium shows them all, highlighted. */
 export const FREE_KEYWORD_RESULTS = 3;
 
+/**
+ * One verse with its text. Verses are not stored: they come from the Bible text (data/bible.ts),
+ * and `id` is "BOOK.chapter.verse", e.g. "JHN.3.16".
+ */
 export interface Verse {
   id: string;
   /** Book name as shown, e.g. "John". */
@@ -17,7 +21,7 @@ export interface Verse {
   bookOrder: number;
   chapter: number;
   verse: number;
-  /** Scripture text, World English Bible. */
+  /** Scripture text, World English Bible (ENGWEBP), as published. */
   text: string;
   /** A prepared study note exists for this verse. */
   hasNote: boolean;
@@ -34,6 +38,10 @@ export interface StudyNote {
   body: string;
 }
 
+/**
+ * A saved verse, or the reading place. It names the verse by book, chapter and verse (not by an
+ * id), so rows saved when the app held 50 verses still find their verse in the whole Bible.
+ */
 export interface Bookmark {
   id: string;
   book: string;
@@ -47,8 +55,8 @@ export interface Bookmark {
   createdAt: string;
 }
 
+/** What is stored on the phone. (Versions that held 50 verses also stored "verses"; unused now.) */
 export interface Collections {
-  verses: Verse[];
   study_notes: StudyNote[];
   bookmarks: Bookmark[];
 }
@@ -59,13 +67,6 @@ export interface VerseRef {
   verse: number;
 }
 
-export interface ParsedReference {
-  book: string;
-  chapter: number;
-  /** Undefined for a whole chapter, e.g. "Psalms 23". */
-  verse?: number;
-}
-
 /** "John 3:16" */
 export function formatReference(ref: VerseRef): string {
   return `${ref.book} ${ref.chapter}:${ref.verse}`;
@@ -73,20 +74,6 @@ export function formatReference(ref: VerseRef): string {
 
 export function isSameVerse(a: VerseRef, b: VerseRef): boolean {
   return a.book === b.book && a.chapter === b.chapter && a.verse === b.verse;
-}
-
-/** Canonical reading order: book, then chapter, then verse. Returns a new array. */
-export function sortCanonical<T extends Pick<Verse, "bookOrder" | "chapter" | "verse">>(
-  rows: T[],
-): T[] {
-  return [...rows].sort(
-    (a, b) => a.bookOrder - b.bookOrder || a.chapter - b.chapter || a.verse - b.verse,
-  );
-}
-
-/** One chapter's verses in order, for the chapter-context screen. */
-export function chapterVerses(verses: Verse[], book: string, chapter: number): Verse[] {
-  return sortCanonical(verses.filter((v) => v.book === book && v.chapter === chapter));
 }
 
 /** The note for a verse, if one was prepared. */
@@ -109,27 +96,6 @@ export function readingPosition(items: Bookmark[]): Bookmark | undefined {
 /** The saved bookmark for a verse, if there is one. */
 export function findBookmark(items: Bookmark[], ref: VerseRef): Bookmark | undefined {
   return items.find((b) => b.folder !== READING_POSITION && isSameVerse(b, ref));
-}
-
-/**
- * Read what someone typed into a reference: "john 3:16", "1 John 2", "Psalm 23", "ps 23:1".
- * `books` are the book names the app holds. Returns null when no book matches.
- */
-export function parseReference(query: string, books: string[]): ParsedReference | null {
-  const match = /^\s*(.*?)\s+(\d+)(?::(\d+))?\s*$/.exec(query);
-  if (!match) return null;
-  const wanted = (match[1] ?? "").replace(/\s+/g, "").toLowerCase();
-  if (!wanted) return null;
-  const squash = (name: string) => name.replace(/\s+/g, "").toLowerCase();
-  const book =
-    books.find((name) => squash(name) === wanted) ??
-    books.find((name) => squash(name).startsWith(wanted));
-  if (!book) return null;
-  return {
-    book,
-    chapter: Number(match[2]),
-    verse: match[3] ? Number(match[3]) : undefined,
-  };
 }
 
 /** An ISO date `days` before `from` (now by default). Used for seed data and "x days ago". */

@@ -7,6 +7,13 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** A search word as a pattern in which a straight or curly quote matches either ("God's", "God’s"). */
+function wordPattern(word: string): string {
+  return escapeRegExp(word.replace(/[‘’]/g, "'").replace(/[“”]/g, '"'))
+    .replace(/'/g, "['‘’]")
+    .replace(/"/g, '["“”]');
+}
+
 /**
  * One matched word: an accent tint warms in behind it, once, when it appears. A tint rather
  * than the solid accent, so the word (in the text color, bold) stays readable on every theme.
@@ -65,7 +72,7 @@ export function Highlighted({
     (a, b) => b.length - a.length,
   );
   if (!highlight || words.length === 0) return <Text style={style}>{text}</Text>;
-  const pattern = new RegExp(`(${words.map(escapeRegExp).join("|")})`, "gi");
+  const pattern = new RegExp(`(${words.map(wordPattern).join("|")})`, "gi");
   // With one capture group, odd positions are the matches.
   const parts = text.split(pattern);
   return (

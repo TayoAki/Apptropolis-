@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { STARTING_PASSAGES, bookIdOf, useBooks } from "../components/bible";
 import { useBookmarks } from "../components/bookmarks";
+import { BookGrid } from "../components/PassagePicker";
 import { Reader } from "../components/index/Reader";
 import { SkeletonList, StepTransition, haptic } from "../components/motion";
 import { ChoiceCard, StatusNote, StepProgress, TimeChoice } from "../components/onboarding/Parts";
@@ -18,13 +20,14 @@ import {
 import { track } from "../data/analytics";
 import { useAppState } from "../data/app-state";
 import { usePurchases } from "../data/purchases";
+import { BIBLE_TOTALS, bookOf, fetchVerse, getVerse } from "../data/bible";
 import { useReminder } from "../data/reminders";
-import { useCollection } from "../data/repo";
-import { formatReference, sortCanonical, type Verse } from "../data/schema";
+import { formatReference, type VerseRef } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
 // Setup has three steps, and the progress line counts exactly these:
-// 1. choose where to start reading (sets where the reader opens and which book Search lists first);
+// 1. choose where to start reading: one of four passages, or the start of any of the 66 books
+//    (sets where the reader opens and which passage Search lists first);
 // 2. read that first verse in the real reader (the first success: the place is kept from here on);
 // 3. an optional daily reminder.
 const STEP_NAMES = ["start_passage", "first_verse", "reminder"] as const;
@@ -34,6 +37,8 @@ const STEPS = STEP_NAMES.length;
 const STEP_KEY = "onboarding.step";
 /** The reminder time they had picked, saved for the same reason. */
 const TIME_KEY = "onboarding.reminderTime";
+/** The "Pick any book" choice, beside the four starting passages. */
+const ANY_BOOK = "__any_book";
 
 function savedIndex(raw: string | undefined, count: number, fallback: number): number {
   const value = Number(raw);
@@ -48,12 +53,19 @@ export default function OnboardingScreen() {
   const { answers, setAnswer, completeOnboarding } = useAppState();
   const { isPremium } = usePurchases();
   const reminder = useReminder();
-  const verses = useCollection<Verse>("verses");
   const marks = useBookmarks();
 
   const [step, setStep] = useState(() => savedIndex(answers[STEP_KEY], STEPS, 0));
   const [direction, setDirection] = useState<1 | -1>(1);
-  const [book, setBook] = useState<string | null>(answers.startingbook ?? null);
+  // The chosen starting passage (by book name), or ANY_BOOK with the book picked from the grid.
+  // Coming back to this step shows the earlier answer.
+  const earlier = answers.startingbook ? bookOf(answers.startingbook)?.name : undefined;
+  const [choice, setChoice] = useState<string | null>(
+    earlier ? (STARTING_PASSAGES.some((p) => p.book === earlier) ? earlier : ANY_BOOK) : null,
+  );
+  const [anyBook, setAnyBook] = useState<string | null>(
+    earlier && !STARTING_PASSAGES.some((p) => p.book === earlier) ? earlier : null,
+  );
   const [timeIndex, setTimeIndex] = useState(() =>
     savedIndex(answers[TIME_KEY], SETUP_TIMES.length, DEFAULT_SETUP_TIME),
   );
@@ -62,12 +74,14 @@ export default function OnboardingScreen() {
   const [problem, setProblem] = useState<string | null>(null);
   const succeeded = useRef(false);
 
-  // One starting passage for each book in the library: the first verse it holds.
-  const starts = useMemo(() => {
-    const seen = new Set<string>();
-    return sortCanonical(verses.items).filter((v) => !seen.has(v.book) && seen.add(v.book));
-  }, [verses.items]);
-  const start = starts.find((v) => v.book === book);
+  // The four passages are shown with their text, so their books load first.
+  const passages = useBooks(STARTING_PASSAGES.map(bookIdOf));
+  const start: VerseRef | undefined =
+    choice === ANY_BOOK
+      ? anyBook
+        ? { book: anyBook, chapter: 1, verse: 1 }
+        : undefined
+      : STARTING_PASSAGES.find((p) => p.book === choice);
   const time = SETUP_TIMES[timeIndex] ?? SETUP_TIMES[DEFAULT_SETUP_TIME]!;
   const timeLabel = clockTime(time.hour, time.minute);
 
@@ -86,8 +100,10 @@ export default function OnboardingScreen() {
     try {
       // Going back and continuing with the same book keeps the place already reached in it.
       const sameChoice = answers.startingbook === start.book && marks.place !== undefined;
+      const verse = await fetchVerse(start);
+      if (!verse) throw new Error(`No verse ${formatReference(start)}`);
       await setAnswer("startingbook", start.book);
-      if (!sameChoice) await marks.keepPlace(start);
+      if (!sameChoice) await marks.keepPlace(verse);
       track("onboarding_step_completed", { step: STEP_NAMES[0] });
       go(1);
     } catch {
@@ -248,31 +264,50 @@ export default function OnboardingScreen() {
                   </Text>
                 </View>
 
-                {verses.loading ? (
+                {!passages.ready && !passages.failed ? (
                   <SkeletonList rows={4} />
-                ) : starts.length === 0 ? (
-                  <Text style={caption}>
-                    The library has no passages yet. Skip setup to open the app.
-                  </Text>
                 ) : (
                   <View
                     accessibilityRole="radiogroup"
                     accessibilityLabel="Starting passage"
                     style={{ gap: theme.spacing.md }}
                   >
-                    {starts.map((verse) => (
+                    {STARTING_PASSAGES.map((passage) => (
                       <ChoiceCard
-                        key={verse.id}
-                        title={formatReference(verse)}
-                        text={verse.text}
-                        selected={verse.book === book}
+                        key={passage.book}
+                        title={formatReference(passage)}
+                        text={getVerse(passage)?.text}
+                        selected={choice === passage.book}
                         onPress={() => {
                           haptic("selection");
                           setProblem(null);
-                          setBook(verse.book);
+                          setChoice(passage.book);
                         }}
                       />
                     ))}
+                    <ChoiceCard
+                      title="Pick any book"
+                      text={
+                        anyBook
+                          ? `Start at ${anyBook} 1:1.`
+                          : `Start at chapter 1 of any of the ${BIBLE_TOTALS.books} books.`
+                      }
+                      selected={choice === ANY_BOOK}
+                      onPress={() => {
+                        haptic("selection");
+                        setProblem(null);
+                        setChoice(ANY_BOOK);
+                      }}
+                    />
+                    {choice === ANY_BOOK ? (
+                      <BookGrid
+                        selected={anyBook ?? undefined}
+                        onPick={(picked) => {
+                          setProblem(null);
+                          setAnyBook(picked.name);
+                        }}
+                      />
+                    ) : null}
                   </View>
                 )}
               </View>
@@ -286,7 +321,9 @@ export default function OnboardingScreen() {
                     ? "Opening the reader…"
                     : start
                       ? `Start at ${formatReference(start)}`
-                      : "Pick a passage to start"
+                      : choice === ANY_BOOK
+                        ? "Pick a book to start"
+                        : "Pick a passage to start"
                 }
                 disabled={!start || working}
                 onPress={() => void begin()}
@@ -295,7 +332,7 @@ export default function OnboardingScreen() {
                 label="Skip setup"
                 variant="quiet"
                 onPress={() => finish()}
-                accessibilityHint="Opens the app at the first passage in the library"
+                accessibilityHint="Opens the app at Genesis 1:1"
               />
             </View>
           </>

@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button } from "../../components/Button";
 import { Penny } from "../../components/Penny";
 import { EmptyState, LoadingState } from "../../components/EmptyState";
 import { Meter } from "../../components/Meter";
@@ -11,16 +12,19 @@ import { useShareImage } from "../../components/share";
 import { DinnerRow, type Candidate, type SwapInfo } from "../../components/index/DinnerRow";
 import { track } from "../../data/analytics";
 import { useAppState } from "../../data/app-state";
+import { createPlan, setPantryConfirmed, swapDinner, usePlanData } from "../../data/plan";
+import { recipePool } from "../../data/planner";
 import { usePurchases } from "../../data/purchases";
-import { useCollection } from "../../data/repo";
 import {
-  HOME_STORE,
   PACKS,
-  allowedRecipes,
+  PRICE_SOURCE,
+  RECIPES,
+  addDays,
   basketTotal,
   buildBasket,
   compareBaskets,
-  dinnerCosts,
+  dayName,
+  dinnerDate,
   formatLongDate,
   formatPackSize,
   formatPantry,
@@ -28,49 +32,34 @@ import {
   formatQty,
   formatShortDate,
   getRecipe,
-  packByName,
-  parseBudget,
-  parseServings,
+  isAllowed,
+  readHousehold,
   round2,
   scaleQty,
-  weekStartOf,
-  type Diet,
+  weekRange,
   type PantryItem,
   type PlanDinner,
-  type PriceCheck,
   type Recipe,
 } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
-
-const DAY_NAMES = ["", "Mon", "Tue", "Wed", "Thu", "Fri"];
-
-function parseExclusions(raw: string): Diet[] {
-  const s = raw.toLowerCase();
-  const out = new Set<Diet>();
-  if (s.includes("vegetarian") || s.includes("vegan")) {
-    out.add("meat");
-    out.add("pork");
-    out.add("fish");
-  }
-  if (s.includes("pork")) out.add("pork");
-  if (s.includes("fish")) out.add("fish");
-  if (s.includes("meat")) out.add("meat");
-  return [...out];
-}
 
 function leftoverNote(recipe: Recipe, servings: number, pantry: PantryItem[]): string {
   for (const [key, per] of recipe.ingredients) {
     const pack = PACKS[key];
     if (!pack) continue;
-    const item = pantry.find(
-      (p) => p.confirmed && p.quantity > 0 && !p.isStaple && p.ingredient === pack.name,
-    );
-    if (item) {
-      const use = Math.min(scaleQty(pack, per, servings), item.quantity);
+    const have = pantry
+      .filter((p) => p.confirmed && p.quantity > 0 && !p.isStaple && p.fromWeek && p.packKey === key)
+      .reduce((sum, p) => sum + p.quantity, 0);
+    if (have > 0) {
+      const use = Math.min(scaleQty(pack, per, servings), have);
       return `Uses ${formatQty(pack, use)} leftover ${pack.name.toLowerCase()}`;
     }
   }
   return "";
+}
+
+function carriedList(items: PantryItem[]): string {
+  return items.map((p) => `${formatPantry(p)} ${p.ingredient.toLowerCase()}`).join(", ");
 }
 
 export default function WeekScreen() {
@@ -80,70 +69,37 @@ export default function WeekScreen() {
   const { answers, setAnswer } = useAppState();
   const { isPremium, openPaywall } = usePurchases();
   const { ref, share, sharing } = useShareImage();
-
-  const plan = useCollection<PlanDinner>("plan_dinners");
-  const pantryCol = useCollection<PantryItem>("pantry_items");
-  const checks = useCollection<PriceCheck>("price_checks");
+  const data = usePlanData();
+  const { plan, plans, status, dinners, pantry, lines, total, costs, leftovers, carried, allCooked } =
+    data;
 
   const [openSwap, setOpenSwap] = useState<string | null>(null);
   const [swaps, setSwaps] = useState<Record<string, SwapInfo & { fromId: string }>>({});
   const [editBudget, setEditBudget] = useState(false);
   const [planning, setPlanning] = useState(false);
+  const [planNote, setPlanNote] = useState<string | null>(null);
 
-  const weekStart = weekStartOf();
-  const budget = parseBudget(answers.weeklybudget ?? "£25");
-  const householdServings = parseServings(answers.servings ?? "2");
-  const excluded = useMemo(
-    // Settings saves the "Foods we don't eat" chips under "excluded" (e.g. "pork,fish").
-    () =>
-      parseExclusions(
-        `${answers.diet ?? ""} ${answers.exclusions ?? ""} ${answers.excluded ?? ""}`,
-      ),
-    [answers.diet, answers.exclusions, answers.excluded],
+  const household = readHousehold(answers);
+  const budget = household.budget;
+  const householdServings = household.servings;
+  const pool = useMemo(
+    () => recipePool(household, isPremium),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [answers.excluded, answers.vegnights, isPremium],
   );
 
-  // "No mushrooms" is an ingredient, not a kind of dinner, so it is filtered by pack.
-  const noMushrooms = (answers.excluded ?? "").split(",").includes("mushrooms");
-  const allowed = useMemo(
-    () =>
-      allowedRecipes(excluded).filter(
-        (r) => !noMushrooms || !r.ingredients.some(([key]) => key === "mushrooms"),
-      ),
-    [excluded, noMushrooms],
-  );
-
-  const dinners = useMemo(
-    () =>
-      plan.items.filter((d) => d.weekStart === weekStart).sort((a, b) => a.dayIndex - b.dayIndex),
-    [plan.items, weekStart],
-  );
-  const pantry = pantryCol.items;
   const inputs = useMemo(
     () => dinners.map((d) => ({ recipeId: d.recipeId, servings: d.servings })),
     [dinners],
   );
-  const lines = useMemo(() => buildBasket(inputs, pantry), [inputs, pantry]);
-  const total = basketTotal(lines);
-  const costs = useMemo(() => dinnerCosts(inputs, pantry), [inputs, pantry]);
-
-  const leftovers = pantry.filter((p) => !p.isStaple && p.quantity > 0 && p.fromWeek);
-  const carried = leftovers.filter((p) => p.confirmed);
-  const carriedText = carried
-    .map((p) => `${formatPantry(p)} ${p.ingredient.toLowerCase()}`)
-    .join(", ");
-
-  const lastChecked = checks.items
-    .filter((c) => c.store === HOME_STORE)
-    .map((c) => c.estimateDate)
-    .sort()
-    .pop();
+  const carriedText = carriedList(carried);
 
   const openDinner = dinners.find((d) => d.id === openSwap);
   const candidates: Candidate[] = useMemo(() => {
     if (!openDinner) return [];
     const used = new Set(dinners.map((d) => d.recipeId));
-    return allowed
-      .filter((r) => !used.has(r.id) && (isPremium || !r.premium))
+    return pool
+      .filter((r) => !used.has(r.id))
       .map((recipe) => {
         const next = inputs.map((i, idx) =>
           dinners[idx]!.id === openDinner.id ? { ...i, recipeId: recipe.id } : i,
@@ -152,13 +108,12 @@ export default function WeekScreen() {
       })
       .sort((a, b) => a.delta - b.delta)
       .slice(0, 6);
-  }, [openDinner, dinners, inputs, pantry, allowed, isPremium, total]);
+  }, [openDinner, dinners, inputs, pantry, pool, total]);
   const lockedCount = isPremium
     ? 0
-    : allowed.filter((r) => r.premium).length;
+    : RECIPES.filter((r) => r.premium && isAllowed(r, household.excluded)).length;
 
-  const loading = plan.loading || pantryCol.loading || checks.loading;
-  const hasOlderWeeks = plan.items.some((d) => d.weekStart !== weekStart);
+  const loading = data.loading;
 
   async function pickSwap(dinner: PlanDinner, recipeId: string) {
     const before = buildBasket(inputs, pantry);
@@ -170,14 +125,14 @@ export default function WeekScreen() {
     setSwaps((s) => ({
       ...s,
       [dinner.id]: {
-        fromId: dinner.recipeId,
-        fromName: from?.name ?? "Previous dinner",
+        fromId: s[dinner.id]?.fromId ?? dinner.recipeId,
+        fromName: s[dinner.id]?.fromName ?? from?.name ?? "Previous dinner",
         diff: compareBaskets(before, after),
       },
     }));
     setOpenSwap(null);
     track("dinner_swapped", { library: getRecipe(recipeId)?.premium ?? false });
-    await plan.update(dinner.id, { recipeId, cooked: false, liked: false });
+    await swapDinner(dinner.id, recipeId);
   }
 
   async function undoSwap(dinner: PlanDinner) {
@@ -187,45 +142,26 @@ export default function WeekScreen() {
       const { [dinner.id]: _gone, ...rest } = s;
       return rest;
     });
-    await plan.update(dinner.id, { recipeId: info.fromId });
+    await swapDinner(dinner.id, info.fromId);
   }
 
   async function setConfirmed(item: PantryItem, confirmed: boolean) {
-    await pantryCol.update(item.id, { confirmed, updatedAt: new Date().toISOString() });
+    await setPantryConfirmed(item.id, confirmed);
   }
 
   async function planWeek() {
     setPlanning(true);
+    setPlanNote(null);
     try {
-      const pool = allowed.filter((r) => isPremium || !r.premium);
-      const shuffled = [...pool].sort(() => Math.random() - 0.5);
-      const chosen: Recipe[] = [];
-      const perDiet: Record<string, number> = {};
-      for (const r of shuffled) {
-        if (chosen.length === 5) break;
-        if ((perDiet[r.diet] ?? 0) >= 2) continue;
-        perDiet[r.diet] = (perDiet[r.diet] ?? 0) + 1;
-        chosen.push(r);
+      const result = await createPlan(answers, isPremium);
+      if (result.ok) {
+        setSwaps({});
+        track("week_planned", { leftovers: carried.length });
+      } else if (result.reason === "locked") {
+        openPaywall();
+      } else if (result.reason === "empty") {
+        setPlanNote("No dinners fit your answers. Loosen \u201cFoods we don't eat\u201d in Settings.");
       }
-      for (const r of shuffled) {
-        if (chosen.length === 5) break;
-        if (!chosen.includes(r)) chosen.push(r);
-      }
-      const inp = chosen.map((r) => ({ recipeId: r.id, servings: householdServings }));
-      const cs = dinnerCosts(inp, pantry);
-      for (let i = 0; i < chosen.length; i++) {
-        await plan.add({
-          weekStart,
-          recipeId: chosen[i]!.id,
-          dayIndex: i + 1,
-          servings: householdServings,
-          estimatedCost: cs[i] ?? 0,
-          cooked: false,
-          liked: false,
-          keepNextWeek: false,
-        });
-      }
-      track("week_planned");
     } finally {
       setPlanning(false);
     }
@@ -236,6 +172,8 @@ export default function WeekScreen() {
   const pct = budget > 0 ? Math.min(1, total / budget) : 0;
   const pctLabel = `${budget > 0 ? Math.round((total / budget) * 100) : 0}%`;
   const shownServings = dinners[0]?.servings ?? householdServings;
+  const lastDay = plan ? addDays(plan.weekStart, 6) : "";
+  const showPlan = !loading && status === "active" && dinners.length > 0;
 
   function shareWeek() {
     const used = carried.length ? ` · ${carriedText} carried over` : "";
@@ -255,6 +193,80 @@ export default function WeekScreen() {
     opacity: pressed ? 0.6 : 1,
   });
 
+  const checkIn =
+    leftovers.length > 0 ? (
+      <View
+        style={{
+          backgroundColor: theme.colors.surfaceAlt,
+          borderRadius: theme.radius.md,
+          overflow: "hidden",
+        }}
+      >
+        <Text
+          style={{
+            ...base,
+            fontSize: theme.font.size.body,
+            padding: theme.spacing.md,
+            paddingBottom: theme.spacing.sm,
+          }}
+        >
+          <Text style={{ fontWeight: theme.font.weight.bold }}>What's left</Text> · Still in the
+          cupboard?
+        </Text>
+        {leftovers.map((item) => {
+          const pack = PACKS[item.packKey];
+          return (
+            <View
+              key={item.id}
+              accessibilityRole="radiogroup"
+              accessibilityLabel={`${item.ingredient}, ${formatPantry(item)}`}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.spacing.sm,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: theme.spacing.sm,
+                borderTopColor: theme.colors.textMuted + "33",
+                borderTopWidth: 1,
+              }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    ...base,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.medium,
+                  }}
+                >
+                  {item.ingredient}
+                </Text>
+                <Text
+                  style={{
+                    ...base,
+                    fontSize: theme.font.size.caption + 1,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                >
+                  {formatPantry(item)}
+                  {pack ? ` of a ${formatPackSize(pack)}` : ""}
+                </Text>
+              </View>
+              <CheckPill
+                label="Still there"
+                selected={item.confirmed}
+                onPress={() => setConfirmed(item, true)}
+              />
+              <CheckPill
+                label="Used up"
+                selected={!item.confirmed}
+                onPress={() => setConfirmed(item, false)}
+              />
+            </View>
+          );
+        })}
+      </View>
+    ) : null;
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.colors.background }}
@@ -271,9 +283,13 @@ export default function WeekScreen() {
     >
       <ScreenHeader
         title="Week"
-        subtitle={`${formatLongDate(weekStart)} · for ${shownServings}`}
+        subtitle={
+          showPlan && plan
+            ? `${weekRange(plan.weekStart)} · for ${shownServings}`
+            : `For ${householdServings} · ${formatPrice(budget)} budget`
+        }
       >
-        {dinners.length > 0 ? (
+        {showPlan ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Share this week"
@@ -297,28 +313,50 @@ export default function WeekScreen() {
 
       {loading ? <LoadingState label="Loading your week" /> : null}
 
-      {!loading && dinners.length === 0 ? (
-        hasOlderWeeks && !isPremium ? (
-          <EmptyState
-            icon="lock-closed-outline"
-            title="Your free week is done"
-            body="Keep cooking for four more planned weeks, with leftovers from this week's packs built into the next plan."
-            actionLabel="See the four-week pass"
-            onAction={openPaywall}
-          />
-        ) : (
-          <EmptyState
-            icon="calendar-outline"
-            title="No dinners planned for this week"
-            body={`Five dinners for ${householdServings}, priced by full packs against your ${formatPrice(budget)} budget.`}
-            actionLabel="Plan this week"
-            actionLoading={planning}
-            onAction={planWeek}
-          />
-        )
+      {!loading && status === "none" ? (
+        <EmptyState
+          icon="calendar-outline"
+          title="Plan your first week"
+          body={`Five dinners for ${householdServings}, priced by the full packs you buy at Aldi, against your ${formatPrice(budget)} budget. Your first week is free.`}
+          actionLabel="Plan my week"
+          actionLoading={planning}
+          onAction={planWeek}
+        />
       ) : null}
 
-      {!loading && dinners.length > 0 ? (
+      {!loading && status === "ended" && plan ? (
+        <>
+          {isPremium ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="Plan next week"
+              body={
+                carried.length
+                  ? `Five dinners for ${householdServings}, planned around what's left: ${carriedText}.`
+                  : `Five dinners for ${householdServings}, priced by full packs against your ${formatPrice(budget)} budget.`
+              }
+              actionLabel="Plan next week"
+              actionLoading={planning}
+              onAction={planWeek}
+            />
+          ) : (
+            <EmptyState
+              icon="lock-closed-outline"
+              title={plans.length === 1 ? "Your free week is done" : "This week's plan is over"}
+              body={`It ended ${formatLongDate(lastDay)}. Unlimited weekly plans are a one-time $4.99${carried.length ? `, and next week starts with what's left: ${carriedText}` : ""}.`}
+              actionLabel="See unlimited plans"
+              onAction={openPaywall}
+            />
+          )}
+          {checkIn}
+        </>
+      ) : null}
+
+      {planNote ? (
+        <Text style={{ ...base, color: theme.colors.warning, textAlign: "center" }}>{planNote}</Text>
+      ) : null}
+
+      {showPlan && plan ? (
         <>
           <View ref={ref} collapsable={false}>
             <View
@@ -434,8 +472,8 @@ export default function WeekScreen() {
                   fontVariant: ["tabular-nums"],
                 }}
               >
-                {dinners.length} dinners · full packs · {HOME_STORE}
-                {lastChecked ? ` · prices checked ${formatShortDate(lastChecked)}` : ""}
+                {dinners.length} dinners · full packs · Aldi ZIP {PRICE_SOURCE.zip} · prices{" "}
+                {formatShortDate(PRICE_SOURCE.checked)}
               </Text>
               <View
                 style={{
@@ -471,7 +509,8 @@ export default function WeekScreen() {
                       color: theme.colors.textMuted,
                     }}
                   >
-                    Nothing carried over yet. What's left from this shop appears here.
+                    Nothing carried over yet. What's left of this week's packs appears here when the
+                    week ends.
                   </Text>
                 )}
               </View>
@@ -495,78 +534,7 @@ export default function WeekScreen() {
             </View>
           </View>
 
-          {leftovers.length > 0 ? (
-            <View
-              style={{
-                backgroundColor: theme.colors.surfaceAlt,
-                borderRadius: theme.radius.md,
-                overflow: "hidden",
-              }}
-            >
-              <Text
-                style={{
-                  ...base,
-                  fontSize: theme.font.size.body,
-                  padding: theme.spacing.md,
-                  paddingBottom: theme.spacing.sm,
-                }}
-              >
-                <Text style={{ fontWeight: theme.font.weight.bold }}>Sunday check-in</Text> · Still
-                in the cupboard?
-              </Text>
-              {leftovers.map((item) => {
-                const pack = packByName(item.ingredient);
-                return (
-                  <View
-                    key={item.id}
-                    accessibilityRole="radiogroup"
-                    accessibilityLabel={`${item.ingredient}, ${formatPantry(item)}`}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: theme.spacing.sm,
-                      paddingHorizontal: theme.spacing.md,
-                      paddingVertical: theme.spacing.sm,
-                      borderTopColor: theme.colors.textMuted + "33",
-                      borderTopWidth: 1,
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text
-                        style={{
-                          ...base,
-                          fontSize: theme.font.size.body,
-                          fontWeight: theme.font.weight.medium,
-                        }}
-                      >
-                        {item.ingredient}
-                      </Text>
-                      <Text
-                        style={{
-                          ...base,
-                          fontSize: theme.font.size.caption + 1,
-                          fontVariant: ["tabular-nums"],
-                        }}
-                      >
-                        {formatPantry(item)}
-                        {pack ? ` of ${formatPackSize(pack)}` : ""}
-                      </Text>
-                    </View>
-                    <CheckPill
-                      label="Still there"
-                      selected={item.confirmed}
-                      onPress={() => setConfirmed(item, true)}
-                    />
-                    <CheckPill
-                      label="Used up"
-                      selected={!item.confirmed}
-                      onPress={() => setConfirmed(item, false)}
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
+          {checkIn}
 
           <View style={{ gap: theme.spacing.sm }}>
             <View
@@ -644,9 +612,9 @@ export default function WeekScreen() {
                 </Text>
                 <StepButton
                   icon="remove"
-                  label="Lower budget by £1"
-                  disabled={budget <= 5}
-                  onPress={() => setAnswer("weeklybudget", `£${Math.max(5, budget - 1)}`)}
+                  label="Lower budget by $1"
+                  disabled={budget <= 10}
+                  onPress={() => setAnswer("weeklybudget", `$${Math.max(10, budget - 1)}`)}
                 />
                 <Text
                   style={{
@@ -662,8 +630,9 @@ export default function WeekScreen() {
                 </Text>
                 <StepButton
                   icon="add"
-                  label="Raise budget by £1"
-                  onPress={() => setAnswer("weeklybudget", `£${budget + 1}`)}
+                  label="Raise budget by $1"
+                  disabled={budget >= 300}
+                  onPress={() => setAnswer("weeklybudget", `$${Math.min(300, budget + 1)}`)}
                 />
               </View>
             ) : null}
@@ -674,16 +643,18 @@ export default function WeekScreen() {
               return (
                 <DinnerRow
                   key={d.id}
-                  day={DAY_NAMES[d.dayIndex] ?? `Day ${d.dayIndex}`}
+                  day={dayName(dinnerDate(plan.weekStart, d.dayIndex))}
                   recipe={recipe}
                   servings={d.servings}
-                  cost={costs[i] ?? d.estimatedCost}
+                  cost={costs[i] ?? 0}
                   note={leftoverNote(recipe, d.servings, pantry)}
                   cooked={d.cooked}
                   open={openSwap === d.id}
                   swap={swaps[d.id]}
                   candidates={openSwap === d.id ? candidates : []}
                   lockedCount={lockedCount}
+                  canSwap={!d.cooked}
+                  onOpen={() => router.push(`/recipe/${d.id}`)}
                   onToggle={() => setOpenSwap(openSwap === d.id ? null : d.id)}
                   onPick={(id) => pickSwap(d, id)}
                   onUndo={() => undoSwap(d)}
@@ -693,7 +664,37 @@ export default function WeekScreen() {
             })}
           </View>
 
-          {isPremium ? (
+          {allCooked ? (
+            <View
+              style={{
+                gap: theme.spacing.sm,
+                backgroundColor: theme.colors.surfaceAlt,
+                borderRadius: theme.radius.md,
+                padding: theme.spacing.md,
+              }}
+            >
+              <Text
+                style={{ ...base, fontSize: theme.font.size.body, fontWeight: theme.font.weight.bold }}
+              >
+                All {dinners.length} cooked
+              </Text>
+              <Text style={{ ...base, fontSize: theme.font.size.body }}>
+                {isPremium
+                  ? "Plan next week now and it starts with what's left of these packs."
+                  : `Your free week runs to ${formatLongDate(lastDay)}. Planning next week around what's left is part of unlimited plans.`}
+              </Text>
+              {isPremium ? (
+                <Button label="Plan next week now" onPress={planWeek} loading={planning} />
+              ) : (
+                <Button
+                  label="See unlimited plans"
+                  variant="outline"
+                  icon="lock-closed-outline"
+                  onPress={openPaywall}
+                />
+              )}
+            </View>
+          ) : isPremium ? (
             <View
               style={{
                 flexDirection: "row",
@@ -704,11 +705,11 @@ export default function WeekScreen() {
             >
               <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.success} />
               <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body }}>
-                Leftovers carry into next week
+                What's left carries into next week's plan
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="See leftovers on the Cook tab"
+                accessibilityLabel="See what's left on the Cook tab"
                 hitSlop={10}
                 onPress={() => router.push("/cook")}
                 style={({ pressed }) => ({
@@ -725,14 +726,14 @@ export default function WeekScreen() {
                     fontWeight: theme.font.weight.medium,
                   }}
                 >
-                  See leftovers
+                  See what's left
                 </Text>
               </Pressable>
             </View>
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Unlock carrying leftovers into next week"
+              accessibilityLabel="Unlock next week planned around what's left"
               onPress={openPaywall}
               style={({ pressed }) => ({
                 flexDirection: "row",
@@ -744,7 +745,7 @@ export default function WeekScreen() {
             >
               <Ionicons name="lock-closed" size={18} color={theme.colors.textMuted} />
               <Text style={{ ...base, flex: 1, fontSize: theme.font.size.body }}>
-                Carry leftovers into next week
+                Plan next week around what's left
               </Text>
               <Text
                 style={{

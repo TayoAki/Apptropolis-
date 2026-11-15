@@ -21,6 +21,7 @@ import {
 } from "../components/reading";
 import { REMINDER_COPY, REMINDER_TIMES, clockTime } from "../components/reminder";
 import { appInfo } from "../data/app-info";
+import { BIBLE_TOTALS, TRANSLATION } from "../data/bible";
 import { useAppState } from "../data/app-state";
 import { usePurchases } from "../data/purchases";
 import { useReminder } from "../data/reminders";
@@ -212,31 +213,43 @@ export default function SettingsScreen() {
                 <SettingsRow
                   icon="book-outline"
                   label="Translation"
-                  subtitle="World English Bible (WEB)"
+                  subtitle={`World English Bible (WEB), all ${BIBLE_TOTALS.books} books`}
                 />
                 <SettingsRow
                   icon="information-circle-outline"
                   label="About the translation"
-                  subtitle="Public-domain status and fidelity"
+                  subtitle="Public-domain status, source and fidelity"
                   chevron
                   expanded={aboutOpen}
                   onPress={() => reveal(aboutOpen, setAboutOpen)}
                   accessibilityHint="Shows details about the translation"
                 >
                   {aboutOpen ? (
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontSize: theme.font.size.body,
-                        lineHeight: theme.font.size.body * 1.5,
-                        fontFamily: theme.font.family,
-                      }}
-                    >
-                      The World English Bible is in the public domain, so it can be copied,
-                      printed and shared freely. It is a modern-English update of the American
-                      Standard Version of 1901. We show its text as published, with no words
-                      added to Scripture.
-                    </Text>
+                    <View style={{ gap: theme.spacing.sm }}>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontSize: theme.font.size.body,
+                          lineHeight: theme.font.size.body * 1.5,
+                          fontFamily: theme.font.family,
+                        }}
+                      >
+                        The World English Bible is in the public domain, so it can be copied,
+                        printed and shared freely. It is a modern-English update of the American
+                        Standard Version of 1901. We show its text as published, with no words
+                        added to Scripture: only footnote markers and section headings are left
+                        out.
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontSize: theme.font.size.caption,
+                          lineHeight: theme.font.size.caption * 1.5,
+                        }}
+                      >
+                        {`Source: ${TRANSLATION.name} (eBible.org edition ${TRANSLATION.id}, the Protestant canon of ${BIBLE_TOTALS.books} books), from the Free Use Bible API at bible.helloao.org. License: public domain, as stated by eBible.org. "World English Bible" is a trademark of eBible.org.`}
+                      </Text>
+                    </View>
                   ) : null}
                 </SettingsRow>
                 <SettingsRow

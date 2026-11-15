@@ -25,9 +25,10 @@ import { takePaywallSource } from "../components/paywall/source";
 import { useSavedTheme } from "../components/reading";
 import { track } from "../data/analytics";
 import { appInfo } from "../data/app-info";
+import { BIBLE_TOTALS } from "../data/bible";
 import { usePurchases } from "../data/purchases";
 import { useCollection } from "../data/repo";
-import { FREE_KEYWORD_RESULTS, type StudyNote, type Verse } from "../data/schema";
+import { FREE_KEYWORD_RESULTS, type StudyNote } from "../data/schema";
 import { useTheme } from "../theme/ThemeProvider";
 
 const BANNER_PROMPT =
@@ -69,7 +70,6 @@ export default function PaywallScreen() {
     restorePurchases,
     dismissPaywall,
   } = usePurchases();
-  const verses = useCollection<Verse>("verses");
   const notes = useCollection<StudyNote>("study_notes");
 
   const [chosenId, setChosenId] = useState<string | null>(null);
@@ -87,17 +87,13 @@ export default function PaywallScreen() {
   const canBuy = ready && !isPremium && offers.length > 0;
   const store = Platform.OS === "ios" ? "App Store" : "Google Play";
 
-  // What is free, counted from the library on this phone rather than promised.
-  const books = new Set(verses.items.map((v) => v.book)).size;
-  const library =
-    verses.items.length > 0
-      ? `Every passage in the library (${count(verses.items.length, "verse", "verses")} from ${count(books, "book", "books")})`
-      : "Every passage in the library";
+  // What is free, counted from the Bible the app ships with rather than promised.
+  const library = `The whole World English Bible: all ${count(BIBLE_TOTALS.books, "book", "books")}, ${BIBLE_TOTALS.chapters.toLocaleString()} chapters`;
   const studyNotes =
     notes.items.length > 0
       ? `all ${count(notes.items.length, "study note", "study notes")}`
       : "the study notes";
-  const freeLine = `${library}, ${studyNotes}, bookmarks, sharing, the daily reminder and search by reference. Keyword search shows the first ${FREE_KEYWORD_RESULTS} matches.`;
+  const freeLine = `${library}, ${studyNotes}, bookmarks, sharing, the daily reminder and search by reference. Keyword search covers every book and shows the first ${FREE_KEYWORD_RESULTS} matches.`;
 
   function choose(id: string) {
     if (busy || id === selected?.id) return;

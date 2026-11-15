@@ -6,7 +6,7 @@ export const monetization: Monetization = {
   // folders are gated in app/(tabs)/saved.tsx, full keyword results in app/(tabs)/search.tsx.
   "premiumFeatures": [
     "Folders to organize your saved verses",
-    "Every keyword match, with the words highlighted"
+    "Every keyword match across the whole Bible, with the words highlighted"
   ],
   "offers": [
     {

@@ -20,15 +20,29 @@ import {
   Appear,
   CountUp,
   Float,
+  GrowBar,
   haptic,
   PressScale,
   Skeleton,
   SkeletonList,
   useReducedMotion,
 } from "../../components/motion";
+import { startOf, useBooks } from "../../components/bible";
 import { useBookmarks } from "../../components/bookmarks";
 import { openPaywallFrom } from "../../components/paywall/source";
 import { useAppState } from "../../data/app-state";
+import {
+  BIBLE_TOTALS,
+  BOOKS,
+  fetchVerse,
+  normalizeRef,
+  parsePassage,
+  passageVerses,
+  searchBible,
+  withNotes,
+  type Passage,
+  type SearchProgress,
+} from "../../data/bible";
 import { usePurchases } from "../../data/purchases";
 import { useCollection } from "../../data/repo";
 import {
@@ -36,8 +50,6 @@ import {
   formatReference,
   isSameVerse,
   noteFor,
-  parseReference,
-  sortCanonical,
   type StudyNote,
   type Verse,
   type VerseRef,
@@ -52,10 +64,17 @@ const MODES: Array<{ id: Mode; label: string; placeholder: string }> = [
   { id: "keywords", label: "Keywords", placeholder: "Word or phrase, e.g. peace" },
 ];
 
-// Passages people look up most. Only the ones in the library are shown, so every chip opens.
-const QUICK_JUMP = ["John 3:16", "Psalm 23:1", "Romans 8:38", "Matthew 6:33", "Philippians 4:6"];
+// Passages people look up most, after the one chosen during setup.
+const QUICK_JUMP = ["John 3:16", "Psalm 23:1", "Romans 8:28", "Matthew 6:33", "Philippians 4:6"];
 const QUICK_JUMP_COUNT = 5;
 const MAX_RECENT = 3;
+/** Typing pauses this long before a keyword search starts, so each key doesn't start one. */
+const KEYWORD_DELAY_MS = 250;
+/**
+ * Premium lists at most this many matches (the count is always complete); a word like "the"
+ * matches most of the Bible, and a list that long helps no one. Adding a word narrows it.
+ */
+const MAX_LISTED = 500;
 
 /** The passages last opened from this screen, newest first. Saved on the phone. */
 const RECENT_KEY = "search.recent";
@@ -79,13 +98,16 @@ function readRecent(raw: string | undefined): VerseRef[] {
   }
 }
 
-function findVerse(items: Verse[], books: string[], text: string): Verse | undefined {
-  const parsed = parseReference(text, books);
-  if (!parsed || parsed.verse === undefined) return undefined;
-  return items.find(
-    (v) => v.book === parsed.book && v.chapter === parsed.chapter && v.verse === parsed.verse,
-  );
+/** A typed reference that names one verse, as a reference ("Psalm 23:1" → Psalms 23:1). */
+function refFrom(text: string): VerseRef | undefined {
+  const passage = parsePassage(text);
+  return passage?.kind === "verse"
+    ? { book: passage.book.name, chapter: passage.chapter, verse: passage.verse }
+    : undefined;
 }
+
+/** A keyword search in progress, or finished, for one query. */
+type KeywordState = SearchProgress & { query: string; failed: boolean };
 
 export default function SearchScreen() {
   const theme = useTheme();
@@ -93,7 +115,6 @@ export default function SearchScreen() {
   const reduced = useReducedMotion();
   const { answers, setAnswer } = useAppState();
   const { isPremium } = usePurchases();
-  const verses = useCollection<Verse>("verses");
   const notes = useCollection<StudyNote>("study_notes");
   const marks = useBookmarks();
 
@@ -102,6 +123,9 @@ export default function SearchScreen() {
   const [jumpError, setJumpError] = useState<string | null>(null);
   const [segmentWidth, setSegmentWidth] = useState(0);
   const [focused, setFocused] = useState(false);
+  const [keywordQuery, setKeywordQuery] = useState("");
+  const [keyword, setKeyword] = useState<KeywordState | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   const slide = useRef(new Animated.Value(0)).current;
   const clearOpacity = useRef(new Animated.Value(0)).current;
@@ -129,34 +153,62 @@ export default function SearchScreen() {
 
   const trimmed = query.trim();
   const terms = useMemo(() => trimmed.split(/\s+/).filter(Boolean), [trimmed]);
-  const books = useMemo(
-    () => Array.from(new Set(sortCanonical(verses.items).map((v) => v.book))),
-    [verses.items],
-  );
   const startingBook = answers.startingbook;
 
-  const results = useMemo<Verse[]>(() => {
-    if (!trimmed) return [];
-    if (mode === "reference") {
-      const parsed = parseReference(trimmed, books);
-      if (!parsed) return [];
-      return sortCanonical(
-        verses.items.filter(
-          (v) =>
-            v.book === parsed.book &&
-            v.chapter === parsed.chapter &&
-            (parsed.verse === undefined || v.verse === parsed.verse),
-        ),
-      );
-    }
-    const words = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
-    return sortCanonical(
-      verses.items.filter((v) => {
-        const text = v.text.toLowerCase();
-        return words.every((word) => text.includes(word));
-      }),
+  // Reference: understood as soon as it's typed (the book list is always loaded); the verses
+  // show once their book has loaded.
+  const passage: Passage | null = mode === "reference" && trimmed ? parsePassage(trimmed) : null;
+  const passageBook = passage && passage.kind !== "missing" ? passage.book.id : undefined;
+  const referenceBook = useBooks([passageBook]);
+  const referenceResults = useMemo<Verse[]>(
+    () =>
+      passage && referenceBook.ready ? withNotes(passageVerses(passage) ?? [], notes.items) : [],
+    // The passage is re-read from the text on every render; what it says is in `trimmed`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trimmed, mode, referenceBook.ready, notes.items],
+  );
+
+  // Keywords: searched book by book, a moment after typing stops. Each new query cancels the last.
+  useEffect(() => {
+    const id = setTimeout(
+      () => setKeywordQuery(mode === "keywords" ? trimmed : ""),
+      mode === "keywords" && trimmed ? KEYWORD_DELAY_MS : 0,
     );
-  }, [trimmed, mode, books, verses.items]);
+    return () => clearTimeout(id);
+  }, [trimmed, mode]);
+
+  useEffect(() => {
+    if (!keywordQuery) {
+      setKeyword(null);
+      return;
+    }
+    let cancelled = false;
+    setKeyword({ query: keywordQuery, hits: [], total: 0, searched: 0, done: false, failed: false });
+    searchBible(keywordQuery.split(/\s+/), {
+      keep: MAX_LISTED,
+      cancelled: () => cancelled,
+      onProgress: (progress) => {
+        if (!cancelled) setKeyword({ ...progress, query: keywordQuery, failed: false });
+      },
+    }).catch(() => {
+      if (!cancelled) setKeyword((now) => (now ? { ...now, failed: true } : now));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [keywordQuery, attempt]);
+
+  // What is on screen belongs to what is typed now: a search for an older query isn't shown.
+  const keywordCurrent = mode === "keywords" && keyword?.query === trimmed ? keyword : null;
+  const keywordHits = useMemo(
+    () => (keywordCurrent ? withNotes(keywordCurrent.hits, notes.items) : []),
+    [keywordCurrent, notes.items],
+  );
+  const results = mode === "reference" ? referenceResults : keywordHits;
+  const matchCount = mode === "reference" ? referenceResults.length : (keywordCurrent?.total ?? 0);
+  const searching =
+    mode === "keywords" && trimmed !== "" && !(keywordCurrent?.done || keywordCurrent?.failed);
+  const progress = keywordCurrent ? keywordCurrent.searched / BOOKS.length : 0;
 
   // Keyword search with highlights and all results is premium; free users see a few results.
   const keywordLimited = mode === "keywords" && !isPremium;
@@ -164,49 +216,47 @@ export default function SearchScreen() {
   const highlight = mode === "keywords" && isPremium;
 
   const quickJump = useMemo(() => {
-    const picks: Verse[] = [];
-    const add = (verse: Verse | undefined) => {
-      if (verse && picks.length < QUICK_JUMP_COUNT && !picks.some((p) => p.id === verse.id))
-        picks.push(verse);
+    const picks: VerseRef[] = [];
+    const add = (ref: VerseRef | undefined) => {
+      if (ref && picks.length < QUICK_JUMP_COUNT && !picks.some((p) => isSameVerse(p, ref)))
+        picks.push(ref);
     };
-    // The book the person chose during setup comes first.
-    if (startingBook)
-      add(sortCanonical(verses.items.filter((v) => v.book === startingBook))[0]);
-    for (const ref of QUICK_JUMP) add(findVerse(verses.items, books, ref));
-    for (const verse of verses.items) if (verse.hasNote) add(verse);
+    // The passage chosen during setup comes first.
+    add(startOf(startingBook));
+    for (const ref of QUICK_JUMP) add(refFrom(ref));
     return picks;
-  }, [startingBook, books, verses.items]);
+  }, [startingBook]);
 
-  // Only passages this person opened from Search, and only those still in the library.
+  // Only passages this person opened from Search.
   const recentRaw = answers[RECENT_KEY];
   const recent = useMemo(
     () =>
-      readRecent(recentRaw).flatMap((ref) => {
-        const verse = verses.items.find((v) => isSameVerse(v, ref));
-        return verse
+      readRecent(recentRaw).flatMap((saved) => {
+        const ref = normalizeRef(saved);
+        return ref
           ? [
               {
-                key: formatReference(verse),
-                ref: verse,
-                text: verse.text,
-                topic: noteFor(notes.items, verse)?.title ?? "",
+                key: formatReference(ref),
+                ref,
+                topic: noteFor(notes.items, ref)?.title ?? "",
               },
             ]
           : [];
       }),
-    [recentRaw, verses.items, notes.items],
+    [recentRaw, notes.items],
   );
 
   /** Jump into the reader at a verse: the reader resumes there. */
-  async function openVerse(ref: VerseRef, text: string) {
+  async function openVerse(ref: VerseRef) {
     setJumpError(null);
-    const next = { book: ref.book, chapter: ref.chapter, verse: ref.verse, text };
-    const place = { book: next.book, chapter: next.chapter, verse: next.verse };
+    const place = { book: ref.book, chapter: ref.chapter, verse: ref.verse };
     const earlier = readRecent(recentRaw).filter((r) => !isSameVerse(r, place));
     void setAnswer(RECENT_KEY, JSON.stringify([place, ...earlier].slice(0, MAX_RECENT))).catch(
       () => undefined,
     );
     try {
+      const next = await fetchVerse(place);
+      if (!next) throw new Error(`No verse ${formatReference(place)}`);
       await marks.keepPlace(next);
       router.navigate({
         pathname: "/",
@@ -225,53 +275,64 @@ export default function SearchScreen() {
   const segmentHalf = Math.max(0, (segmentWidth - 8) / 2);
   const indicatorX = slide.interpolate({ inputRange: [0, 1], outputRange: [0, segmentHalf] });
 
-  const loadingLibrary = verses.loading;
+  const loadingLibrary = notes.loading;
 
-  // What to say when a search finds nothing (or the reference isn't understood). A reference
-  // to a book the library doesn't hold is told so, not asked to retype what was typed.
-  const tryThese = quickJump.slice(0, 2).map(formatReference).join(" or ") || "John 3:16";
-  const bookList =
-    books.length > 1 ? `${books.slice(0, -1).join(", ")} and ${books[books.length - 1]}` : books[0];
+  // What to say when a search finds nothing (or the reference isn't understood). A chapter or
+  // verse the book doesn't have is told so, with how many it has.
   const looksLikeReference = /^\S.*?\s*\d+(?::\d+)?$/.test(trimmed);
   const emptyCopy: { icon: IconName; title: string; body: string } | null = !trimmed
     ? null
     : mode === "reference"
-      ? parseReference(trimmed, books)
+      ? passage?.kind === "missing"
+        ? { icon: "book-outline", title: passage.title, body: passage.body }
+        : passage
+          ? null
+          : looksLikeReference
+            ? {
+                icon: "book-outline",
+                title: `No book is called “${trimmed.replace(/\s*\d.*$/, "")}”`,
+                body: "Check the book's name, e.g. Romans 8:28, Psalm 23 or 1 John 4. To search the words of the text, switch to Keywords.",
+              }
+            : {
+                icon: "compass-outline",
+                title: "Try a book and chapter",
+                body: "Type a reference like John 3:16, Psalm 23 or Romans. To search the words of the text, switch to Keywords.",
+              }
+      : keywordCurrent?.failed
         ? {
-            icon: "book-outline",
-            title: `${trimmed} isn't in the library yet`,
-            body: `This library holds a starter set of passages. Try ${tryThese}, or search by keyword.`,
+            icon: "cloud-offline-outline",
+            title: "The search couldn't finish",
+            body: "Some books couldn't be loaded. Check the connection and try again.",
           }
-        : looksLikeReference && bookList
+        : keywordCurrent?.done
           ? {
-              icon: "book-outline",
-              title: `${trimmed} isn't in the library yet`,
-              body: `The library holds passages from ${bookList}. Try ${tryThese}, or search by keyword.`,
+              icon: "text-outline",
+              title: `No verse says “${trimmed}”`,
+              body: `Check the spelling, or try a shorter word. Keyword search looks through all ${BIBLE_TOTALS.books} books of the Bible.`,
             }
-          : {
-              icon: "compass-outline",
-              title: "Try a book and chapter",
-              body: "Type a reference like John 3:16 or Psalm 23. To search the words of the text, switch to Keywords.",
-            }
-      : {
-          icon: "text-outline",
-          title: `No verse says “${trimmed}”`,
-          body: "Check the spelling, or try a shorter word. Keyword search looks through every verse in the library.",
-        };
+          : null;
 
-  const emptyView = loadingLibrary ? (
-    trimmed ? (
+  const emptyView =
+    (mode === "reference" && passageBook && !referenceBook.ready && !referenceBook.failed) ||
+    (searching && results.length === 0) ? (
       <SkeletonList rows={3} />
-    ) : null
-  ) : emptyCopy ? (
-    <EmptyState
-      icon={emptyCopy.icon}
-      title={emptyCopy.title}
-      body={emptyCopy.body}
-      actionLabel="Clear search"
-      onAction={() => setQuery("")}
-    />
-  ) : null;
+    ) : emptyCopy ? (
+      <EmptyState
+        icon={emptyCopy.icon}
+        title={emptyCopy.title}
+        body={emptyCopy.body}
+        actionLabel={keywordCurrent?.failed ? "Try again" : "Clear search"}
+        onAction={() => (keywordCurrent?.failed ? setAttempt((n) => n + 1) : setQuery(""))}
+      />
+    ) : mode === "reference" && referenceBook.failed ? (
+      <EmptyState
+        icon="cloud-offline-outline"
+        title="That book didn't open"
+        body="It couldn't be loaded. Check the connection and try again."
+        actionLabel="Try again"
+        onAction={referenceBook.retry}
+      />
+    ) : null;
 
   const header = (
     <View style={{ gap: theme.spacing.xl, paddingBottom: theme.spacing.lg }}>
@@ -322,8 +383,7 @@ export default function SearchScreen() {
               }
               onSubmitEditing={() => {
                 Keyboard.dismiss();
-                if (mode === "reference" && results[0])
-                  void openVerse(results[0], results[0].text);
+                if (mode === "reference" && results[0]) void openVerse(results[0]);
               }}
               style={{
                 flex: 1,
@@ -419,20 +479,41 @@ export default function SearchScreen() {
         ) : null}
       </View>
 
-      {trimmed && results.length > 0 ? (
-        <View style={{ flexDirection: "row", alignItems: "baseline", gap: theme.spacing.xs }}>
-          <CountUp
-            value={results.length}
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.font.size.body,
-              fontWeight: theme.font.weight.bold,
-              fontVariant: ["tabular-nums"],
-            }}
-          />
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
-            {results.length === 1 ? "verse matches" : "verses match"}
-          </Text>
+      {trimmed && (results.length > 0 || searching) ? (
+        <View style={{ gap: theme.spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: theme.spacing.xs }}>
+            {searching ? (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{
+                  color: theme.colors.textMuted,
+                  fontSize: theme.font.size.body,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {matchCount === 0
+                  ? "Searching the Bible…"
+                  : `${matchCount.toLocaleString()} ${matchCount === 1 ? "verse" : "verses"} so far, searching…`}
+              </Text>
+            ) : (
+              <>
+                <CountUp
+                  value={matchCount}
+                  format={(n) => Math.round(n).toLocaleString()}
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: theme.font.size.body,
+                    fontWeight: theme.font.weight.bold,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                />
+                <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.body }}>
+                  {matchCount === 1 ? "verse matches" : "verses match"}
+                </Text>
+              </>
+            )}
+          </View>
+          {searching ? <GrowBar progress={progress} height={3} /> : null}
         </View>
       ) : null}
 
@@ -465,8 +546,8 @@ export default function SearchScreen() {
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
                 {quickJump.map((verse) => (
                   <PressScale
-                    key={verse.id}
-                    onPress={() => void openVerse(verse, verse.text)}
+                    key={formatReference(verse)}
+                    onPress={() => void openVerse(verse)}
                     haptic="light"
                     scaleTo={0.94}
                     accessibilityRole="button"
@@ -530,7 +611,7 @@ export default function SearchScreen() {
                 {recent.map((item, index) => (
                   <Appear key={item.key} delay={index * 60}>
                     <PressScale
-                      onPress={() => void openVerse(item.ref, item.text)}
+                      onPress={() => void openVerse(item.ref)}
                       accessibilityRole="button"
                       accessibilityLabel={
                         item.topic ? `${item.key}, ${item.topic}` : item.key
@@ -580,13 +661,28 @@ export default function SearchScreen() {
     </View>
   );
 
+  const listedAll =
+    mode === "keywords" && isPremium && !searching && matchCount > results.length ? (
+      <Text
+        style={{
+          marginTop: theme.spacing.sm,
+          color: theme.colors.textMuted,
+          fontSize: theme.font.size.caption,
+          lineHeight: theme.font.size.caption * 1.4,
+          textAlign: "center",
+        }}
+      >
+        {`Showing the first ${results.length.toLocaleString()} of ${matchCount.toLocaleString()} matches. Add another word to narrow the search.`}
+      </Text>
+    ) : null;
+
   const footer =
-    keywordLimited && results.length > visible.length ? (
+    keywordLimited && matchCount > visible.length ? (
       <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
         <PressScale
           onPress={() => openPaywallFrom("search_all_matches")}
           accessibilityRole="button"
-          accessibilityLabel={`Show all ${results.length} matches with Premium`}
+          accessibilityLabel={`Show all ${matchCount} matches with Premium`}
           style={{
             flexDirection: "row",
             alignItems: "center",
@@ -619,7 +715,7 @@ export default function SearchScreen() {
                 fontWeight: theme.font.weight.bold,
               }}
             >
-              {`Show all ${results.length} matches`}
+              {searching ? "Show every match" : `Show all ${matchCount.toLocaleString()} matches`}
             </Text>
             <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.size.caption }}>
               Keyword highlights and full results are in Premium
@@ -669,7 +765,9 @@ export default function SearchScreen() {
           <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
         </PressScale>
       </View>
-    ) : null;
+    ) : (
+      listedAll
+    );
 
   return (
     <FlatList
@@ -678,7 +776,7 @@ export default function SearchScreen() {
       renderItem={({ item, index }) => (
         <Appear delay={Math.min(index, 10) * 30}>
           <PressScale
-            onPress={() => void openVerse(item, item.text)}
+            onPress={() => void openVerse(item)}
             scaleTo={0.98}
             accessibilityRole="button"
             accessibilityLabel={`${formatReference(item)}. ${item.text}`}

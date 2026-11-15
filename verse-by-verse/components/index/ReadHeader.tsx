@@ -1,26 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import { formatReference, type Verse } from "../../data/schema";
+import { Pressable, Text, View } from "react-native";
+import { formatReference, type Verse, type VerseRef } from "../../data/schema";
 import { useTheme } from "../../theme/ThemeProvider";
 import { haptic, PressScale } from "../motion";
+import { PassagePicker } from "../PassagePicker";
 
 /**
  * The top row of the Read screen: the verse pill (e.g. "John 1:1" with a caret), which opens a
- * row of verses to jump to; "Chapter", which opens the whole chapter; and Settings. The pill
+ * picker for any verse, chapter or book; "Chapter", which opens the whole chapter; and Settings. The pill
  * gives way first when the row is tight: a long reference shrinks a little rather than pushing
  * the buttons off the screen.
  */
 export function ReadHeader({
   current,
-  verses,
   onPick,
   onReadChapter,
   onSettings,
 }: {
   current: Verse;
-  verses: Verse[];
-  onPick: (verse: Verse) => void;
+  onPick: (ref: VerseRef) => void;
   onReadChapter: () => void;
   onSettings: () => void;
 }) {
@@ -46,7 +45,7 @@ export function ReadHeader({
             }}
             scaleTo={0.95}
             accessibilityRole="button"
-            accessibilityLabel={`Choose a verse. Now reading ${label}`}
+            accessibilityLabel={`Choose a passage. Now reading ${label}`}
             accessibilityState={{ expanded: open }}
             style={{
               flexDirection: "row",
@@ -131,53 +130,14 @@ export function ReadHeader({
       </View>
 
       {open ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: theme.spacing.sm, paddingVertical: theme.spacing.xs }}
-        >
-          {verses.map((verse) => {
-            const selected = verse.id === current.id;
-            return (
-              <PressScale
-                key={verse.id}
-                onPress={() => {
-                  haptic("selection");
-                  setOpen(false);
-                  onPick(verse);
-                }}
-                scaleTo={0.94}
-                accessibilityRole="button"
-                accessibilityLabel={`Read ${formatReference(verse)}`}
-                accessibilityState={{ selected }}
-                style={{
-                  minHeight: 44,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: theme.spacing.xs,
-                  paddingHorizontal: theme.spacing.md,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
-                  borderColor: selected ? theme.colors.primary : theme.colors.border,
-                  backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
-                }}
-              >
-                {selected ? (
-                  <Ionicons name="checkmark" size={14} color={theme.colors.onPrimary} />
-                ) : null}
-                <Text
-                  style={{
-                    color: selected ? theme.colors.onPrimary : theme.colors.text,
-                    fontSize: theme.font.size.caption,
-                    fontWeight: theme.font.weight.medium,
-                  }}
-                >
-                  {formatReference(verse)}
-                </Text>
-              </PressScale>
-            );
-          })}
-        </ScrollView>
+        <PassagePicker
+          current={current}
+          onPick={(ref) => {
+            haptic("selection");
+            setOpen(false);
+            onPick(ref);
+          }}
+        />
       ) : null}
     </View>
   );
