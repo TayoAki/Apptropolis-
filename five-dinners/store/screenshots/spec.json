@@ -86,7 +86,7 @@
         "Swap a dinner,",
         "see the *change*"
       ],
-      "sub": "Each option shows what it adds to or takes off this week's list.",
+      "sub": "Each option shows how it changes the basket, cheapest first.",
       "capture": "captures/week1-swap.png",
       "callout": {
         "crop": [
@@ -145,7 +145,7 @@
       "callout": {
         "crop": [
           8,
-          407,
+          439,
           424,
           262
         ],

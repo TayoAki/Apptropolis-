@@ -27,7 +27,7 @@ const PORT = 8137;
 
 // Local times in Chicago (November is UTC-6).
 const T = {
-  setup: "2026-11-15T09:30:00-06:00", // Sunday: onboarding plans the free week
+  setup: "2026-11-15T09:30:00-06:00", // Sunday: onboarding plans the first week
   shop1: "2026-11-15T11:10:00-06:00", // at the store
   cook: [
     "2026-11-16T18:30:00-06:00",
@@ -221,8 +221,9 @@ async function main() {
   await shoot(page, out("shop-week2.png"));
   await page.getByRole("button", { name: "Price history" }).click();
   await page.waitForTimeout(500);
-  // The list is short enough to end here: start the screen on a whole row (the broccoli).
-  await scrollTo(page.getByRole("checkbox", { name: /^Broccoli florets/ }), 0);
+  // Start the screen on the last aisle's whole header (Frozen & bakery), so nothing is cut off
+  // at the top; the price history then sits below the list, every row in view.
+  await scrollTo(page.getByRole("heading", { name: /^Frozen & bakery/ }), 10);
   await shoot(page, out("price-history.png"));
   await note("history", page.getByRole("button", { name: "Price history" }));
 
