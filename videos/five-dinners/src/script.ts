@@ -30,9 +30,9 @@ export const T = {
   cooked: [10.15, 10.65] as const,
   bars: [10.6, 11.4] as const,
   camPush: [10.7, 11.9] as const,
+  line3: [10.7, 11.1] as const, // "Leftovers first.", as What's left fills in
   // B4 next week, planned around the leftovers (a staged time jump; Unlimited weekly plans).
   toWeek2: [12.9, 13.5] as const,
-  line3: [13.1, 13.5] as const, // "Leftovers first."
   pill: [13.6, 13.9] as const,
   drift2: [13.5, 17.1] as const,
   // B5 close.

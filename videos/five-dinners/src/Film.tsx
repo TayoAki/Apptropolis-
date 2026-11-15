@@ -16,39 +16,45 @@ type Pt = { x: number; y: number };
 const RIM = 14; // phone rim in points
 const RADIUS = 62;
 
-/** In the vertical cut the phone plays in a window below the type band, with a soft top edge. */
-const WINDOW_TOP = 500;
-
 /**
  * The camera: a screen point `f` (in points) shown at canvas point `a` (px), at `k` px per point.
  * One keyframe per beat; it eases between them and holds in between.
  */
 type Cam = { f: Pt; a: Pt; k: number };
 
+/**
+ * Where the phone's top edge sits on the canvas. It never moves: the top of the phone is always in
+ * view, under the type band, and the camera only changes the scale (the bottom may run off the frame).
+ * To reach the tab bar it pulls back to the whole phone instead of sliding the phone up.
+ */
+const PHONE_TOP = { vertical: 310, landscape: 46 };
+
 function shots(layout: Layout) {
   const v = layout === "vertical";
-  const a = v ? { x: 540, y: 1018 } : { x: 1400, y: 540 };
-  const at = (fy: number, k: number): Cam => ({ f: { x: 220, y: fy }, a, k });
+  const cx = v ? 540 : 1380;
+  const top = PHONE_TOP[layout];
+  // Focus on the screen's top centre, anchored so the phone's outer top lands on `top` at any scale.
+  const at = (k: number): Cam => ({ f: { x: 220, y: 0 }, a: { x: cx, y: top + RIM * k }, k });
   return v
     ? {
-        week: at(309, 2.0), // header, basket, the first dinners
-        weekDrift: at(309, 2.05),
-        low: at(657, 2.0), // the tab bar, above the platform's caption area
-        shop: at(388, 2.0), // estimate, paid so far, the first produce rows
-        cook: at(400, 2.0), // the week's circles and Monday's card
-        cookPush: at(480, 2.2), // what's left of each pack
-        week2: at(514, 2.0), // carried over, and the dinners that use it
-        week2Drift: at(522, 2.05),
+        week: at(1.8), // header, basket, the five dinners
+        weekDrift: at(1.83),
+        low: at(1.42), // the whole phone, to tap the tab bar
+        shop: at(1.8), // estimate, paid so far, the first produce rows
+        cook: at(1.8), // the week's circles and Monday's card
+        cookPush: at(1.95), // what's left of each pack
+        week2: at(1.8), // carried over, and the dinners that use it
+        week2Drift: at(1.84),
       }
     : {
-        week: at(420, 1.5),
-        weekDrift: at(420, 1.53),
-        low: at(640, 1.5),
-        shop: at(400, 1.6),
-        cook: at(410, 1.6),
-        cookPush: at(470, 1.75),
-        week2: at(520, 1.6),
-        week2Drift: at(526, 1.64),
+        week: at(1.5),
+        weekDrift: at(1.53),
+        low: at(0.98),
+        shop: at(1.5),
+        cook: at(1.5),
+        cookPush: at(1.55),
+        week2: at(1.5),
+        week2Drift: at(1.53),
       };
 }
 
@@ -83,7 +89,6 @@ export function Film({ layout }: { layout: Layout }) {
   const v = layout === "vertical";
   const cam = camera(layout, t);
   const k = cam.k;
-  const windowTop = v ? WINDOW_TOP : 0;
 
   // The phone leaves at the close.
   const out = prog(t, T.out[0], T.out[1], easeIn);
@@ -115,8 +120,8 @@ export function Film({ layout }: { layout: Layout }) {
   const newest = (from: number, until: number) => (t >= from && t < until ? colors.primary : colors.text);
 
   const band = v
-    ? { left: 40, right: 40, top: 128, align: "center" as const, size: 92, pill: 34 }
-    : { left: 130, width: 760, top: height / 2 - 200, align: "left" as const, size: 104, pill: 34 };
+    ? { left: 40, right: 40, top: 108, align: "center" as const, size: 100, pill: 34 }
+    : { left: 120, width: 700, top: height / 2 - 200, align: "left" as const, size: 104, pill: 34 };
   const lineStyle = { fontFamily: DISPLAY, fontWeight: 800, fontSize: band.size, lineHeight: 1.04, letterSpacing: -1.5 };
 
   const screenW = SCREEN.w;
@@ -135,9 +140,38 @@ export function Film({ layout }: { layout: Layout }) {
           color: colors.text,
         }}
       >
-        <div style={{ ...lineStyle, color: newest(0, T.line2[0]) }}>Five dinners.</div>
-        <div style={{ ...lineStyle, color: newest(T.line2[0], T.line3[0]), opacity: line2, transform: `translateY(${(1 - line2) * 22}px)` }}>One list.</div>
-        <div style={{ ...lineStyle, color: colors.primary, opacity: line3, transform: `translateY(${(1 - line3) * 22}px)` }}>Leftovers first.</div>
+        {v ? (
+          // Vertical: one line at a time, each replacing the last, so the phone keeps the room below.
+          <div style={{ position: "relative", height: band.size * 1.04 }}>
+            {[
+              { text: "Five dinners.", inn: 1, out: line2, color: colors.text },
+              { text: "One list.", inn: line2, out: line3, color: colors.text },
+              { text: "Leftovers first.", inn: line3, out: 0, color: colors.primary },
+            ].map((l) => (
+              <div
+                key={l.text}
+                style={{
+                  ...lineStyle,
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  color: l.color,
+                  opacity: l.inn * (1 - l.out),
+                  transform: `translateY(${(1 - l.inn) * 34 - l.out * 34}px)`,
+                }}
+              >
+                {l.text}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div style={{ ...lineStyle, color: newest(0, T.line2[0]) }}>Five dinners.</div>
+            <div style={{ ...lineStyle, color: newest(T.line2[0], T.line3[0]), opacity: line2, transform: `translateY(${(1 - line2) * 22}px)` }}>One list.</div>
+            <div style={{ ...lineStyle, color: colors.primary, opacity: line3, transform: `translateY(${(1 - line3) * 22}px)` }}>Leftovers first.</div>
+          </>
+        )}
         <div
           style={{
             display: "inline-block",
@@ -157,22 +191,10 @@ export function Film({ layout }: { layout: Layout }) {
         </div>
       </div>
 
-      {/* The phone, under one camera, in its window. */}
+      {/* The phone, under one camera; its top edge always in view below the band. */}
       {t < T.out[1] + 0.05 ? (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: windowTop,
-            bottom: 0,
-            overflow: "hidden",
-            opacity: 1 - out,
-            WebkitMaskImage: v ? "linear-gradient(to bottom, transparent 0px, #000 64px)" : undefined,
-            maskImage: v ? "linear-gradient(to bottom, transparent 0px, #000 64px)" : undefined,
-          }}
-        >
-          <div style={{ position: "absolute", left: phoneLeft, top: phoneTop - windowTop }}>
+        <div style={{ position: "absolute", inset: 0, opacity: 1 - out }}>
+          <div style={{ position: "absolute", left: phoneLeft, top: phoneTop }}>
             <div style={{ transformOrigin: "0 0", transform: `scale(${k})`, width: screenW + RIM * 2 }}>
               <div
                 style={{

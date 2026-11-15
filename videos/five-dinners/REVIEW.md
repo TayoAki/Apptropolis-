@@ -1,24 +1,34 @@
-# Review: Five Dinners — "Five dinners. One list. Leftovers first." (v1)
+# Review: Five Dinners — "Five dinners. One list. Leftovers first." (v2)
 
 Renders (in `renders/`, made from this folder's source):
-- `five-dinners-v1-vertical-9x16.mp4`: 1080 × 1920, 30 fps, 21.0 s, H.264 yuv420p, no audio (Reels / Shorts / TikTok)
-- `five-dinners-v1-16x9.mp4`: 1920 × 1080, 30 fps, 21.0 s, H.264 yuv420p, no audio (X, YouTube, site)
-- `poster-v1-*.jpg`: frame 0 of each (also the thumbnail)
+- `five-dinners-v2-vertical-9x16.mp4`: 1080 × 1920, 30 fps, 21.0 s, H.264 yuv420p, no audio (Reels / Shorts / TikTok)
+- `five-dinners-v2-16x9.mp4`: 1920 × 1080, 30 fps, 21.0 s, H.264 yuv420p, no audio (X, YouTube, site)
+- `poster-v2-*.jpg`: frame 0 of each (also the thumbnail)
 
-## Test status (checked on the encoded v1 files)
+## Changes in v2
+- The top of the phone was out of view: in the vertical cut the phone slid up under the type band
+  behind a soft fade, and in 16:9 it ran off the top of the frame. The phone's top edge now stays in
+  view in every frame (below the band), and the camera only changes the scale; to reach the tab bar
+  it pulls back to the whole phone.
+- To keep room for the phone, the vertical band shows one line at a time ("Five dinners." →
+  "One list." → "Leftovers first."); 16:9 still builds all three. "Leftovers first." now lands as
+  What's left fills in (10.7 s), and the Unlimited label with next week (13.6 s).
+
+## Test status (checked on the encoded v2 files)
 
 | Check | Vertical | 16:9 |
 |---|---|---|
 | Container / spec | ✅ 21.0 s, 1080×1920, 30 fps, 630 frames, yuv420p limited range, bt709, +faststart, video only | ✅ same at 1920×1080 |
 | Loudness | n/a (silent; no audio stream) | n/a |
-| Beats land (frames pulled at 0, 2.75, 5.25, 6.3, 8.35, 10.05, 11.3, 12.5, 14.8, 19.5 s) | ✅ 10/10 | ✅ 10/10 |
+| Beats land (frames pulled at 0, 2.75, 5.25, 6.3, 8.35, 10.05, 11.5, 12.5, 14.8, 19.5 s) | ✅ 10/10 | ✅ 10/10 |
 | Frame 0 as poster | ✅ "Five dinners." + the week, $44.20 of $65.00 | ✅ |
 | Last frame | ✅ clean hold on the lockup | ✅ |
 | Legibility at 360 px wide | ✅ band, totals, paid so far, ticks, What's left, Carried over and the lockup read; the shop rows' small print is small by design | n/a |
 | Screens against the app's captures | ✅ Week 1, Shop, Cook, Week 2 rendered at 1 px/pt beside `five-dinners/store/screenshots/captures/*.png`: same labels, numbers, layout within ~2 pt | (same source) |
-| Determinism | ✅ frames 315, 150, 315, 432 rendered out of order: the two 315s are byte-identical | (same source) |
-| Phone rim even on every visible side | ✅ 22 px left, right and bottom | ✅ 17 px |
-| Type never over playing UI | ✅ the band sits above the phone's window | ✅ band on the left |
+| Determinism | ✅ frames 330, 90, 330 rendered out of order: the two 330s are byte-identical | (same source) |
+| Phone top edge in view in every frame | ✅ | ✅ |
+| Phone rim even on every visible side | ✅ top, left, right (and bottom when the whole phone shows) | ✅ |
+| Type never over playing UI | ✅ the band sits above the phone | ✅ band on the left |
 | Taps cause the change | ✅ Shop tab → Shop; tick → row ticked, totals update; Cook tab → Cook; Mark cooked → cooked + What's left | ✅ |
 | Not checked | playback inside the TikTok / Instagram apps; a music bed | — |
 
@@ -55,10 +65,10 @@ Renders (in `renders/`, made from this folder's source):
 npm install
 ```
 ```bash
-npx remotion render src/index.ts FiveDinnersVertical out/v1-vertical-raw.mp4 --browser-executable=/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+npx remotion render src/index.ts FiveDinnersVertical out/v2-vertical-raw.mp4 --browser-executable=/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
 ```
 ```bash
-ffmpeg -i out/v1-vertical-raw.mp4 -vf "scale=in_range=full:out_range=tv,format=yuv420p" -c:v libx264 -preset slow -crf 18 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart -an renders/five-dinners-v1-vertical-9x16.mp4
+ffmpeg -i out/v2-vertical-raw.mp4 -vf "scale=in_range=full:out_range=tv,format=yuv420p" -c:v libx264 -preset slow -crf 18 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart -an renders/five-dinners-v2-vertical-9x16.mp4
 ```
 Same for `FiveDinnersLandscape`. `ScreenCheck` renders the four screens at 1 px per point for
 comparing with the app's captures.

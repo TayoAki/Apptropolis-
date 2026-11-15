@@ -54,9 +54,10 @@ Read this at the start of every job. Save every correction as a rule with its re
 - Measure recreated screens from the app's own 3x captures (pt = px / 3, add the 54 pt status bar)
   and check them side by side at 1 px/pt before filming: it caught a misplaced list and a wrong
   title wrap on the Five Dinners screens.
-- In a vertical cut that needs taps on the tab bar, play the phone in a window under the type band
-  (soft 64 px top fade) and pan to the tab bar before the tap, rather than shrinking the phone: the
-  tap stays above the platform's caption zone and the type stays clear.
+- Keep the top edge of the phone in view in every frame, under the type band: the owner reads a
+  phone cropped at the top (by a fade window or the frame edge) as broken (Five Dinners v1). Fix the
+  phone's top on the canvas and change only the scale; for the tab bar, pull back to the whole phone.
+  If the band needs the room, show its lines one at a time in the vertical cut.
 - Label paid features where they appear (Five Dinners: "With Unlimited weekly plans"), with no price.
 - Keep the 360 px check on the hook: zoom the reminder until its text reads, but never let the phone
   cover the band.
@@ -66,4 +67,5 @@ Read this at the start of every job. Save every correction as a rule with its re
 |---|---|---|---|
 | Verse by Verse v1 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | rim missing on the right; replaced |
 | Verse by Verse v2 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | videos/verse-by-verse/renders/ |
-| Five Dinners v1 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | videos/five-dinners/renders/ |
+| Five Dinners v1 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | top of the phone out of view; replaced |
+| Five Dinners v2 | 2026-11-15 | vertical 9:16, 16:9 (21 s, silent) | videos/five-dinners/renders/ |
