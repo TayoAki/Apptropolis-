@@ -29,12 +29,12 @@
       "capture": "captures/chapter-left-off.png",
       "callout": {
         "crop": [
-          22,
+          26,
           775,
-          180,
+          388,
           22
         ],
-        "scale": 2.4
+        "scale": 1.4
       }
     },
     {
